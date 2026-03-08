@@ -1,0 +1,203 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Seevalocal.UI.ViewModels"
+             xmlns:local="using:Seevalocal.UI"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+             x:Class="Seevalocal.UI.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.valueIndicator">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="#6C7086"/>
+      <Setter Property="Margin" Value="0,2,0,0"/>
+    </Style>
+    <Style Selector="TextBlock.llamaCppDefault">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="#89B4FA"/>
+      <Setter Property="FontStyle" Value="Italic"/>
+      <Setter Property="Margin" Value="0,2,0,0"/>
+    </Style>
+    <Style Selector="Border.originBadge">
+      <Setter Property="Child">
+        <Template>
+          <TextBlock Text="{Binding $parent[Border].Tag}" Foreground="#A6ADC8" FontSize="10" VerticalAlignment="Center"/>
+        </Template>
+      </Setter>
+      <Setter Property="Background" Value="#45475A"/>
+      <Setter Property="Padding" Value="4,2"/>
+      <Setter Property="CornerRadius" Value="3"/>
+      <Setter Property="Margin" Value="8,0,0,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBox.settingsInput">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Padding" Value="8,6"/>
+    </Style>
+    <Style Selector="ComboBox.settingsInput">
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="MinWidth" Value="120"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16">
+      <TextBlock Text="Settings" Classes="pageTitle"/>
+      <TextBox Text="{Binding SearchText}" Watermark="Search settings..." Width="250" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="20" Margin="0,16">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding SettingsFieldsBySection}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Margin="0,0,0,20">
+                <TextBlock Text="{Binding SectionName}" Classes="sectionHeader" Margin="0,0,0,12"/>
+                <StackPanel Spacing="8">
+                  <ItemsControl ItemsSource="{Binding Fields}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel IsVisible="{Binding IsVisible}" Margin="0,4">
+                          <Grid ColumnDefinitions="220,*,180" HorizontalAlignment="Stretch">
+                            <!-- Label -->
+                            <TextBlock Grid.Column="0" 
+                                       Text="{Binding DisplayName}" 
+                                       Classes="settingsKey" 
+                                       VerticalAlignment="Center"
+                                       ToolTip.Tip="{Binding Description}"/>
+                            
+                            <!-- Input field -->
+                            <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                              <!-- Text input for regular fields -->
+                              <TextBox Grid.Column="0" 
+                                       Text="{Binding Value}" 
+                                       Classes="settingsInput"
+                                       Watermark="{Binding Watermark}"
+                                       IsVisible="{Binding IsTextField}"/>
+                              
+                              <!-- ComboBox for boolean fields -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsBooleanField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="true"/>
+                                <ComboBoxItem Content="false"/>
+                              </ComboBox>
+                              
+                              <!-- ComboBox for judge template enum -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsJudgeTemplateField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="standard"/>
+                                <ComboBoxItem Content="pass-fail"/>
+                                <ComboBoxItem Content="json"/>
+                              </ComboBox>
+                              
+                              <!-- ComboBox for shell target enum -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsShellTargetField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="bash"/>
+                                <ComboBoxItem Content="powershell"/>
+                              </ComboBox>
+                              
+                              <!-- ComboBox for split mode enum -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsSplitModeField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="none"/>
+                                <ComboBoxItem Content="layer"/>
+                                <ComboBoxItem Content="row"/>
+                              </ComboBox>
+                              
+                              <!-- ComboBox for reasoning format enum -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsReasoningFormatField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="deepseek"/>
+                                <ComboBoxItem Content="r1"/>
+                                <ComboBoxItem Content="none"/>
+                              </ComboBox>
+                              
+                              <!-- ComboBox for log verbosity enum -->
+                              <ComboBox Grid.Column="0" 
+                                        SelectedItem="{Binding Value}" 
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsLogVerbosityField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="0"/>
+                                <ComboBoxItem Content="1"/>
+                                <ComboBoxItem Content="2"/>
+                                <ComboBoxItem Content="3"/>
+                              </ComboBox>
+                              
+                              <!-- Browse button for file paths -->
+                              <Button Grid.Column="1" 
+                                      Content="Browse..." 
+                                      Padding="12,4"
+                                      Margin="8,0,0,0"
+                                      Command="{Binding $parent[UserControl].DataContext.BrowseFileCommand}"
+                                      CommandParameter="{Binding Key}"
+                                      IsVisible="{Binding IsFilePathField}"/>
+                              <Button Grid.Column="1"
+                                      Content="Browse..."
+                                      Padding="12,4"
+                                      Margin="8,0,0,0"
+                                      Command="{Binding $parent[UserControl].DataContext.BrowseFolderCommand}"
+                                      CommandParameter="{Binding Key}"
+                                      IsVisible="{Binding IsFolderPathField}"/>
+                            </Grid>
+                            
+                            <!-- Materialized value and origin (Chrome DevTools style) -->
+                            <StackPanel Grid.Column="2" 
+                                        Orientation="Horizontal" 
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Spacing="6">
+                              <!-- Materialized value -->
+                              <TextBlock Text="{Binding MaterializedValue}" 
+                                         Classes="valueIndicator"
+                                         IsVisible="{Binding MaterializedValue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                              <!-- llama.cpp default indicator -->
+                              <TextBlock Text="[llama.cpp default]" 
+                                         Classes="llamaCppDefault"
+                                         IsVisible="{Binding IsLlamaCppDefault}"/>
+                              <!-- Origin badge -->
+                              <Border Classes="originBadge" 
+                                      Tag="{Binding Origin}"
+                                      IsVisible="{Binding Origin, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                          </Grid>
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Content="Reset to Defaults" Classes="secondary" Padding="20,8"
+              Command="{Binding $parent[Window].DataContext.ResetSettingsToDefaultsCommand}"/>
+      <Button Content="Load Settings File" Classes="secondary" Padding="20,8"
+              Command="{Binding $parent[Window].DataContext.LoadSettingsFileCommand}"/>
+      <Button Content="Save Settings File" Classes="primary" Padding="20,8"
+              Command="{Binding $parent[Window].DataContext.SaveSettingsFileCommand}"/>
+    </StackPanel>
+  </Grid>
+</UserControl>

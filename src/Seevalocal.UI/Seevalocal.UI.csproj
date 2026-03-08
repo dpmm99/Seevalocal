@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14</LangVersion>
+    <RootNamespace>Seevalocal.UI</RootNamespace>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Serilog" Version="4.3.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Spectre.Console" Version="0.54.0" />
+    <PackageReference Include="Spectre.Console.Cli" Version="0.53.1" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Config\Seevalocal.Config.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core.Pipeline\Seevalocal.Core.Pipeline.csproj" />
+    <ProjectReference Include="..\Seevalocal.DataSources\Seevalocal.DataSources.csproj" />
+    <ProjectReference Include="..\Seevalocal.Judge\Seevalocal.Judge.csproj" />
+    <ProjectReference Include="..\Seevalocal.Metrics\Seevalocal.Metrics.csproj" />
+    <ProjectReference Include="..\Seevalocal.Pipelines\Seevalocal.Pipelines.csproj" />
+    <ProjectReference Include="..\Seevalocal.Server\Seevalocal.Server.csproj" />
+  </ItemGroup>
+</Project>

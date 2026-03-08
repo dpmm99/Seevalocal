@@ -1,0 +1,312 @@
+using FluentAssertions;
+using Seevalocal.Core;
+using Seevalocal.Core.Models;
+using Seevalocal.Core.Pipeline;
+using Xunit;
+
+namespace Seevalocal.Config.Tests;
+
+/// <summary>
+/// Tests for PersistentResultCollector to ensure no deadlocks and proper checkpoint functionality.
+/// </summary>
+public sealed class PersistentResultCollectorTests : IDisposable
+{
+    private readonly string _dbPath;
+    private readonly ResolvedConfig _testConfig;
+
+    public PersistentResultCollectorTests()
+    {
+        // Use a unique temp file for each test
+        _dbPath = Path.Combine(Path.GetTempPath(), $"test_checkpoint_{Guid.NewGuid()}.db");
+        
+        _testConfig = new ResolvedConfig
+        {
+            Run = new RunMeta
+            {
+                RunName = "test-run",
+                OutputDirectoryPath = "./results",
+            },
+            Server = new ServerConfig
+            {
+                Manage = true,
+                Host = "127.0.0.1",
+                Port = 8080,
+            },
+            LlamaServer = new LlamaServerSettings
+            {
+                ContextWindowTokens = 8192,
+            },
+            EvalSets = [],
+        };
+    }
+
+    [Fact]
+    public async Task SaveStartupParametersAsync_DoesNotDeadlock()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        // Act & Assert - should complete within 2 seconds (deadlock would timeout)
+        var saveTask = collector.SaveStartupParametersAsync(_testConfig, cts.Token);
+        var completedTask = await Task.WhenAny(saveTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        
+        completedTask.Should().Be(saveTask, 
+            "SaveStartupParametersAsync should not deadlock when calling nested SaveMetadataAsync");
+    }
+
+    [Fact]
+    public async Task SaveStartupParametersAsync_SavesConfigAndTimestamp()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        // Act
+        await collector.SaveStartupParametersAsync(_testConfig, cts.Token);
+
+        // Assert
+        var loadedConfig = await collector.LoadStartupParametersAsync(cts.Token);
+        loadedConfig.Should().NotBeNull();
+        loadedConfig!.Run.RunName.Should().Be("test-run");
+        loadedConfig.Run.OutputDirectoryPath.Should().Be("./results");
+        loadedConfig.Server.Host.Should().Be("127.0.0.1");
+        loadedConfig.LlamaServer.ContextWindowTokens.Should().Be(8192);
+    }
+
+    [Fact]
+    public async Task SaveStageOutputAsync_SavesAndRetrievesStageOutput()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+        const string stageName = "PromptStage";
+        const string outputKey = "response";
+        const string outputValue = "test response content";
+
+        // First create an EvalResult record (required by foreign key)
+        var result = new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = evalSetId,
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.0,
+        };
+        await collector.CollectAsync(result, cts.Token);
+
+        // Act
+        await collector.SaveStageOutputAsync(evalItemId, stageName, outputKey, outputValue, cts.Token);
+
+        // Assert
+        var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
+        outputs.Should().ContainKey($"{stageName}.{outputKey}");
+        outputs[$"{stageName}.{outputKey}"].Should().Be(outputValue);
+    }
+
+    [Fact]
+    public async Task SaveStageOutputAsync_SavesComplexObjects()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+        const string stageName = "JudgeStage";
+        const string outputKey = "score";
+        var outputValue = new { score = 8.5, rationale = "Good response" };
+
+        // First create an EvalResult record (required by foreign key)
+        var result = new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = evalSetId,
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.0,
+        };
+        await collector.CollectAsync(result, cts.Token);
+
+        // Act
+        await collector.SaveStageOutputAsync(evalItemId, stageName, outputKey, outputValue, cts.Token);
+
+        // Assert
+        var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
+        outputs.Should().ContainKey($"{stageName}.{outputKey}");
+    }
+
+    [Fact]
+    public async Task GetLastCompletedStageAsync_ReturnsLastStage()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+
+        // Act - simulate partial progress
+        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "PromptStage", cts.Token);
+
+        // Assert
+        var lastStage = await collector.GetLastCompletedStageAsync(evalItemId, cts.Token);
+        lastStage.Should().Be("PromptStage");
+    }
+
+    [Fact]
+    public async Task SavePartialProgressAsync_UpdatesLastCompletedStage()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+
+        // Act - simulate progressing through stages
+        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "PromptStage", cts.Token);
+        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "JudgeStage", cts.Token);
+
+        // Assert
+        var lastStage = await collector.GetLastCompletedStageAsync(evalItemId, cts.Token);
+        lastStage.Should().Be("JudgeStage");
+    }
+
+    [Fact]
+    public async Task CollectAsync_SetsLastCompletedStageToComplete()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = new EvalResult
+        {
+            EvalItemId = "item-1",
+            EvalSetId = "eval-set-1",
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.5,
+        };
+
+        // Act
+        await collector.CollectAsync(result, cts.Token);
+
+        // Assert
+        var lastStage = await collector.GetLastCompletedStageAsync(result.EvalItemId, cts.Token);
+        lastStage.Should().Be("Complete");
+    }
+
+    [Fact]
+    public async Task CollectJudgeResultAsync_SetsLastCompletedStageToJudgeComplete()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        
+        // First collect primary result
+        var primaryResult = new EvalResult
+        {
+            EvalItemId = "item-1",
+            EvalSetId = "eval-set-1",
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.5,
+        };
+        await collector.CollectAsync(primaryResult, cts.Token);
+
+        // Then collect judge result
+        var judgeResult = new EvalResult
+        {
+            EvalItemId = "item-1",
+            EvalSetId = "eval-set-1",
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 2.0,
+        };
+
+        // Act
+        await collector.CollectJudgeResultAsync(judgeResult, cts.Token);
+
+        // Assert
+        var lastStage = await collector.GetLastCompletedStageAsync(judgeResult.EvalItemId, cts.Token);
+        lastStage.Should().Be("JudgeComplete");
+    }
+
+    [Fact]
+    public async Task MultipleConcurrentWrites_DoesNotDeadlock()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var tasks = new List<Task>();
+
+        // Act - fire off multiple concurrent writes
+        for (int i = 0; i < 10; i++)
+        {
+            int index = i;
+            tasks.Add(Task.Run(async () =>
+            {
+                await collector.SaveStageOutputAsync(
+                    $"item-{index}", 
+                    $"Stage-{index}", 
+                    "key", 
+                    $"value-{index}", 
+                    cts.Token);
+            }));
+        }
+
+        // Assert - should all complete without deadlock
+        var timeoutTask = Task.WhenAll(tasks);
+        var completedTask = await Task.WhenAny(timeoutTask, Task.Delay(TimeSpan.FromSeconds(5)));
+        
+        completedTask.Should().Be(timeoutTask, 
+            "Concurrent writes should not cause deadlock and should complete within 5 seconds");
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_SetsFinalizedCheckpoint()
+    {
+        // Arrange - use a fresh database for this test
+        var freshDbPath = Path.Combine(Path.GetTempPath(), $"test_checkpoint_final_{Guid.NewGuid()}.db");
+        try
+        {
+            await using var collector = new PersistentResultCollector(freshDbPath);
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+            // Act
+            await collector.FinalizeAsync(cts.Token);
+
+            // Assert
+            var finalized = await collector.LoadCheckpointAsync("finalized", cts.Token);
+            finalized.Should().Be("true");
+        }
+        finally
+        {
+            // Clean up
+            try { if (File.Exists(freshDbPath)) File.Delete(freshDbPath); } catch { }
+        }
+    }
+
+    public void Dispose()
+    {
+        // Clean up temp file
+        try
+        {
+            if (File.Exists(_dbPath))
+                File.Delete(_dbPath);
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+    }
+}

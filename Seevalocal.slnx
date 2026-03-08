@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Seevalocal.Core.Abstractions/Seevalocal.Core.csproj" Id="83325da5-c9ef-4d77-b360-d24235b53730" />
+    <Project Path="src/Seevalocal.Config/Seevalocal.Config.csproj" />
+    <Project Path="src/Seevalocal.Core.Pipeline/Seevalocal.Core.Pipeline.csproj" Id="e90018af-bc42-0a10-a70c-0572df139ea2" />
+    <Project Path="src/Seevalocal.DataSources/Seevalocal.DataSources.csproj" />
+    <Project Path="src/Seevalocal.Judge/Seevalocal.Judge.csproj" Id="172362f0-d53d-d753-0b30-2ce3fc374862" />
+    <Project Path="src/Seevalocal.Metrics/Seevalocal.Metrics.csproj" Id="ccba801a-6f80-0aa7-8715-72d0b793d18f" />
+    <Project Path="src/Seevalocal.Pipelines/Seevalocal.Pipelines.csproj" />
+    <Project Path="src/Seevalocal.Server/Seevalocal.Server.csproj" Id="db2b71bc-2bf1-94a0-5310-0b93b6252065" />
+    <Project Path="src/Seevalocal.UI/Seevalocal.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Seevalocal.Config.Tests/Seevalocal.Config.Tests.csproj" />
+    <Project Path="tests/Seevalocal.Core.Pipeline.Tests/Seevalocal.Core.Pipeline.Tests.csproj" />
+    <Project Path="tests/Seevalocal.DataSources.Tests/Seevalocal.DataSources.Tests.csproj" />
+    <Project Path="tests/Seevalocal.Judge.Tests/Seevalocal.Judge.Tests.csproj" />
+    <Project Path="tests/Seevalocal.Metrics.Tests/Seevalocal.Metrics.Tests.csproj" />
+    <Project Path="tests/Seevalocal.Pipelines.Tests/Seevalocal.Pipelines.Tests.csproj" />
+    <Project Path="tests/Seevalocal.Server.Tests/Seevalocal.Server.Tests.csproj" />
+    <Project Path="tests/Seevalocal.UI.Tests/Seevalocal.UI.Tests.csproj" />
+  </Folder>
+</Solution>

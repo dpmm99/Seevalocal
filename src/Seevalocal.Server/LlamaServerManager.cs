@@ -1,0 +1,407 @@
+using FluentResults;
+using Microsoft.Extensions.Logging;
+using Seevalocal.Core.Models;
+using Seevalocal.Server.Client;
+using Seevalocal.Server.Detection;
+using Seevalocal.Server.Download;
+using Seevalocal.Server.Models;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+
+namespace Seevalocal.Server.Lifecycle;
+
+/// <summary>
+/// Manages the full lifecycle of a llama-server process.
+/// If <see cref="ServerConfig.Manage"/> is false, simply validates connectivity.
+/// Thread-safe after <see cref="StartAsync"/> completes.
+/// </summary>
+public sealed class LlamaServerManager(
+    LlamaServerArgBuilder argBuilder,
+    LlamaServerDownloader downloader,
+    GpuDetector gpuDetector,
+    HttpClient httpClient,
+    ILogger<LlamaServerManager> logger) : IAsyncDisposable
+{
+    private const double DefaultHealthTimeoutSeconds = 120.0;
+    private const int ExpectedLoadingDots = 80;  // llama-server typically outputs ~80 dots during model load
+
+    private readonly LlamaServerArgBuilder _argBuilder = argBuilder;
+    private readonly LlamaServerDownloader _downloader = downloader;
+    private readonly GpuDetector _gpuDetector = gpuDetector;
+    private readonly ILogger<LlamaServerManager> _logger = logger;
+    private readonly HttpClient _httpClient = httpClient;
+
+    private System.Diagnostics.Process? _process;
+    private ServerInfo? _serverInfo;
+    private bool _disposed;
+    private int _loadingDotCount;
+    private bool _loadingComplete;
+
+    /// <summary>Fires when the managed process exits unexpectedly (not via DisposeAsync).</summary>
+    public event EventHandler<ProcessExitedEventArgs>? ProcessExited;
+
+    /// <summary>Fires during llama-server startup with loading progress (0-100%).</summary>
+    public event EventHandler<ServerLoadingProgressEventArgs>? LoadingProgressChanged;
+
+    /// <summary>
+    /// Starts (or connects to) a llama-server instance.
+    /// Returns a <see cref="ServerInfo"/> on success.
+    /// </summary>
+    public async Task<Result<ServerInfo>> StartAsync(
+        ServerConfig config,
+        LlamaServerSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        // Reset loading state
+        _loadingDotCount = 0;
+        _loadingComplete = false;
+
+        return config.Manage
+            ? await StartManagedAsync(config, settings, cancellationToken)
+            : await ConnectExistingAsync(config, cancellationToken);
+    }
+
+    /// <summary>Returns current server props (including slot count).</summary>
+    public async Task<Result<ServerProps>> GetPropsAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serverInfo is null)
+            return Result.Fail("[LlamaServerManager] Server has not been started");
+
+        var client = BuildClient(_serverInfo);
+        return await client.GetPropsAsync(cancellationToken);
+    }
+
+    // ── Managed Start ─────────────────────────────────────────────────────────
+
+    private async Task<Result<ServerInfo>> StartManagedAsync(
+        ServerConfig config,
+        LlamaServerSettings settings,
+        CancellationToken ct)
+    {
+        // 1. Resolve binary (0-10%)
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 5,
+            Message = "Resolving llama-server binary..."
+        });
+        var binaryResult = await ResolveBinaryPathAsync(config, ct);
+        if (binaryResult.IsFailed) return binaryResult.ToResult<ServerInfo>();
+        var binaryPath = binaryResult.Value;
+
+        // 2. Build args (10-15%)
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 10,
+            Message = "Building server arguments..."
+        });
+        var args = _argBuilder.Build(settings, config);
+        _logger.LogDebug("llama-server args: {Args}", string.Join(" ", args));
+
+        // 3. Start process (15-25%)
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 15,
+            Message = "Starting llama-server process..."
+        });
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = binaryPath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
+
+        _process = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        // Regex to match loading dots (llama-server outputs "." during model load)
+        var dotPattern = new Regex(@"^\.*$", RegexOptions.Compiled);
+
+        _process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                _logger.LogDebug("[llama-server] {Line}", e.Data);
+
+                // Track loading progress from dots
+                if (!_loadingComplete && dotPattern.IsMatch(e.Data))
+                {
+                    _loadingDotCount += e.Data.Length;
+                    // Map dots to 25-90% range
+                    var progressPercent = 25 + Math.Min(65, (_loadingDotCount * 65) / ExpectedLoadingDots);
+                    LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+                    {
+                        ProgressPercent = progressPercent,
+                        Message = $"Loading model... {progressPercent}%"
+                    });
+                }
+                // Detect when loading is complete (llama-server outputs "http://..." or "llama-server listening")
+                else if (!_loadingComplete && (e.Data.Contains("http://") || e.Data.Contains("listening")))
+                {
+                    _loadingComplete = true;
+                    LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+                    {
+                        ProgressPercent = 90,
+                        Message = "Server started, running health check..."
+                    });
+                }
+            }
+        };
+
+        _process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is not null) _logger.LogDebug("[llama-server stderr] {Line}", e.Data);
+        };
+        _process.Exited += OnProcessExited;
+
+        try
+        {
+            _ = _process.Start();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start llama-server process");
+            return Result.Fail($"[LlamaServerManager] Failed to start process: {ex.Message}");
+        }
+
+        _process.BeginOutputReadLine();
+        _process.BeginErrorReadLine();
+
+        _logger.LogInformation("llama-server process started (PID={Pid})", _process.Id);
+
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 25,
+            Message = $"llama-server started (PID={_process.Id}), waiting for health check..."
+        });
+
+        // 4. Wait for health (25-90%)
+        var baseUrl = $"http://{config.Host}:{config.Port}";
+        var healthy = await WaitForHealthAsync(baseUrl, DefaultHealthTimeoutSeconds, ct);
+        if (!healthy)
+        {
+            return Result.Fail(
+                $"[LlamaServerManager] Health check timed out after {DefaultHealthTimeoutSeconds:F0} seconds: " +
+                "process may have crashed");
+        }
+
+        // 5. Fetch props (90-100%)
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 95,
+            Message = "Fetching server properties..."
+        });
+        var tempInfo = new ServerInfo { BaseUrl = baseUrl, ApiKey = config.ApiKey };
+        var client = BuildClient(tempInfo);
+        var propsResult = await client.GetPropsAsync(ct);
+        if (propsResult.IsFailed) return propsResult.ToResult<ServerInfo>();
+
+        var props = propsResult.Value;
+        _serverInfo = new ServerInfo
+        {
+            BaseUrl = baseUrl,
+            ApiKey = config.ApiKey,
+            TotalSlots = props.TotalSlots,
+            ModelAlias = Path.GetFileName(props.ModelPath),
+        };
+
+        _logger.LogInformation(
+            "llama-server ready at {BaseUrl} (slots={TotalSlots}, model={ModelAlias})",
+            _serverInfo.BaseUrl, _serverInfo.TotalSlots, _serverInfo.ModelAlias);
+
+        // Report 100% - server fully ready
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = 100,
+            Message = $"llama-server ready (slots={props.TotalSlots})"
+        });
+
+        return Result.Ok(_serverInfo);
+    }
+
+    // ── Connect Existing ──────────────────────────────────────────────────────
+
+    private async Task<Result<ServerInfo>> ConnectExistingAsync(ServerConfig config, CancellationToken ct)
+    {
+        var baseUrl = config.BaseUrl
+            ?? throw new ArgumentException("ServerConfig.BaseUrl is required when Manage=false", nameof(config));
+
+        var tempInfo = new ServerInfo { BaseUrl = baseUrl, ApiKey = config.ApiKey };
+        var client = BuildClient(tempInfo);
+
+        var healthResult = await client.GetHealthAsync(ct);
+        if (healthResult.IsFailed)
+            return healthResult.ToResult<ServerInfo>();
+
+        if (!healthResult.Value.IsOk)
+            return Result.Fail($"[LlamaServerManager] Server at {baseUrl} returned unhealthy status");
+
+        var propsResult = await client.GetPropsAsync(ct);
+        if (propsResult.IsFailed) return propsResult.ToResult<ServerInfo>();
+
+        _serverInfo = new ServerInfo
+        {
+            BaseUrl = baseUrl,
+            ApiKey = config.ApiKey,
+            TotalSlots = propsResult.Value.TotalSlots,
+            ModelAlias = Path.GetFileName(propsResult.Value.ModelPath),
+        };
+
+        _logger.LogInformation(
+            "Connected to existing llama-server at {BaseUrl} (slots={TotalSlots})",
+            _serverInfo.BaseUrl, _serverInfo.TotalSlots);
+
+        return Result.Ok(_serverInfo);
+    }
+
+    // ── Binary Resolution ─────────────────────────────────────────────────────
+
+    private async Task<Result<string>> ResolveBinaryPathAsync(ServerConfig config, CancellationToken ct)
+    {
+        if (config.ExecutablePath is not null)
+        {
+            var path = Path.GetFullPath(config.ExecutablePath);
+            if (!File.Exists(path))
+                return Result.Fail($"[LlamaServerManager] Executable not found: {path}");
+            _logger.LogInformation("Using explicit llama-server path: {Path}", path);
+            return Result.Ok(path);
+        }
+
+        var gpuKind = await _gpuDetector.DetectAsync(ct);
+        var cacheRoot = GetCacheRoot();
+
+        return await _downloader.EnsureAvailableAsync(null, gpuKind, cacheRoot, ct);
+    }
+
+    private static string GetCacheRoot()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(appData, "Seevalocal", "cache");
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return Path.Combine(home, ".Seevalocal", "cache");
+    }
+
+    // ── Health Polling ────────────────────────────────────────────────────────
+
+    private async Task<bool> WaitForHealthAsync(string baseUrl, double timeoutSeconds, CancellationToken ct)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        var delayMilliseconds = 500;
+
+        _logger.LogDebug("Waiting for llama-server health at {BaseUrl} (timeout={TimeoutSeconds}s)",
+            baseUrl, timeoutSeconds);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            try
+            {
+                var response = await _httpClient.GetAsync($"{baseUrl}/health", ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogDebug("llama-server health OK");
+                    return true;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Server not up yet; keep polling
+                _logger.LogTrace("Health poll failed: {Message}", ex.Message);
+            }
+
+            await Task.Delay(delayMilliseconds, ct);
+            delayMilliseconds = Math.Min(delayMilliseconds * 2, 2000);
+        }
+
+        return false;
+    }
+
+    // ── Process Events ────────────────────────────────────────────────────────
+
+    private void OnProcessExited(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+
+        int exitCode = -192849262;
+
+        try
+        {
+            exitCode = _process?.ExitCode ?? -1;
+        }
+        catch { }
+        _logger.LogWarning("llama-server process exited unexpectedly (exit code={ExitCode})", exitCode == -192849262 ? "unknown" : exitCode.ToString());
+        ProcessExited?.Invoke(this, new ProcessExitedEventArgs(exitCode));
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private LlamaServerClient BuildClient(ServerInfo info) =>
+        new(info, _httpClient, Microsoft.Extensions.Logging.Abstractions.NullLogger<LlamaServerClient>.Instance);
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_process?.HasExited != false)
+        {
+            _process?.Dispose();
+            return;
+        }
+
+        _logger.LogInformation("Shutting down llama-server (PID={Pid})", _process.Id);
+
+        try
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+            else
+            {
+                // Send SIGTERM first
+                _process.Kill(false);  // false = not forced, but Kill() on Unix sends SIGKILL
+                // Try graceful first with a short wait
+                var exited = await Task.WhenAny(
+                    _process.WaitForExitAsync(),
+                    Task.Delay(TimeSpan.FromSeconds(5)));
+                if (!_process.HasExited)
+                    _process.Kill(entireProcessTree: true);
+            }
+
+            await _process.WaitForExitAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Exception while shutting down llama-server process");
+        }
+        finally
+        {
+            _process.Dispose();
+        }
+    }
+}
+
+/// <summary>
+/// Event args for llama-server loading progress.
+/// </summary>
+public sealed class ServerLoadingProgressEventArgs : EventArgs
+{
+    /// <summary>Progress percentage (0-100).</summary>
+    public double ProgressPercent { get; init; }
+
+    /// <summary>Optional status message.</summary>
+    public string? Message { get; init; }
+}

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14</LangVersion>
+    <RootNamespace>Seevalocal.Pipelines</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Config\Seevalocal.Config.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core.Pipeline\Seevalocal.Core.Pipeline.csproj" />
+    <ProjectReference Include="..\Seevalocal.Judge\Seevalocal.Judge.csproj" />
+    <ProjectReference Include="..\Seevalocal.Server\Seevalocal.Server.csproj" />
+  </ItemGroup>
+
+</Project>

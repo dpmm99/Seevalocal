@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="Seevalocal.UI.Views.ResultsView">
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16">
+      <TextBlock Text="Results Viewer" Classes="pageTitle"/>
+      <Button Content="Load Results File" Classes="secondary" Padding="12,6" VerticalAlignment="Center"
+              Command="{Binding $parent[Window].DataContext.LoadResultsFileCommand}"/>
+    </StackPanel>
+
+    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16" Margin="0,16">
+      <StackPanel Spacing="16">
+        <!-- Summary Cards -->
+        <Grid ColumnDefinitions="*,*,*,*" Margin="0,0,0,12">
+          <Border Classes="reviewCard" Padding="16">
+            <StackPanel>
+              <TextBlock Text="Total Items" Classes="metricLabel"/>
+              <TextBlock Text="{Binding ActiveRun.TotalCount}" Classes="metricValue"/>
+            </StackPanel>
+          </Border>
+          <Border Classes="reviewCard" Padding="16" Grid.Column="1">
+            <StackPanel>
+              <TextBlock Text="Completed" Classes="metricLabel"/>
+              <TextBlock Text="{Binding ActiveRun.CompletedCount}" Classes="metricValue"/>
+            </StackPanel>
+          </Border>
+          <Border Classes="reviewCard" Padding="16" Grid.Column="2">
+            <StackPanel>
+              <TextBlock Text="Failed" Classes="metricLabel"/>
+              <TextBlock Text="{Binding ActiveRun.HadFailures, Converter={StaticResource BoolToYesNoConverter}}" Classes="metricValue"/>
+            </StackPanel>
+          </Border>
+          <Border Classes="reviewCard" Padding="16" Grid.Column="3">
+            <StackPanel>
+              <TextBlock Text="Status" Classes="metricLabel"/>
+              <TextBlock Text="{Binding ActiveRun.StatusLine}" Classes="metricValue"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <!-- Results Table -->
+        <Border Classes="reviewCard" Padding="16">
+          <StackPanel>
+            <TextBlock Text="Evaluation Results" Classes="sectionHeader" Margin="0,0,0,12"/>
+            <DataGrid ItemsSource="{Binding ActiveRun.Results}" 
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      CanUserResizeColumns="True"
+                      GridLinesVisibility="Horizontal"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      RowBackground="Transparent"
+                      Height="400">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="100"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="80"/>
+                <DataGridTextColumn Header="Prompt" Binding="{Binding UserPrompt}" Width="200"/>
+                <DataGridTextColumn Header="Expected" Binding="{Binding ExpectedOutput}" Width="150"/>
+                <DataGridTextColumn Header="Score" Binding="{Binding JudgeScore, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Duration (s)" Binding="{Binding DurationSeconds, StringFormat=F2}" Width="100"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+      <Button Content="Export Results JSON" Classes="secondary" Padding="16,8"
+              Command="{Binding $parent[Window].DataContext.ExportResultsJsonCommand}"/>
+      <Button Content="Export Shell Script" Classes="secondary" Padding="16,8"
+              Command="{Binding $parent[Window].DataContext.ExportResultsShellScriptCommand}"/>
+      <Button Content="Open Results Folder" Classes="primary" Padding="16,8"
+              Command="{Binding $parent[Window].DataContext.OpenResultsFolderCommand}"/>
+    </StackPanel>
+  </Grid>
+</UserControl>

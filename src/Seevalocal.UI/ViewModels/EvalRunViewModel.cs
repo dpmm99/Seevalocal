@@ -1,0 +1,477 @@
+using Microsoft.Extensions.Logging;
+using Seevalocal.Core;
+using Seevalocal.Core.Models;
+using Seevalocal.Core.Pipeline;
+using Seevalocal.Metrics.Models;
+using Seevalocal.Server.Client;
+using Seevalocal.Server.Models;
+using Seevalocal.UI.Services;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
+namespace Seevalocal.UI.ViewModels;
+
+/// <summary>
+/// View-model for a single-phase eval run.
+/// Handles server lifecycle for managed servers.
+/// Creates orchestrator after starting servers.
+/// </summary>
+public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
+{
+    private readonly EvalPipeline _pipeline;
+    private readonly IDataSource _dataSource;
+    private readonly PersistentResultCollector _collector;
+    private readonly EvalSetConfig _evalSet;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger _logger;
+    private readonly IServerLifecycleService? _serverLifecycle;
+    private readonly ServerConfig? _serverConfig;
+    private readonly LlamaServerSettings? _serverSettings;
+    private readonly ServerConfig? _judgeServerConfig;
+    private readonly LlamaServerSettings? _judgeServerSettings;
+    private readonly LlamaServerClient? _externalPrimaryClient;
+    private readonly LlamaServerClient? _externalJudgeClient;
+
+    private CancellationTokenSource? _cts;
+    private bool _serverStopped;
+    private bool _disposed;
+    private LlamaServerClient? _managedPrimaryClient;
+    private LlamaServerClient? _managedJudgeClient;
+    private readonly Progress<EvalProgress> _progress;
+
+    // ─── Constructor ──────────────────────────────────────────────────────────
+
+    public EvalRunViewModel(
+        ResolvedConfig config,
+        EvalPipeline pipeline,
+        IDataSource dataSource,
+        PersistentResultCollector collector,
+        EvalSetConfig evalSet,
+        ILoggerFactory loggerFactory,
+        ILogger logger,
+        IServerLifecycleService? serverLifecycle = null,
+        ServerConfig? serverConfig = null,
+        LlamaServerSettings? serverSettings = null,
+        ServerConfig? judgeServerConfig = null,
+        LlamaServerSettings? judgeServerSettings = null,
+        LlamaServerClient? externalPrimaryClient = null,
+        LlamaServerClient? externalJudgeClient = null)
+    {
+        Config = config;
+        _pipeline = pipeline;
+        _dataSource = dataSource;
+        _collector = collector;
+        _evalSet = evalSet;
+        _loggerFactory = loggerFactory;
+        _logger = logger;
+        _serverLifecycle = serverLifecycle;
+        _serverConfig = serverConfig;
+        _serverSettings = serverSettings;
+        _judgeServerConfig = judgeServerConfig;
+        _judgeServerSettings = judgeServerSettings;
+        _externalPrimaryClient = externalPrimaryClient;
+        _externalJudgeClient = externalJudgeClient;
+        _progress = new Progress<EvalProgress>();
+        _progress.ProgressChanged += (_, progress) => OnProgressChanged(progress);
+
+        PauseCommand = new RelayCommand(TogglePause, () => IsRunning);
+        CancelCommand = new RelayCommand(Cancel, () => IsRunning);
+    }
+
+    private void OnProgressChanged(EvalProgress progress)
+    {
+        CompletedCount = progress.CompletedCount;
+        TotalCount = progress.TotalCount;
+        ProgressPercent = progress.TotalCount > 0 ? (double)progress.CompletedCount / progress.TotalCount * 100 : 0;
+        EstimatedRemainingSeconds = progress.EstimatedRemainingSeconds;
+        AverageTokensPerSecond = progress.AverageCompletionTokensPerSecond ?? 0;
+
+        OnPropertyChanged(nameof(RecentCompletions));
+        OnPropertyChanged(nameof(RecentActivitySummary));
+
+        // Refresh results from collector on each progress update (on UI thread)
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => RefreshResultsFromCollector());
+
+        if (progress.CompletedCount <= 10)
+        {
+            var recentResult = Results.LastOrDefault();
+            if (recentResult != null)
+            {
+                var promptPreview = recentResult.UserPrompt?.Length > 50
+                    ? $"{recentResult.UserPrompt.AsSpan(0, 50)}..."
+                    : recentResult.UserPrompt ?? "";
+                var responsePreview = recentResult.RawResponse?.Length > 50
+                    ? $"{recentResult.RawResponse.AsSpan(0, 50)}..."
+                    : recentResult.RawResponse ?? "";
+
+                _logger.LogInformation(
+                    "[{Status}] Item {Id}: \"{Prompt}\" => \"{Response}\"",
+                    recentResult.Status,
+                    recentResult.Id,
+                    promptPreview,
+                    responsePreview);
+            }
+        }
+    }
+
+    private void OnOrchestratorProgressChanged(EvalProgress progress)
+    {
+        // Forward orchestrator progress to the main progress handler
+        OnProgressChanged(progress);
+    }
+
+    private void RefreshResultsFromCollector()
+    {
+        // Get all results from the collector
+        var allResults = _collector.GetResults();
+
+        // Clear and rebuild the Results collection
+        Results.Clear();
+        foreach (var result in allResults)
+        {
+            Results.Add(new EvalResultViewModel(result));
+        }
+
+        // Notify UI of changes
+        OnPropertyChanged(nameof(Results));
+        OnPropertyChanged(nameof(RecentCompletions));
+        OnPropertyChanged(nameof(RecentActivitySummary));
+    }
+
+    // ─── Commands ─────────────────────────────────────────────────────────────
+
+    public System.Windows.Input.ICommand PauseCommand { get; }
+    public System.Windows.Input.ICommand CancelCommand { get; }
+
+    public void TogglePause()
+    {
+        IsPaused = !IsPaused;
+        StatusLine = IsPaused ? "Paused" : "Running...";
+        OnPropertyChanged(nameof(IsPaused));
+        OnPropertyChanged(nameof(StatusLine));
+    }
+
+    // ─── Observable properties ────────────────────────────────────────────────
+
+    public ResolvedConfig Config { get; }
+
+    private bool _isRunning;
+    public bool IsRunning
+    {
+        get => _isRunning;
+        private set => SetField(ref _isRunning, value);
+    }
+
+    private bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set => SetField(ref _isPaused, value);
+    }
+
+    private double _progressPercent;
+    public double ProgressPercent
+    {
+        get => _progressPercent;
+        private set => SetField(ref _progressPercent, value);
+    }
+
+    private int _completedCount;
+    public int CompletedCount
+    {
+        get => _completedCount;
+        private set => SetField(ref _completedCount, value);
+    }
+
+    private int _totalCount;
+    public int TotalCount
+    {
+        get => _totalCount;
+        private set => SetField(ref _totalCount, value);
+    }
+
+    private double _averageTokensPerSecond;
+    public double AverageTokensPerSecond
+    {
+        get => _averageTokensPerSecond;
+        private set => SetField(ref _averageTokensPerSecond, value);
+    }
+
+    private double? _estimatedRemainingSeconds;
+    public double? EstimatedRemainingSeconds
+    {
+        get => _estimatedRemainingSeconds;
+        private set => SetField(ref _estimatedRemainingSeconds, value);
+    }
+
+    private string _statusLine = "Ready";
+    public string StatusLine
+    {
+        get => _statusLine;
+        private set => SetField(ref _statusLine, value);
+    }
+
+    private RunSummary? _summary;
+    public RunSummary? Summary
+    {
+        get => _summary;
+        private set => SetField(ref _summary, value);
+    }
+
+    private bool _hadFailures;
+    public bool HadFailures
+    {
+        get => _hadFailures;
+        private set => SetField(ref _hadFailures, value);
+    }
+
+    public ObservableCollection<EvalResultViewModel> Results { get; } = [];
+
+    public IEnumerable<EvalResultViewModel> RecentCompletions => Results.Take(10);
+
+    public string RecentActivitySummary
+    {
+        get
+        {
+            var recent = Results.TakeLast(5).ToList();
+            if (recent.Count == 0) return "No completions yet...";
+            var lastResult = recent.LastOrDefault();
+            if (lastResult == null) return "No completions yet...";
+            var promptPreview = lastResult.UserPrompt?.Length > 40
+                ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
+                : lastResult.UserPrompt ?? "N/A";
+            return $"Last: {lastResult.Status} - {promptPreview}";
+        }
+    }
+
+    // ─── Run methods ──────────────────────────────────────────────────────────
+
+    public async Task StartAsync(CancellationToken externalCt = default)
+    {
+        if (IsRunning)
+            throw new InvalidOperationException("A run is already in progress.");
+
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+        IsRunning = true;
+        IsPaused = false;
+        Results.Clear();
+        CompletedCount = 0;
+
+        try
+        {
+            _logger.LogInformation("EvalRunViewModel: Starting run '{RunName}'",
+                Config.Run.RunName ?? "(unnamed)");
+
+            // Start managed primary server if needed
+            LlamaServerClient? primaryClientToUse = _externalPrimaryClient;
+            if (_serverLifecycle != null && _serverConfig != null && _serverSettings != null)
+            {
+                StatusLine = $"Starting primary llama-server at {DateTimeOffset.Now:HH:mm:ss}...";
+                OnPropertyChanged(nameof(StatusLine));
+
+                var startResult = await _serverLifecycle.StartAsync(_serverConfig, _serverSettings, _cts.Token);
+                if (startResult.IsFailed)
+                    throw new InvalidOperationException($"Failed to start primary llama-server: {startResult.Errors[0].Message}");
+
+                var serverInfo = startResult.Value;
+                _logger.LogInformation("Primary llama-server started at {BaseUrl}", serverInfo.BaseUrl);
+
+                var primaryHttpClient = CreateHttpClient(serverInfo);
+                var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
+                _managedPrimaryClient = new LlamaServerClient(serverInfo, primaryHttpClient, primaryClientLogger);
+                primaryClientToUse = _managedPrimaryClient;
+
+                StatusLine = $"Running evaluations at {DateTimeOffset.Now:HH:mm:ss}...";
+                OnPropertyChanged(nameof(StatusLine));
+            }
+
+            // Start managed judge server if needed
+            LlamaServerClient? judgeClientToUse = _externalJudgeClient;
+            if (_judgeServerConfig != null && _judgeServerSettings != null && _serverLifecycle != null)
+            {
+                StatusLine = $"Starting judge llama-server at {DateTimeOffset.Now:HH:mm:ss}...";
+                OnPropertyChanged(nameof(StatusLine));
+
+                var judgeStartResult = await _serverLifecycle.StartAsync(_judgeServerConfig, _judgeServerSettings, _cts.Token);
+                if (judgeStartResult.IsFailed)
+                    throw new InvalidOperationException($"Failed to start judge llama-server: {judgeStartResult.Errors[0].Message}");
+
+                var judgeServerInfo = judgeStartResult.Value;
+                _logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
+
+                var judgeHttpClient = CreateHttpClient(judgeServerInfo);
+                var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
+                _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger);
+                judgeClientToUse = _managedJudgeClient;
+            }
+
+            // Create orchestrator now that we have clients
+            var orchestratorLogger = _loggerFactory.CreateLogger<Pipelines.PipelineOrchestrator>();
+            var orchestrator = new Pipelines.PipelineOrchestrator(
+                _pipeline,
+                _dataSource,
+                _collector,
+                Config,
+                primaryClientToUse!,
+                judgeClientToUse,
+                orchestratorLogger);
+
+            // Subscribe to orchestrator progress events
+            orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
+
+            // Run the pipeline
+            await orchestrator.RunAsync(Config.Run.MaxConcurrentEvals ?? 4, _cts.Token);
+
+            // Final results refresh after completion
+            RefreshResultsFromCollector();
+
+            HadFailures = Results.Any(static r => !r.Succeeded);
+            var completionTime = DateTimeOffset.Now;
+            StatusLine = HadFailures ? $"Complete (with failures) at {completionTime:HH:mm:ss}"
+                                     : $"Complete at {completionTime:HH:mm:ss}";
+            OnPropertyChanged(nameof(StatusLine));
+        }
+        catch (OperationCanceledException)
+        {
+            StatusLine = $"Cancelled at {DateTimeOffset.Now:HH:mm:ss}";
+            OnPropertyChanged(nameof(StatusLine));
+            _logger.LogInformation("Run was cancelled");
+        }
+        catch (Exception ex)
+        {
+            StatusLine = $"Error at {DateTimeOffset.Now:HH:mm:ss}: {ex.Message}";
+            OnPropertyChanged(nameof(StatusLine));
+            _logger.LogError(ex, "Run failed with unhandled exception");
+        }
+        finally
+        {
+            IsRunning = false;
+            IsPaused = false;
+            OnPropertyChanged(nameof(IsRunning));
+            OnPropertyChanged(nameof(IsPaused));
+            await StopAllServersAsync();
+        }
+    }
+
+    private async Task StopAllServersAsync()
+    {
+        if (_serverLifecycle != null && !_serverStopped)
+        {
+            _serverStopped = true;
+            _logger.LogInformation("EvalRunViewModel: Stopping llama-server...");
+            StatusLine = "Stopping llama-server...";
+            OnPropertyChanged(nameof(StatusLine));
+
+            try
+            {
+                await _serverLifecycle.DisposeAsync();
+                _logger.LogInformation("EvalRunViewModel: llama-server stopped");
+                StatusLine = $"Server stopped at {DateTimeOffset.Now:HH:mm:ss}";
+                OnPropertyChanged(nameof(StatusLine));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "EvalRunViewModel: Error stopping llama-server");
+                StatusLine = $"Error stopping server at {DateTimeOffset.Now:HH:mm:ss}: {ex.Message}";
+                OnPropertyChanged(nameof(StatusLine));
+            }
+        }
+    }
+
+    public void Cancel()
+    {
+        _cts?.Cancel();
+        StatusLine = "Cancelling...";
+        OnPropertyChanged(nameof(StatusLine));
+    }
+
+    // ─── INotifyPropertyChanged ───────────────────────────────────────────────
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        OnPropertyChanged(name);
+        return true;
+    }
+
+    // ─── IAsyncDisposable & IDisposable ───────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cts?.Cancel();
+        _progress.ProgressChanged -= (_, progress) => OnProgressChanged(progress);
+        await StopAllServersAsync();
+        _cts?.Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+
+    private static HttpClient CreateHttpClient(ServerInfo serverInfo)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            EnableMultipleHttp2Connections = true
+        };
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri(serverInfo.BaseUrl),
+            Timeout = TimeSpan.FromHours(6)
+        };
+        if (!string.IsNullOrEmpty(serverInfo.ApiKey))
+        {
+            httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", serverInfo.ApiKey);
+        }
+        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Seevalocal.UI/1.0");
+        return httpClient;
+    }
+}
+
+/// <summary>
+/// A flat view of a single <see cref="EvalResult"/> for list display.
+/// </summary>
+public sealed class EvalResultViewModel(EvalResult result)
+{
+    private readonly EvalResult _result = result;
+
+    public string Id => _result.EvalItemId;
+    public string EvalSetId => _result.EvalSetId;
+    public bool Succeeded => _result.Succeeded;
+    public string Status => _result.Succeeded ? "Pass" : "Fail";
+    public string? FailureReason => _result.FailureReason;
+    public double DurationSeconds => _result.DurationSeconds;
+    public DateTimeOffset StartedAt => _result.StartedAt;
+    public string? RawResponse => _result.RawLlmResponse;
+
+    public string? UserPrompt =>
+        _result.AllStageOutputs.TryGetValue("PromptStage.userPrompt", out var val)
+            ? val?.ToString() : null;
+
+    public string? ExpectedOutput =>
+        _result.AllStageOutputs.TryGetValue("PromptStage.expectedOutput", out var val)
+            ? val?.ToString() : null;
+
+    public string? JudgeRationale =>
+        _result.AllStageOutputs.TryGetValue("JudgeStage.rationale", out var val)
+            ? val?.ToString() : null;
+
+    public double? JudgeScore =>
+         (_result.Metrics.FirstOrDefault(static m => m.Name.Contains("Score") && m.Value is MetricScalar.DoubleMetric)?.Value as MetricScalar.DoubleMetric)?.Value;
+
+    public IEnumerable<(string Name, string Value)> MetricDisplay =>
+        _result.Metrics.Select(static m => (m.Name, m.Value?.ToString() ?? ""));
+}

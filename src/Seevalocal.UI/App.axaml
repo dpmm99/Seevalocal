@@ -1,0 +1,15 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:Seevalocal.UI"
+             x:Class="Seevalocal.UI.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Styles>
+    <FluentTheme />
+  </Application.Styles>
+
+  <Application.Resources>
+    <converters:BoolToYesNoConverter x:Key="BoolToYesNoConverter"/>
+  </Application.Resources>
+
+</Application>
