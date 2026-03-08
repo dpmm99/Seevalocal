@@ -37,8 +37,6 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 EvalSetId TEXT NOT NULL,
                 Succeeded INTEGER NOT NULL,
                 FailureReason TEXT,
-                MetricsJson TEXT NOT NULL,
-                AllStageOutputsJson TEXT NOT NULL,
                 RawLlmResponse TEXT,
                 StartedAt TEXT NOT NULL,
                 DurationSeconds REAL NOT NULL,
@@ -52,6 +50,20 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 StageName TEXT NOT NULL,
                 OutputKey TEXT NOT NULL,
                 OutputValue TEXT,
+                CompletedAt TEXT NOT NULL,
+                FOREIGN KEY (EvalItemId) REFERENCES EvalResults(EvalItemId)
+            );
+
+            CREATE TABLE IF NOT EXISTS Metrics (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                EvalItemId TEXT NOT NULL,
+                MetricName TEXT NOT NULL,
+                SourceStage TEXT,
+                MetricType TEXT NOT NULL,
+                IntValue INTEGER,
+                DoubleValue REAL,
+                BoolValue INTEGER,
+                StringValue TEXT,
                 CompletedAt TEXT NOT NULL,
                 FOREIGN KEY (EvalItemId) REFERENCES EvalResults(EvalItemId)
             );
@@ -73,6 +85,8 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
 
             CREATE INDEX IF NOT EXISTS IX_StageOutputs_EvalItemId ON StageOutputs(EvalItemId);
             CREATE INDEX IF NOT EXISTS IX_StageOutputs_StageName ON StageOutputs(StageName);
+            CREATE INDEX IF NOT EXISTS IX_Metrics_EvalItemId ON Metrics(EvalItemId);
+            CREATE INDEX IF NOT EXISTS IX_Metrics_MetricName ON Metrics(MetricName);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -113,7 +127,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            results.Add(ReadResult(reader));
+            results.Add(await ReadResultAsync(reader, ct));
         }
 
         return results;
@@ -129,10 +143,10 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            // Inline the metadata save to avoid nested semaphore acquisition (deadlock)
+            // Save the complete config to StartupParameters table
             await using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key, @value);
+                INSERT OR REPLACE INTO StartupParameters (Key, Value) VALUES (@key, @value);
                 INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key2, @value2)
                 """;
 
@@ -151,14 +165,63 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     }
 
     /// <summary>
+    /// Saves the resolved llama-server binary path for resume capability.
+    /// This should be called after the server is started to capture the actual path used.
+    /// </summary>
+    public async Task SaveServerBinaryPathAsync(string serverType, string binaryPath, CancellationToken ct)
+    {
+        await _writeSemaphore.WaitAsync(ct);
+        try
+        {
+            await using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "INSERT OR REPLACE INTO StartupParameters (Key, Value) VALUES (@key, @value)";
+            cmd.Parameters.AddWithValue("@key", $"{serverType}_binary_path");
+            cmd.Parameters.AddWithValue("@value", binaryPath);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _writeSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Loads the saved llama-server binary path.
+    /// </summary>
+    public async Task<string?> LoadServerBinaryPathAsync(string serverType, CancellationToken ct)
+    {
+        return await LoadStartupParameterAsync($"{serverType}_binary_path", ct);
+    }
+
+    /// <summary>
     /// Loads startup configuration parameters.
     /// </summary>
     public async Task<ResolvedConfig?> LoadStartupParametersAsync(CancellationToken ct)
     {
-        var configJson = await LoadMetadataAsync("startup_config", ct);
+        // Load from StartupParameters table (preferred)
+        var configJson = await LoadStartupParameterAsync("startup_config", ct);
+        
+        // Fallback to RunMetadata for backward compatibility
+        if (string.IsNullOrEmpty(configJson))
+        {
+            configJson = await LoadMetadataAsync("startup_config", ct);
+        }
+        
         if (string.IsNullOrEmpty(configJson)) return null;
 
         return JsonSerializer.Deserialize<ResolvedConfig>(configJson);
+    }
+
+    /// <summary>
+    /// Loads a startup parameter value.
+    /// </summary>
+    private async Task<string?> LoadStartupParameterAsync(string key, CancellationToken ct)
+    {
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT Value FROM StartupParameters WHERE Key = @key";
+        cmd.Parameters.AddWithValue("@key", key);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result as string;
     }
 
     /// <summary>
@@ -187,6 +250,145 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         {
             _writeSemaphore.Release();
         }
+    }
+
+    /// <summary>
+    /// Saves a metric for an eval item.
+    /// </summary>
+    public async Task SaveMetricAsync(string evalItemId, string metricName, MetricValue metricValue, CancellationToken ct)
+    {
+        await _writeSemaphore.WaitAsync(ct);
+        try
+        {
+            await SaveMetricInternalAsync(evalItemId, metricName, metricValue, ct);
+        }
+        finally
+        {
+            _writeSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Internal method to save a metric without acquiring the semaphore.
+    /// Caller must already hold the semaphore.
+    /// </summary>
+    private async Task SaveMetricInternalAsync(string evalItemId, string metricName, MetricValue metricValue, CancellationToken ct)
+    {
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO Metrics (EvalItemId, MetricName, SourceStage, MetricType, IntValue, DoubleValue, BoolValue, StringValue, CompletedAt)
+            VALUES (@evalItemId, @metricName, @sourceStage, @metricType, @intValue, @doubleValue, @boolValue, @stringValue, @completedAt)
+            """;
+
+        cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
+        cmd.Parameters.AddWithValue("@metricName", metricName);
+        cmd.Parameters.AddWithValue("@sourceStage", metricValue.SourceStage ?? (object)DBNull.Value);
+        
+        // Extract type and value from the discriminated union
+        string metricType;
+        object? intValue = DBNull.Value;
+        object? doubleValue = DBNull.Value;
+        object? boolValue = DBNull.Value;
+        object? stringValue = DBNull.Value;
+        
+        switch (metricValue.Value)
+        {
+            case MetricScalar.IntMetric m:
+                metricType = "int";
+                intValue = m.Value;
+                break;
+            case MetricScalar.DoubleMetric m:
+                metricType = "double";
+                doubleValue = m.Value;
+                break;
+            case MetricScalar.BoolMetric m:
+                metricType = "bool";
+                boolValue = m.Value ? 1 : 0;
+                break;
+            case MetricScalar.StringMetric m:
+                metricType = "string";
+                stringValue = m.Value;
+                break;
+            default:
+                metricType = "string";
+                stringValue = metricValue.Value.ToString();
+                break;
+        }
+        
+        cmd.Parameters.AddWithValue("@metricType", metricType);
+        cmd.Parameters.AddWithValue("@intValue", intValue);
+        cmd.Parameters.AddWithValue("@doubleValue", doubleValue);
+        cmd.Parameters.AddWithValue("@boolValue", boolValue);
+        cmd.Parameters.AddWithValue("@stringValue", stringValue);
+        cmd.Parameters.AddWithValue("@completedAt", DateTimeOffset.UtcNow.ToString("O"));
+
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>
+    /// Gets all metrics for an eval item.
+    /// </summary>
+    public async Task<List<MetricValue>> GetMetricsAsync(string evalItemId, CancellationToken ct)
+    {
+        var metrics = new List<MetricValue>();
+
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT MetricName, SourceStage, MetricType, IntValue, DoubleValue, BoolValue, StringValue FROM Metrics WHERE EvalItemId = @evalItemId";
+        cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var metricName = reader.GetString(0);
+            var sourceStage = reader.IsDBNull(1) ? null : reader.GetString(1);
+            var metricType = reader.GetString(2);
+            
+            MetricScalar value = metricType switch
+            {
+                "int" => new MetricScalar.IntMetric(reader.GetInt32(3)),
+                "double" => new MetricScalar.DoubleMetric(reader.GetDouble(4)),
+                "bool" => new MetricScalar.BoolMetric(reader.GetInt32(5) == 1),
+                "string" => new MetricScalar.StringMetric(reader.IsDBNull(6) ? "" : reader.GetString(6)),
+                _ => new MetricScalar.StringMetric("")
+            };
+            
+            metrics.Add(new MetricValue
+            {
+                Name = metricName,
+                SourceStage = sourceStage,
+                Value = value
+            });
+        }
+
+        return metrics;
+    }
+
+    /// <summary>
+    /// Clears all metrics for an eval item.
+    /// </summary>
+    public async Task ClearMetricsAsync(string evalItemId, CancellationToken ct)
+    {
+        await _writeSemaphore.WaitAsync(ct);
+        try
+        {
+            await ClearMetricsInternalAsync(evalItemId, ct);
+        }
+        finally
+        {
+            _writeSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Internal method to clear metrics without acquiring the semaphore.
+    /// Caller must already hold the semaphore.
+    /// </summary>
+    private async Task ClearMetricsInternalAsync(string evalItemId, CancellationToken ct)
+    {
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM Metrics WHERE EvalItemId = @evalItemId";
+        cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
+        await cmd.ExecuteNonQueryAsync(ct);
     }
 
     /// <summary>
@@ -227,18 +429,46 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             {
                 var valueStr = reader.GetString(2);
                 // Try to parse as JSON first, then as plain string
-                try
-                {
-                    outputs[key] = JsonSerializer.Deserialize<object>(valueStr);
-                }
-                catch
-                {
-                    outputs[key] = valueStr;
-                }
+                outputs[key] = DeserializeJsonValue(valueStr);
             }
         }
 
         return outputs;
+    }
+
+    /// <summary>
+    /// Deserializes a JSON value, handling primitives correctly.
+    /// </summary>
+    private static object? DeserializeJsonValue(string valueStr)
+    {
+        if (string.IsNullOrEmpty(valueStr))
+            return null;
+
+        // Try to parse as JSON
+        try
+        {
+            using var doc = JsonDocument.Parse(valueStr);
+            var root = doc.RootElement;
+
+            return root.ValueKind switch
+            {
+                JsonValueKind.String => root.GetString(),
+                JsonValueKind.Number => root.TryGetInt32(out var i) ? i :
+                                        root.TryGetInt64(out var l) ? l :
+                                        root.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                JsonValueKind.Null => null,
+                JsonValueKind.Array => JsonSerializer.Deserialize<object[]>(valueStr),
+                JsonValueKind.Object => JsonSerializer.Deserialize<Dictionary<string, object>>(valueStr),
+                _ => valueStr
+            };
+        }
+        catch
+        {
+            // Not valid JSON, return as plain string
+            return valueStr;
+        }
     }
 
     /// <summary>
@@ -335,17 +565,15 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             await using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT OR REPLACE INTO EvalResults
-                (EvalItemId, EvalSetId, Succeeded, FailureReason, MetricsJson, AllStageOutputsJson, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
+                (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
                 VALUES
-                (@evalItemId, @evalSetId, @succeeded, @failureReason, @metricsJson, @outputsJson, @rawResponse, @startedAt, @duration, @phase, @lastStage)
+                (@evalItemId, @evalSetId, @succeeded, @failureReason, @rawResponse, @startedAt, @duration, @phase, @lastStage)
                 """;
 
             cmd.Parameters.AddWithValue("@evalItemId", result.EvalItemId);
             cmd.Parameters.AddWithValue("@evalSetId", result.EvalSetId);
             cmd.Parameters.AddWithValue("@succeeded", result.Succeeded ? 1 : 0);
             cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@metricsJson", JsonSerializer.Serialize(result.Metrics));
-            cmd.Parameters.AddWithValue("@outputsJson", JsonSerializer.Serialize(result.AllStageOutputs));
             cmd.Parameters.AddWithValue("@rawResponse", result.RawLlmResponse ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@startedAt", result.StartedAt.ToString("O"));
             cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
@@ -353,6 +581,12 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             cmd.Parameters.AddWithValue("@lastStage", "Complete");  // Item fully completed
 
             await cmd.ExecuteNonQueryAsync(ct);
+
+            // Save metrics to the Metrics table (use internal method since we already hold the semaphore)
+            foreach (var metric in result.Metrics)
+            {
+                await SaveMetricInternalAsync(result.EvalItemId, metric.Name, metric, ct);
+            }
         }
         finally
         {
@@ -371,9 +605,9 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             await using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT OR REPLACE INTO EvalResults
-                (EvalItemId, EvalSetId, Succeeded, FailureReason, MetricsJson, AllStageOutputsJson, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
+                (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
                 VALUES
-                (@evalItemId, @evalSetId, 0, NULL, '[]', '{}', NULL, @startedAt, 0, @phase, @lastStage)
+                (@evalItemId, @evalSetId, 0, NULL, NULL, @startedAt, 0, @phase, @lastStage)
                 """;
 
             cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
@@ -405,8 +639,6 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 UPDATE EvalResults SET
                     Succeeded = @succeeded,
                     FailureReason = @failureReason,
-                    MetricsJson = @metricsJson,
-                    AllStageOutputsJson = @outputsJson,
                     DurationSeconds = @duration,
                     Phase = 'judge',
                     LastCompletedStage = 'JudgeComplete'
@@ -416,11 +648,16 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             cmd.Parameters.AddWithValue("@evalItemId", result.EvalItemId);
             cmd.Parameters.AddWithValue("@succeeded", result.Succeeded ? 1 : 0);
             cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
-            cmd.Parameters.AddWithValue("@metricsJson", JsonSerializer.Serialize(result.Metrics));
-            cmd.Parameters.AddWithValue("@outputsJson", JsonSerializer.Serialize(result.AllStageOutputs));
             cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
 
             await cmd.ExecuteNonQueryAsync(ct);
+
+            // Clear existing metrics and save new ones to the Metrics table (use internal methods since we already hold the semaphore)
+            await ClearMetricsInternalAsync(result.EvalItemId, ct);
+            foreach (var metric in result.Metrics)
+            {
+                await SaveMetricInternalAsync(result.EvalItemId, metric.Name, metric, ct);
+            }
         }
         finally
         {
@@ -455,16 +692,47 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         return _resultsCache.Values.ToList();
     }
 
+    /// <summary>
+    /// Gets all results from the database with full stage outputs and metrics.
+    /// Use this instead of GetResults() when you need complete data from the database.
+    /// </summary>
+    public async Task<IReadOnlyList<EvalResult>> GetResultsAsync(string evalSetId, string phase, CancellationToken ct)
+    {
+        return await GetResultsForPhaseAsync(evalSetId, phase, ct);
+    }
+
+    private async Task<EvalResult> ReadResultAsync(SqliteDataReader reader, CancellationToken ct)
+    {
+        var evalItemId = reader.GetString("EvalItemId");
+        var stageOutputs = await GetStageOutputsAsync(evalItemId, ct);
+        var metrics = await GetMetricsAsync(evalItemId, ct);
+
+        return new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = reader.GetString("EvalSetId"),
+            Succeeded = reader.GetInt32("Succeeded") == 1,
+            FailureReason = reader.IsDBNull("FailureReason") ? null : reader.GetString("FailureReason"),
+            Metrics = metrics,
+            AllStageOutputs = stageOutputs,
+            RawLlmResponse = reader.IsDBNull("RawLlmResponse") ? null : reader.GetString("RawLlmResponse"),
+            StartedAt = DateTimeOffset.Parse(reader.GetString("StartedAt")),
+            DurationSeconds = reader.GetDouble("DurationSeconds")
+        };
+    }
+
     private static EvalResult ReadResult(SqliteDataReader reader)
     {
+        // Synchronous version for backward compatibility - doesn't load stage outputs or metrics
+        // Prefer ReadResultAsync for complete data
         return new EvalResult
         {
             EvalItemId = reader.GetString("EvalItemId"),
             EvalSetId = reader.GetString("EvalSetId"),
             Succeeded = reader.GetInt32("Succeeded") == 1,
             FailureReason = reader.IsDBNull("FailureReason") ? null : reader.GetString("FailureReason"),
-            Metrics = JsonSerializer.Deserialize<List<MetricValue>>(reader.GetString("MetricsJson")) ?? [],
-            AllStageOutputs = JsonSerializer.Deserialize<Dictionary<string, object?>>(reader.GetString("AllStageOutputsJson")) ?? [],
+            Metrics = [],  // Synchronous read doesn't load metrics from relational table
+            AllStageOutputs = new Dictionary<string, object?>(),
             RawLlmResponse = reader.IsDBNull("RawLlmResponse") ? null : reader.GetString("RawLlmResponse"),
             StartedAt = DateTimeOffset.Parse(reader.GetString("StartedAt")),
             DurationSeconds = reader.GetDouble("DurationSeconds")

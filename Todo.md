@@ -16,10 +16,7 @@ To-fix list:
 There are some pieces of code trying to show toasts, but no toasts ever appear in the UI.
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
 The browse buttons in the settings view don't populate the backing fields or the textboxes.
-Prompt boxes are empty in Run Dashboard when it shows the first 10 results. (The response boxes seem questionable, too, but I need to try a bigger model to make sure it isn't just because the 90M model outputs pure garbage. The evaluations from the judge (LFM2-24B-A2B) ARE pure garbage, though, possibly due to the judge prompt template being wrong, since I haven't even looked it over yet.)
 Normalizing the judge score is inappropriate and leads to things like the UI saying "1.0/10" when the judge gave 10/10.
-In 2-phase pipeline, "Recent completions" doesn't show any items. Maybe they should be added after initial inference and updated after judgment or something.
 
 To-test list:
 Continuation of an interrupted run
-Judge stage causes an error in the first major phase of the pipeline when using a local managed judge llama-server; in such a case, it should only be executing during the second phase: System.InvalidOperationException: [JudgeStage] JudgeStage requires a judge client but EvalStageContext.JudgeClient is null. Ensure the pipeline orchestrator initialises a judge endpoint. at Seevalocal.Judge.JudgeStage.ExecuteAsync(EvalStageContext context) in C:\DePro\CodeProjects\CSharp\Seevalocal\src\Seevalocal.Judge\JudgeStage.cs:line 77

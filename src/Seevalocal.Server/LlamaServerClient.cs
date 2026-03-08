@@ -31,8 +31,37 @@ public sealed class LlamaServerClient(
     private readonly ServerInfo _serverInfo = serverInfo ?? throw new ArgumentNullException(nameof(serverInfo));
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     private readonly ILogger<LlamaServerClient> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    private readonly SemaphoreSlim _semaphore = new(maxConcurrentRequests, maxConcurrentRequests);
+    private SemaphoreSlim _semaphore = new(maxConcurrentRequests, maxConcurrentRequests);
     private bool _disposed;
+
+    /// <summary>
+    /// Gets the current semaphore count (for diagnostics).
+    /// </summary>
+    public int CurrentMaxConcurrent => _semaphore.CurrentCount;
+
+    /// <summary>
+    /// Initializes the semaphore based on the actual slot count from the server.
+    /// Call this after creating the client to ensure correct concurrency limits.
+    /// </summary>
+    public async Task InitializeSemaphoreFromServerAsync(CancellationToken ct)
+    {
+        var propsResult = await GetPropsAsync(ct);
+        if (propsResult.IsSuccess)
+        {
+            var slots = propsResult.Value.TotalSlots;
+            if (slots > 0 && slots != _semaphore.CurrentCount)
+            {
+                _logger.LogInformation("Setting concurrency limit to {Slots} based on server props", slots);
+                var oldSemaphore = _semaphore;
+                _semaphore = new SemaphoreSlim(slots, slots);
+                oldSemaphore.Dispose();
+            }
+        }
+        else
+        {
+            _logger.LogWarning("Failed to get server props, keeping default concurrency limit of {DefaultCount}", _semaphore.CurrentCount);
+        }
+    }
 
     // ── Chat Completions (/v1/chat/completions) ───────────────────────────────
 

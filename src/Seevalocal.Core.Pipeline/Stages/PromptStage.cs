@@ -55,7 +55,9 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         var outputs = new Dictionary<string, object?>
         {
             ["PromptStage.response"] = responseText,
-            ["PromptStage.rawResponse"] = response
+            ["PromptStage.rawResponse"] = response,
+            ["PromptStage.userPrompt"] = item.UserPrompt,
+            ["PromptStage.systemPrompt"] = item.SystemPrompt
         };
 
         var metrics = BuildMetrics(response, sw.Elapsed.TotalSeconds);

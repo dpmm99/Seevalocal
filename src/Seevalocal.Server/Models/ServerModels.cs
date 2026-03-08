@@ -16,6 +16,8 @@ public record ServerInfo
     /// <summary>From GET /props. Used to size the concurrency semaphore.</summary>
     public int TotalSlots { get; init; }
     public string ModelAlias { get; init; } = "";
+    /// <summary>Absolute path to the llama-server binary that was started (for managed servers).</summary>
+    public string? BinaryPath { get; init; }
 }
 
 /// <summary>

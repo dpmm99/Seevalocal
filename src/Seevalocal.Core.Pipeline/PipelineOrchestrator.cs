@@ -239,7 +239,7 @@ public sealed class PipelineOrchestrator(
                     // Log the exception but don't rethrow - we want to continue processing other items
                     _logger.LogError(ex, "Pipeline '{PipelineName}' failed to process item '{ItemId}'",
                         _pipeline.PipelineName, capturedItem.Id);
-                    
+
                     // Create a failed result so the item is still counted
                     var failedResult = new EvalResult
                     {
@@ -252,7 +252,7 @@ public sealed class PipelineOrchestrator(
                         StartedAt = DateTimeOffset.UtcNow,
                         DurationSeconds = 0
                     };
-                    
+
                     await _resultCollector.CollectAsync(failedResult, ct);
                     _ = Interlocked.Increment(ref completedCount);
                 }

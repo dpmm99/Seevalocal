@@ -11,6 +11,10 @@ namespace Seevalocal.Server;
 /// Manages the full lifecycle of a llama-server process.
 /// If <see cref="ServerConfig.Manage"/> is false, simply validates connectivity.
 /// Thread-safe after <see cref="StartAsync"/> completes.
+/// 
+/// Process cleanup strategy:
+/// - Windows: Uses Job Objects to automatically kill llama-server when this process dies
+/// - Unix: Spawns a monitor process that watches for parent death and kills llama-server
 /// </summary>
 public sealed partial class LlamaServerManager(
     LlamaServerArgBuilder argBuilder,
@@ -30,9 +34,14 @@ public sealed partial class LlamaServerManager(
 
     private System.Diagnostics.Process? _process;
     private ServerInfo? _serverInfo;
+    private string? _binaryPath;  // Track the binary path for managed servers
     private bool _disposed;
     private int _loadingDotCount;
     private bool _loadingComplete;
+    
+    // Process cleanup helpers
+    private WindowsJobObject? _jobObject;  // Windows only
+    private System.Diagnostics.Process? _monitorProcess;  // Unix only
 
     /// <summary>Fires when the managed process exits unexpectedly (not via DisposeAsync).</summary>
     public event EventHandler<ProcessExitedEventArgs>? ProcessExited;
@@ -87,6 +96,7 @@ public sealed partial class LlamaServerManager(
         var binaryResult = await ResolveBinaryPathAsync(config, ct);
         if (binaryResult.IsFailed) return binaryResult.ToResult<ServerInfo>();
         var binaryPath = binaryResult.Value;
+        _binaryPath = binaryPath;  // Store for later use in ServerInfo
 
         // 2. Build args (10-15%)
         LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
@@ -166,6 +176,40 @@ public sealed partial class LlamaServerManager(
             return Result.Fail($"[LlamaServerManager] Failed to start process: {ex.Message}");
         }
 
+        // Set up process cleanup (Job Object on Windows, monitor process on Unix)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            try
+            {
+                _jobObject = new WindowsJobObject();
+                _jobObject.AddProcess(_process);
+                _logger.LogDebug("Added llama-server (PID={Pid}) to Windows Job Object for automatic cleanup", _process.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to set up Job Object for llama-server; process may not be cleaned up on crash");
+            }
+        }
+        else
+        {
+            // Unix: start a monitor process that will kill llama-server if we die
+            try
+            {
+                var parentPid = Environment.ProcessId;
+                var childPid = _process.Id;
+                _monitorProcess = ProcessCleanupMonitor.StartMonitor(parentPid, childPid);
+                if (_monitorProcess != null)
+                {
+                    _logger.LogDebug("Started monitor process (PID={MonitorPid}) for llama-server (PID={ChildPid})", 
+                        _monitorProcess.Id, childPid);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to start monitor process for llama-server; process may not be cleaned up on crash");
+            }
+        }
+
         _process.BeginOutputReadLine();
         _process.BeginErrorReadLine();
 
@@ -205,6 +249,7 @@ public sealed partial class LlamaServerManager(
             ApiKey = config.ApiKey,
             TotalSlots = props.TotalSlots,
             ModelAlias = Path.GetFileName(props.ModelPath),
+            BinaryPath = _binaryPath,
         };
 
         _logger.LogInformation(
@@ -355,6 +400,8 @@ public sealed partial class LlamaServerManager(
         if (_process?.HasExited != false)
         {
             _process?.Dispose();
+            _jobObject?.Dispose();
+            _monitorProcess?.Dispose();
             return;
         }
 
@@ -387,6 +434,26 @@ public sealed partial class LlamaServerManager(
         finally
         {
             _process.Dispose();
+            _jobObject?.Dispose();
+            
+            // Clean up monitor process (Unix only)
+            if (_monitorProcess != null && !_monitorProcess.HasExited)
+            {
+                try
+                {
+                    _monitorProcess.Kill();
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await _monitorProcess.WaitForExitAsync(cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Exception while cleaning up monitor process");
+                }
+                finally
+                {
+                    _monitorProcess.Dispose();
+                }
+            }
         }
     }
 

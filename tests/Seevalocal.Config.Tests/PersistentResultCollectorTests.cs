@@ -296,6 +296,208 @@ public sealed class PersistentResultCollectorTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task GetResultsForPhaseAsync_LoadsStageOutputsFromRelationalTable()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+
+        // Create a result with empty AllStageOutputs (simulating what CollectAsync does now)
+        var result = new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = evalSetId,
+            Succeeded = true,
+            FailureReason = null,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),  // Empty - stage outputs are in relational table
+            RawLlmResponse = "test response",
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.5,
+        };
+        await collector.CollectAsync(result, cts.Token);
+
+        // Save stage outputs to the relational table
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "userPrompt", "What is 2+2?", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "response", "2+2=4", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "expectedOutput", "4", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "score", 9.5, cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "rationale", "Good answer", cts.Token);
+
+        // Act
+        var results = await collector.GetResultsForPhaseAsync(evalSetId, "primary", cts.Token);
+
+        // Assert
+        results.Should().HaveCount(1);
+        var loadedResult = results[0];
+        loadedResult.EvalItemId.Should().Be(evalItemId);
+        loadedResult.RawLlmResponse.Should().Be("test response");
+        
+        // Stage outputs should be loaded from the relational table
+        loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.userPrompt");
+        loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.response");
+        loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.expectedOutput");
+        loadedResult.AllStageOutputs.Should().ContainKey("JudgeStage.score");
+        loadedResult.AllStageOutputs.Should().ContainKey("JudgeStage.rationale");
+        
+        loadedResult.AllStageOutputs["PromptStage.userPrompt"].Should().Be("What is 2+2?");
+        loadedResult.AllStageOutputs["PromptStage.response"].Should().Be("2+2=4");
+        loadedResult.AllStageOutputs["PromptStage.expectedOutput"].Should().Be(4);  // Deserialized as int
+        loadedResult.AllStageOutputs["JudgeStage.score"].Should().Be(9.5);
+        loadedResult.AllStageOutputs["JudgeStage.rationale"].Should().Be("Good answer");
+    }
+
+    [Fact]
+    public async Task GetResultsForPhaseAsync_LoadsMultipleItemsWithStageOutputs()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalSetId = "eval-set-1";
+
+        // Create multiple results
+        for (int i = 1; i <= 3; i++)
+        {
+            var result = new EvalResult
+            {
+                EvalItemId = $"item-{i}",
+                EvalSetId = evalSetId,
+                Succeeded = true,
+                Metrics = [],
+                AllStageOutputs = new Dictionary<string, object?>(),
+                StartedAt = DateTimeOffset.UtcNow,
+                DurationSeconds = 1.0,
+            };
+            await collector.CollectAsync(result, cts.Token);
+
+            // Save different stage outputs for each item
+            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", "response", $"response-{i}", cts.Token);
+            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", "itemNumber", i, cts.Token);
+        }
+
+        // Act
+        var results = await collector.GetResultsForPhaseAsync(evalSetId, "primary", cts.Token);
+
+        // Assert
+        results.Should().HaveCount(3);
+        
+        for (int i = 1; i <= 3; i++)
+        {
+            var loadedResult = results.First(r => r.EvalItemId == $"item-{i}");
+            loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.response");
+            loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.itemNumber");
+            loadedResult.AllStageOutputs["PromptStage.response"].Should().Be($"response-{i}");
+            loadedResult.AllStageOutputs["PromptStage.itemNumber"].Should().Be(i);  // Deserialized as int
+        }
+    }
+
+    [Fact]
+    public async Task SaveServerBinaryPathAsync_SavesAndLoadsBinaryPath()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string serverType = "primary";
+        const string binaryPath = "C:\\cache\\llama-server\\b8184\\win\\llama-server.exe";
+
+        // Act
+        await collector.SaveServerBinaryPathAsync(serverType, binaryPath, cts.Token);
+
+        // Assert
+        var loadedPath = await collector.LoadServerBinaryPathAsync(serverType, cts.Token);
+        loadedPath.Should().Be(binaryPath);
+    }
+
+    [Fact]
+    public async Task SaveServerBinaryPathAsync_SavesSeparatePathsForPrimaryAndJudge()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string primaryPath = "C:\\cache\\llama-server\\b8184\\win\\llama-server.exe";
+        const string judgePath = "C:\\cache\\llama-server\\b8184\\win\\llama-server-judge.exe";
+
+        // Act
+        await collector.SaveServerBinaryPathAsync("primary", primaryPath, cts.Token);
+        await collector.SaveServerBinaryPathAsync("judge", judgePath, cts.Token);
+
+        // Assert
+        var loadedPrimaryPath = await collector.LoadServerBinaryPathAsync("primary", cts.Token);
+        var loadedJudgePath = await collector.LoadServerBinaryPathAsync("judge", cts.Token);
+        
+        loadedPrimaryPath.Should().Be(primaryPath);
+        loadedJudgePath.Should().Be(judgePath);
+        loadedPrimaryPath.Should().NotBe(loadedJudgePath);
+    }
+
+    [Fact]
+    public async Task StageOutputsTable_HandlesNullValues()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+
+        var result = new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = evalSetId,
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.0,
+        };
+        await collector.CollectAsync(result, cts.Token);
+
+        // Act - save null value
+        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "nullableKey", null, cts.Token);
+
+        // Assert
+        var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
+        outputs.Should().ContainKey("TestStage.nullableKey");
+        outputs["TestStage.nullableKey"].Should().BeNull();
+    }
+
+    [Fact]
+    public async Task StageOutputsTable_HandlesComplexJsonObjects()
+    {
+        // Arrange
+        await using var collector = new PersistentResultCollector(_dbPath);
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        const string evalItemId = "item-1";
+        const string evalSetId = "eval-set-1";
+
+        var result = new EvalResult
+        {
+            EvalItemId = evalItemId,
+            EvalSetId = evalSetId,
+            Succeeded = true,
+            Metrics = [],
+            AllStageOutputs = new Dictionary<string, object?>(),
+            StartedAt = DateTimeOffset.UtcNow,
+            DurationSeconds = 1.0,
+        };
+        await collector.CollectAsync(result, cts.Token);
+
+        var complexObject = new { name = "test", values = new[] { 1, 2, 3 }, nested = new { key = "value" } };
+
+        // Act
+        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "complexKey", complexObject, cts.Token);
+
+        // Assert
+        var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
+        outputs.Should().ContainKey("TestStage.complexKey");
+        
+        // The value should be deserialized as JSON
+        var loadedValue = outputs["TestStage.complexKey"];
+        loadedValue.Should().NotBeNull();
+    }
+
     public void Dispose()
     {
         // Clean up temp file

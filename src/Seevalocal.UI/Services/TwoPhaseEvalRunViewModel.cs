@@ -34,7 +34,10 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private bool _primaryPhaseComplete;
     private bool _judgePhaseComplete;
     private LlamaServerClient? _primaryClient;  // Track primary client for managed servers
+    private int _primarySlotCount = 4;  // Default, updated from server props
+    private int _judgeSlotCount = 4;    // Default, updated from server props
     private bool _disposed;
+    private int _earlyCompletionsLimit = 10;
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
         PauseCommand = new RelayCommand(TogglePause, () => IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
+        LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
     }
 
     // ─── IEvalRunViewModel Implementation ─────────────────────────────────────
@@ -81,8 +85,29 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     public RunSummary? Summary { get; private set; }
     public bool HadFailures { get; private set; }
     public ObservableCollection<EvalResultViewModel> Results { get; } = [];
+
+    public int EarlyCompletionsLimit
+    {
+        get => _earlyCompletionsLimit;
+        set
+        {
+            if (_earlyCompletionsLimit != value)
+            {
+                _earlyCompletionsLimit = value;
+                OnPropertyChanged(nameof(EarlyCompletionsLimit));
+                OnPropertyChanged(nameof(EarlyCompletions));
+                OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+            }
+        }
+    }
+
+    public IEnumerable<EvalResultViewModel> EarlyCompletions => Results.Take(EarlyCompletionsLimit);
+
+    public bool HasMoreEarlyCompletions => Results.Count > EarlyCompletionsLimit;
+
     public System.Windows.Input.ICommand PauseCommand { get; }
     public System.Windows.Input.ICommand CancelCommand { get; }
+    public System.Windows.Input.ICommand LoadMoreEarlyCompletionsCommand { get; }
 
     public void TogglePause()
     {
@@ -96,6 +121,12 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     {
         StatusLine = "Cancelling...";
         OnPropertyChanged(nameof(StatusLine));
+    }
+
+    private void LoadMoreEarlyCompletions()
+    {
+        EarlyCompletionsLimit += 10;
+        OnPropertyChanged(nameof(HasMoreEarlyCompletions));
     }
 
     public async Task StartAsync(CancellationToken externalCt = default)
@@ -147,11 +178,23 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 var primaryServerInfo = startResult.Value;
                 _logger.LogInformation("Primary llama-server started at {BaseUrl}", primaryServerInfo.BaseUrl);
 
+                // Save the resolved binary path for resume capability
+                if (primaryServerInfo.BinaryPath is not null && _collector is PersistentResultCollector persistentCollector)
+                {
+                    await persistentCollector.SaveServerBinaryPathAsync("primary", primaryServerInfo.BinaryPath, cts.Token);
+                }
+
                 // Create HTTP client for primary server
                 var primaryHttpClient = CreateHttpClient(primaryServerInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
                 var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
                 _primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
+
+                // Initialize semaphore based on actual server slot count
+                await _primaryClient.InitializeSemaphoreFromServerAsync(cts.Token);
+
+                // Store slot count for orchestrator
+                _primarySlotCount = Config.Run?.MaxConcurrentEvals ?? primaryServerInfo.TotalSlots;
             }
 
             // Create the primary phase orchestrator now that server is ready
@@ -214,7 +257,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
     private async Task RunPrimaryPhaseAsync(CancellationToken ct)
     {
-        var maxConcurrent = Config.Run.MaxConcurrentEvals ?? 4;
+        var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? _primarySlotCount;
 
         try
         {
@@ -281,10 +324,22 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             var judgeServerInfo = judgeStartResult.Value;
             _logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
 
+            // Save the resolved binary path for resume capability
+            if (judgeServerInfo.BinaryPath is not null && _collector is PersistentResultCollector persistentCollector)
+            {
+                await persistentCollector.SaveServerBinaryPathAsync("judge", judgeServerInfo.BinaryPath, ct);
+            }
+
             var judgeHttpClient = CreateHttpClient(judgeServerInfo);
             var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
             var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
             judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
+
+            // Initialize semaphore based on actual server slot count
+            await judgeClient.InitializeSemaphoreFromServerAsync(ct);
+
+            // Store slot count for orchestrator
+            _judgeSlotCount = Config.Run?.MaxConcurrentEvals ?? judgeServerInfo.TotalSlots;
         }
 
         try
@@ -307,7 +362,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
             StatusLine = "Phase 2: Judge evaluation...";
             OnPropertyChanged(nameof(StatusLine));
-            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
+            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? _judgeSlotCount;
             await judgeOrchestrator.RunAsync(maxConcurrent, ct);
 
             _logger.LogInformation("Judge phase completed");
@@ -372,10 +427,11 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
         AverageTokensPerSecond = e.AverageCompletionTokensPerSecond ?? 0;
 
-        // Update results list on UI thread
+        // Update results list on UI thread from in-memory cache (fast, safe after disposal)
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             var results = _collector.GetResults();
+
             Results.Clear();
             foreach (var result in results)
             {
@@ -386,6 +442,15 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             OnPropertyChanged(nameof(EstimatedRemainingSeconds));
             OnPropertyChanged(nameof(AverageTokensPerSecond));
             OnPropertyChanged(nameof(Results));
+            OnPropertyChanged(nameof(EarlyCompletions));
+            OnPropertyChanged(nameof(HasMoreEarlyCompletions));
+            OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+
+            // Notify command that CanExecute may have changed
+            if (LoadMoreEarlyCompletionsCommand is Commands.RelayCommand cmd)
+            {
+                cmd.NotifyCanExecuteChanged();
+            }
         });
     }
 

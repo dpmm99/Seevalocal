@@ -22,7 +22,6 @@ public sealed class DefaultServerLifecycleService(
     private readonly ILogger<DefaultServerLifecycleService> _logger = logger;
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
     private readonly ConcurrentBag<LlamaServerManager> _managers = [];
-    private bool _disposed;
 
     /// <summary>Exposes the llama-server loading progress event from the most recently started server.</summary>
     public event EventHandler<ServerLoadingProgressEventArgs>? LoadingProgressChanged;
@@ -79,11 +78,6 @@ public sealed class DefaultServerLifecycleService(
 
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
         // Stop all managed servers
         foreach (var manager in _managers)
         {

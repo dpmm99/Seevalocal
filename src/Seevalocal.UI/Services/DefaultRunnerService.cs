@@ -124,6 +124,9 @@ public sealed class DefaultRunnerService(
             var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
             var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
             primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
+
+            // Initialize semaphore based on actual server slot count
+            await primaryClient.InitializeSemaphoreFromServerAsync(cancellationToken);
         }
 
         // Create external judge client if the original pipeline has JudgeStage
@@ -148,6 +151,10 @@ public sealed class DefaultRunnerService(
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
                 var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
                 judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
+
+                // Initialize semaphore based on actual server slot count
+                await judgeClient.InitializeSemaphoreFromServerAsync(cancellationToken);
+
                 _logger.LogInformation("Created judge client for external judge at {BaseUrl}", judgeBaseUrl);
             }
             else

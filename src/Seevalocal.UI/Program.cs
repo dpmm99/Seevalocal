@@ -25,6 +25,25 @@ internal class Program
 
     private static async Task<int> MainAsync(string[] args)
     {
+        // Check for monitor process mode (used for Unix process cleanup)
+        if (args.Length >= 3 && args[0] == "--monitor-process")
+        {
+            // Running as a monitor process - don't initialize full app
+            if (int.TryParse(args[1], out int parentPid) && int.TryParse(args[2], out int childPid))
+            {
+                var cts = new CancellationTokenSource();
+                Console.CancelKeyPress += (_, e) =>
+                {
+                    e.Cancel = true;
+                    cts.Cancel();
+                };
+
+                await ProcessCleanupMonitor.RunAsync(parentPid, childPid, cts.Token);
+                return 0;
+            }
+            return 1;
+        }
+
         // Configure Serilog
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()

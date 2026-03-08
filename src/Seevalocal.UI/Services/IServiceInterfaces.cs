@@ -74,8 +74,12 @@ public interface IEvalRunViewModel : INotifyPropertyChanged, IDisposable
     RunSummary? Summary { get; }
     bool HadFailures { get; }
     ObservableCollection<EvalResultViewModel> Results { get; }
+    int EarlyCompletionsLimit { get; set; }
+    IEnumerable<EvalResultViewModel> EarlyCompletions { get; }
+    bool HasMoreEarlyCompletions { get; }
     System.Windows.Input.ICommand PauseCommand { get; }
     System.Windows.Input.ICommand CancelCommand { get; }
+    System.Windows.Input.ICommand LoadMoreEarlyCompletionsCommand { get; }
     Task StartAsync(CancellationToken externalCt = default);
     void Cancel();
     void TogglePause();

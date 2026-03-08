@@ -40,6 +40,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     private LlamaServerClient? _managedPrimaryClient;
     private LlamaServerClient? _managedJudgeClient;
     private readonly Progress<EvalProgress> _progress;
+    private int _earlyCompletionsLimit = 10;
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
         PauseCommand = new RelayCommand(TogglePause, () => IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
+        LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
     }
 
     private void OnProgressChanged(EvalProgress progress)
@@ -88,13 +90,14 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         EstimatedRemainingSeconds = progress.EstimatedRemainingSeconds;
         AverageTokensPerSecond = progress.AverageCompletionTokensPerSecond ?? 0;
 
-        OnPropertyChanged(nameof(RecentCompletions));
+        OnPropertyChanged(nameof(EarlyCompletions));
         OnPropertyChanged(nameof(RecentActivitySummary));
 
-        // Refresh results from collector on each progress update (on UI thread)
-        Avalonia.Threading.Dispatcher.UIThread.Post(() => RefreshResultsFromCollector());
+        // Refresh results from collector's in-memory cache on each progress update (on UI thread)
+        // This is safe because the cache is updated before the progress event is fired
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => RefreshResultsFromCache());
 
-        if (progress.CompletedCount <= 10)
+        if (progress.CompletedCount <= EarlyCompletionsLimit)
         {
             var recentResult = Results.LastOrDefault();
             if (recentResult != null)
@@ -122,9 +125,9 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         OnProgressChanged(progress);
     }
 
-    private void RefreshResultsFromCollector()
+    private void RefreshResultsFromCache()
     {
-        // Get all results from the collector
+        // Get results from in-memory cache (fast, no database access)
         var allResults = _collector.GetResults();
 
         // Clear and rebuild the Results collection
@@ -136,14 +139,55 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
         // Notify UI of changes
         OnPropertyChanged(nameof(Results));
-        OnPropertyChanged(nameof(RecentCompletions));
+        OnPropertyChanged(nameof(EarlyCompletions));
+        OnPropertyChanged(nameof(HasMoreEarlyCompletions));
         OnPropertyChanged(nameof(RecentActivitySummary));
+        OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+
+        // Notify command that CanExecute may have changed (on UI thread for Avalonia)
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (LoadMoreEarlyCompletionsCommand is Commands.RelayCommand cmd)
+            {
+                cmd.NotifyCanExecuteChanged();
+            }
+        });
+    }
+
+    private async Task RefreshResultsFromDatabaseAsync()
+    {
+        // Get all results from the collector's database (with full stage outputs and metrics)
+        // Use this for the final refresh after the run completes
+        try
+        {
+            var allResults = await _collector.GetResultsAsync(_evalSet.Id, "primary", default);
+
+            // Clear and rebuild the Results collection
+            Results.Clear();
+            foreach (var result in allResults)
+            {
+                Results.Add(new EvalResultViewModel(result));
+            }
+
+            // Notify UI of changes
+            OnPropertyChanged(nameof(Results));
+            OnPropertyChanged(nameof(EarlyCompletions));
+            OnPropertyChanged(nameof(HasMoreEarlyCompletions));
+            OnPropertyChanged(nameof(RecentActivitySummary));
+            OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+        }
+        catch (ObjectDisposedException)
+        {
+            // Collector was disposed, use cache instead
+            RefreshResultsFromCache();
+        }
     }
 
     // ─── Commands ─────────────────────────────────────────────────────────────
 
     public System.Windows.Input.ICommand PauseCommand { get; }
     public System.Windows.Input.ICommand CancelCommand { get; }
+    public System.Windows.Input.ICommand LoadMoreEarlyCompletionsCommand { get; }
 
     public void TogglePause()
     {
@@ -151,6 +195,15 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         StatusLine = IsPaused ? "Paused" : "Running...";
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
+    }
+
+    private void LoadMoreEarlyCompletions()
+    {
+        EarlyCompletionsLimit += 10;
+        OnPropertyChanged(nameof(EarlyCompletionsLimit));
+        OnPropertyChanged(nameof(EarlyCompletions));
+        OnPropertyChanged(nameof(HasMoreEarlyCompletions));
+        OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
     }
 
     // ─── Observable properties ────────────────────────────────────────────────
@@ -229,7 +282,22 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
     public ObservableCollection<EvalResultViewModel> Results { get; } = [];
 
-    public IEnumerable<EvalResultViewModel> RecentCompletions => Results.Take(10);
+    public int EarlyCompletionsLimit
+    {
+        get => _earlyCompletionsLimit;
+        set
+        {
+            if (SetField(ref _earlyCompletionsLimit, value))
+            {
+                OnPropertyChanged(nameof(EarlyCompletions));
+                OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+            }
+        }
+    }
+
+    public IEnumerable<EvalResultViewModel> EarlyCompletions => Results.Take(EarlyCompletionsLimit);
+
+    public bool HasMoreEarlyCompletions => Results.Count > EarlyCompletionsLimit;
 
     public string RecentActivitySummary
     {
@@ -259,10 +327,13 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         Results.Clear();
         CompletedCount = 0;
 
+        // Determine max concurrent evals - will be updated from server props if managing server
+        var orchestratorMaxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
+
         try
         {
             _logger.LogInformation("EvalRunViewModel: Starting run '{RunName}'",
-                Config.Run.RunName ?? "(unnamed)");
+                Config.Run?.RunName ?? "(unnamed)");
 
             // Start managed primary server if needed
             LlamaServerClient? primaryClientToUse = _externalPrimaryClient;
@@ -278,10 +349,26 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                 var serverInfo = startResult.Value;
                 _logger.LogInformation("Primary llama-server started at {BaseUrl}", serverInfo.BaseUrl);
 
+                // Save the resolved binary path for resume capability
+                if (serverInfo.BinaryPath is not null && _collector is PersistentResultCollector persistentCollector)
+                {
+                    await persistentCollector.SaveServerBinaryPathAsync("primary", serverInfo.BinaryPath, _cts.Token);
+                }
+
                 var primaryHttpClient = CreateHttpClient(serverInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
                 var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
                 _managedPrimaryClient = new LlamaServerClient(serverInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
+
+                // Initialize semaphore based on actual server slot count
+                await _managedPrimaryClient.InitializeSemaphoreFromServerAsync(_cts.Token);
+
+                // Use server slot count for orchestrator if not explicitly configured
+                if (Config.Run?.MaxConcurrentEvals is not int configuredMax)
+                {
+                    orchestratorMaxConcurrent = serverInfo.TotalSlots;
+                }
+
                 primaryClientToUse = _managedPrimaryClient;
 
                 StatusLine = $"Running evaluations at {DateTimeOffset.Now:HH:mm:ss}...";
@@ -302,10 +389,20 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                 var judgeServerInfo = judgeStartResult.Value;
                 _logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
 
+                // Save the resolved binary path for resume capability
+                if (judgeServerInfo.BinaryPath is not null && _collector is PersistentResultCollector persistentCollector)
+                {
+                    await persistentCollector.SaveServerBinaryPathAsync("judge", judgeServerInfo.BinaryPath, _cts.Token);
+                }
+
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
                 var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
+
+                // Initialize semaphore based on actual server slot count
+                await _managedJudgeClient.InitializeSemaphoreFromServerAsync(_cts.Token);
+
                 judgeClientToUse = _managedJudgeClient;
             }
 
@@ -324,10 +421,10 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
 
             // Run the pipeline
-            await orchestrator.RunAsync(Config.Run?.MaxConcurrentEvals ?? 4, _cts.Token);
+            await orchestrator.RunAsync(orchestratorMaxConcurrent, _cts.Token);
 
-            // Final results refresh after completion
-            RefreshResultsFromCollector();
+            // Final results refresh after completion (from database with full stage outputs)
+            await RefreshResultsFromDatabaseAsync();
 
             HadFailures = Results.Any(static r => !r.Succeeded);
             var completionTime = DateTimeOffset.Now;
