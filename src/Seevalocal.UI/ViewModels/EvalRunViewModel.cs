@@ -3,8 +3,9 @@ using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Metrics.Models;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
+using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -279,7 +280,8 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
                 var primaryHttpClient = CreateHttpClient(serverInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                _managedPrimaryClient = new LlamaServerClient(serverInfo, primaryHttpClient, primaryClientLogger);
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                _managedPrimaryClient = new LlamaServerClient(serverInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
                 primaryClientToUse = _managedPrimaryClient;
 
                 StatusLine = $"Running evaluations at {DateTimeOffset.Now:HH:mm:ss}...";
@@ -302,13 +304,14 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger);
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
                 judgeClientToUse = _managedJudgeClient;
             }
 
-            // Create orchestrator now that we have clients
-            var orchestratorLogger = _loggerFactory.CreateLogger<Pipelines.PipelineOrchestrator>();
-            var orchestrator = new Pipelines.PipelineOrchestrator(
+            // Create orchestrator now that we have clients (simple mode, returns results)
+            var orchestratorLogger = _loggerFactory.CreateLogger<PipelineOrchestrator>();
+            var orchestrator = new PipelineOrchestrator(
                 _pipeline,
                 _dataSource,
                 _collector,
@@ -321,7 +324,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
 
             // Run the pipeline
-            await orchestrator.RunAsync(Config.Run.MaxConcurrentEvals ?? 4, _cts.Token);
+            await orchestrator.RunAsync(Config.Run?.MaxConcurrentEvals ?? 4, _cts.Token);
 
             // Final results refresh after completion
             RefreshResultsFromCollector();

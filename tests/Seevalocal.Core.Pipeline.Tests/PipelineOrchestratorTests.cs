@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Seevalocal.Core.Models;
 using Seevalocal.DataSources.Sources;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Xunit;
 
@@ -19,28 +19,29 @@ public class PipelineOrchestratorTests
     private static PipelineOrchestrator MakeOrchestrator(
         IEnumerable<EvalItem> items,
         EvalPipeline pipeline,
-        IResultCollector collector,
-        IProgress<EvalProgress>? progress = null)
+        IResultCollector collector)
     {
         var serverInfo = new ServerInfo
         {
             BaseUrl = "http://localhost:8080",
             TotalSlots = 4
         };
+
+        // Use a mock HTTP handler that always succeeds
+        var handler = new AlwaysSuccessHttpHandler();
         var primaryClient = new LlamaServerClient(
             serverInfo,
-            new HttpClient(),
-            NullLogger<LlamaServerClient>.Instance);
+            new HttpClient(handler),
+            NullLogger<LlamaServerClient>.Instance,
+            maxConcurrentRequests: 10);
 
         return new PipelineOrchestrator(
-            dataSource: new ListDataSource(items),
             pipeline: pipeline,
-            evalSetConfig: new EvalSetConfig { Id = "test-set" },
-            resolvedConfig: TestHelpers.DefaultConfig(),
+            dataSource: new ListDataSource(items),
+            collector: collector,
+            config: TestHelpers.DefaultConfig(),
             primaryClient: primaryClient,
             judgeClient: null,
-            resultCollector: collector,
-            progress: progress ?? new NoOpProgress(),
             logger: NullLogger<PipelineOrchestrator>.Instance);
     }
 
@@ -55,46 +56,9 @@ public class PipelineOrchestratorTests
         var pipeline = MakePipeline(new SucceedingStage());
         var orchestrator = MakeOrchestrator(items, pipeline, collector);
 
-        await orchestrator.RunAsync(maxConcurrentCount: 3, ct: CancellationToken.None);
+        await orchestrator.RunAsync(maxConcurrentEvals: 3, ct: CancellationToken.None);
 
         Assert.Equal(10, collector.GetResults().Count);
-    }
-
-    [Fact(Skip = "Flaky test - timing dependent")]
-    public async Task RunAsync_ConcurrencyLimitRespected()
-    {
-        var maxObserved = 0;
-        var current = 0;
-        var lockObj = new object();
-
-        var items = Enumerable.Range(1, 20)
-            .Select(i => TestHelpers.MakeItem($"item-{i:D6}", $"Prompt {i}"))
-            .ToList();
-
-        var trackingStage = new TrackingConcurrencyStage(() =>
-        {
-            lock (lockObj)
-            {
-                current++;
-                if (current > maxObserved) maxObserved = current;
-            }
-        }, () =>
-        {
-            lock (lockObj) { current--; }
-        });
-
-        var collector = new CapturingResultCollector();
-        var pipeline = MakePipeline(trackingStage);
-        var orchestrator = MakeOrchestrator(items, pipeline, collector);
-
-        await orchestrator.RunAsync(maxConcurrentCount: 4, ct: CancellationToken.None);
-
-        // Items should all be processed by now since RunAsync waits for all tasks
-        // But add a small safety delay for any final collection operations
-        await Task.Delay(100);
-
-        Assert.True(maxObserved <= 4, $"Max concurrent was {maxObserved}, expected ≤ 4");
-        Assert.Equal(items.Count, collector.GetResults().Count);  // All items should be processed
     }
 
     [Fact]
@@ -121,30 +85,144 @@ public class PipelineOrchestratorTests
         });
 
         _ = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            orchestrator.RunAsync(maxConcurrentCount: 2, ct: cts.Token));
+            orchestrator.RunAsync(maxConcurrentEvals: 2, ct: cts.Token));
 
         // Some items should have been processed before cancellation
         Assert.True(processedCount < 100, "Expected cancellation to stop before all 100 items");
     }
 
-    [Fact(Skip = "Flaky test - timing dependent on async processing")]
-    public async Task RunAsync_ProgressReported()
+    // ── LlamaServerClient Semaphore Tests ─────────────────────────────────────
+
+    [Fact]
+    public async Task LlamaServerClient_SemaphoreLimitsConcurrentRequests()
     {
-        List<EvalProgress> progressReports = [];
-        var progress = new DelegatingProgress<EvalProgress>(progressReports.Add);
+        var maxObserved = 0;
+        var lockObj = new object();
 
-        var items = Enumerable.Range(1, 5)
-            .Select(i => TestHelpers.MakeItem($"item-{i:D6}", $"Prompt {i}"))
-            .ToList();
+        // Create a mock HTTP handler that tracks concurrent requests
+        var concurrentRequests = 0;
+        var handler = new TrackingHttpHandler(
+            onEnter: () =>
+            {
+                lock (lockObj)
+                {
+                    concurrentRequests++;
+                    if (concurrentRequests > maxObserved) maxObserved = concurrentRequests;
+                }
+            },
+            onExit: () =>
+            {
+                lock (lockObj)
+                {
+                    concurrentRequests--;
+                }
+            });
 
-        var collector = new CapturingResultCollector();
-        var pipeline = MakePipeline(new SucceedingStage());
-        var orchestrator = MakeOrchestrator(items, pipeline, collector, progress);
+        var serverInfo = new ServerInfo
+        {
+            BaseUrl = "http://localhost:8080",
+            TotalSlots = 4
+        };
 
-        await orchestrator.RunAsync(maxConcurrentCount: 2, ct: CancellationToken.None);
+        const int maxConcurrentRequests = 3;
+        var client = new LlamaServerClient(
+            serverInfo,
+            new HttpClient(handler),
+            NullLogger<LlamaServerClient>.Instance,
+            maxConcurrentRequests: maxConcurrentRequests);
 
-        Assert.Equal(5, progressReports.Count);
-        Assert.All(progressReports, p => Assert.True(p.CompletedCount > 0));
+        // Make multiple concurrent requests
+        var tasks = Enumerable.Range(1, 10).Select(_ =>
+            client.ChatCompletionAsync(
+                new ChatCompletionRequest
+                {
+                    Messages = [new ChatMessage { Role = "user", Content = "test" }]
+                },
+                CancellationToken.None)).ToList();
+
+        // Ignore failures (mock will return errors, we just care about concurrency)
+        await Task.WhenAll(tasks);
+
+        // Small delay to ensure all onExit callbacks have run
+        await Task.Delay(50);
+
+        Assert.True(maxObserved <= maxConcurrentRequests,
+            $"Max concurrent requests was {maxObserved}, expected ≤ {maxConcurrentRequests}");
+    }
+
+    [Fact]
+    public async Task LlamaServerClient_SemaphoreReleasedAfterFailure()
+    {
+        var serverInfo = new ServerInfo
+        {
+            BaseUrl = "http://localhost:8080",
+            TotalSlots = 4
+        };
+
+        // Create a handler that always fails
+        var handler = new AlwaysFailHttpHandler();
+        var client = new LlamaServerClient(
+            serverInfo,
+            new HttpClient(handler),
+            NullLogger<LlamaServerClient>.Instance,
+            maxConcurrentRequests: 2);
+
+        // Make multiple requests that will fail
+        var tasks = Enumerable.Range(1, 5).Select(_ =>
+            client.ChatCompletionAsync(
+                new ChatCompletionRequest
+                {
+                    Messages = [new ChatMessage { Role = "user", Content = "test" }]
+                },
+                CancellationToken.None)).ToList();
+
+        // All should complete (with failures)
+        var results = await Task.WhenAll(tasks);
+
+        // All should have failed
+        Assert.All(results, r => Assert.True(r.IsFailed));
+
+        // Semaphore should have been released - make one more request to verify
+        // If semaphore wasn't released, this would hang or fail differently
+        var finalResult = await client.ChatCompletionAsync(
+            new ChatCompletionRequest
+            {
+                Messages = [new ChatMessage { Role = "user", Content = "test" }]
+            },
+            CancellationToken.None);
+
+        // Should still fail (handler always fails), but should not hang
+        Assert.True(finalResult.IsFailed);
+    }
+
+    [Fact]
+    public async Task LlamaServerClient_DisposeDisposesSemaphore()
+    {
+        var serverInfo = new ServerInfo
+        {
+            BaseUrl = "http://localhost:8080",
+            TotalSlots = 4
+        };
+
+        var client = new LlamaServerClient(
+            serverInfo,
+            new HttpClient(),
+            NullLogger<LlamaServerClient>.Instance,
+            maxConcurrentRequests: 5);
+
+        // Use the client
+        _ = await client.ChatCompletionAsync(
+            new ChatCompletionRequest
+            {
+                Messages = [new ChatMessage { Role = "user", Content = "test" }]
+            },
+            CancellationToken.None);
+
+        // Dispose should not throw
+        client.Dispose();
+
+        // Second dispose should be safe (idempotent)
+        client.Dispose();
     }
 
     // ── Test stage helpers ────────────────────────────────────────────────────
@@ -194,5 +272,89 @@ public class PipelineOrchestratorTests
         private readonly Action<T> _handler = handler;
 
         public void Report(T value) => _handler(value);
+    }
+
+    /// <summary>
+    /// HTTP handler that always returns a successful response.
+    /// </summary>
+    private sealed class AlwaysSuccessHttpHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                {
+                    "choices": [{
+                        "message": {
+                            "content": "mock response"
+                        }
+                    }],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 20,
+                        "total_tokens": 30
+                    }
+                }
+                """)
+            });
+        }
+    }
+
+    /// <summary>
+    /// HTTP handler that tracks concurrent requests.
+    /// </summary>
+    private sealed class TrackingHttpHandler(Action onEnter, Action onExit) : HttpMessageHandler
+    {
+        private readonly Action _onEnter = onEnter;
+        private readonly Action _onExit = onExit;
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            _onEnter();
+            try
+            {
+                // Simulate some network delay
+                await Task.Delay(10, cancellationToken);
+
+                // Return a mock response
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""
+                    {
+                        "choices": [{
+                            "message": {
+                                "content": "mock response"
+                            }
+                        }]
+                    }
+                    """)
+                };
+            }
+            finally
+            {
+                _onExit();
+            }
+        }
+    }
+
+    /// <summary>
+    /// HTTP handler that always returns an error.
+    /// </summary>
+    private sealed class AlwaysFailHttpHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("Mock failure")
+            });
+        }
     }
 }

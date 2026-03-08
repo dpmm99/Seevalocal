@@ -81,8 +81,7 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
             stages.Add(new JudgeStage(
                 _loggerFactory.CreateLogger<JudgeStage>(),
                 promptTemplate: DefaultTemplates.CodeQualityJudgeTemplate,
-                maxScore: 10,
-                passThresholdRatio: 0.6));
+                minScore: 0, maxScore: 10));
         }
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
@@ -95,9 +94,7 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
     /// <summary>
     /// Checks that dotnet is on PATH and that the template project compiles.
     /// </summary>
-    public async Task<FluentResults.Result> EnsurePrerequisitesAsync(
-        EvalSetConfig evalSetConfig,
-        ResolvedConfig resolvedConfig,
+    public static async Task<FluentResults.Result> EnsurePrerequisitesAsync(
         CancellationToken ct)
     {
         // Check dotnet on PATH

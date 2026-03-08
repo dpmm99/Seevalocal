@@ -8,20 +8,31 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Seevalocal.Server.Client;
+namespace Seevalocal.Server;
 
 /// <summary>
 /// Pre-configured HTTP client for a llama-server instance.
 /// Constructed from a <see cref="ServerInfo"/>. Thread-safe; share one instance per endpoint.
+/// Includes a semaphore to prevent flooding the server with concurrent requests.
 /// </summary>
+/// <remarks>
+/// Creates a new LlamaServerClient with the specified concurrency limit.
+/// </remarks>
+/// <param name="serverInfo">Server connection info</param>
+/// <param name="httpClient">HTTP client (should be shared/reused)</param>
+/// <param name="logger">Logger</param>
+/// <param name="maxConcurrentRequests">Maximum concurrent requests to this server (default: 10)</param>
 public sealed class LlamaServerClient(
     ServerInfo serverInfo,
     HttpClient httpClient,
-    ILogger<LlamaServerClient> logger) : ILlamaServerClient
+    ILogger<LlamaServerClient> logger,
+    int maxConcurrentRequests = 10) : ILlamaServerClient, IDisposable
 {
     private readonly ServerInfo _serverInfo = serverInfo ?? throw new ArgumentNullException(nameof(serverInfo));
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     private readonly ILogger<LlamaServerClient> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly SemaphoreSlim _semaphore = new(maxConcurrentRequests, maxConcurrentRequests);
+    private bool _disposed;
 
     // ── Chat Completions (/v1/chat/completions) ───────────────────────────────
 
@@ -31,8 +42,17 @@ public sealed class LlamaServerClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return await PostAsync<ChatCompletionRequest, ChatCompletionResponse>(
-            "/v1/chat/completions", request, ct);
+        // Wait for semaphore to avoid flooding the server
+        await _semaphore.WaitAsync(ct);
+        try
+        {
+            return await PostAsync<ChatCompletionRequest, ChatCompletionResponse>(
+                "/v1/chat/completions", request, ct);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     // ── Anthropic-compatible (/v1/messages) ───────────────────────────────────
@@ -43,8 +63,16 @@ public sealed class LlamaServerClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        return await PostAsync<AnthropicMessageRequest, AnthropicMessageResponse>(
-            "/v1/messages", request, ct);
+        await _semaphore.WaitAsync(ct);
+        try
+        {
+            return await PostAsync<AnthropicMessageRequest, AnthropicMessageResponse>(
+                "/v1/messages", request, ct);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     // ── Props (/props) ────────────────────────────────────────────────────────
@@ -168,6 +196,16 @@ public sealed class LlamaServerClient(
         if (_serverInfo.ApiKey is { Length: > 0 } key)
             request.Headers.Authorization =
                 new AuthenticationHeaderValue("Bearer", key);
+    }
+
+    /// <summary>
+    /// Disposes the semaphore. The HttpClient is NOT disposed here as it should be managed externally.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _semaphore.Dispose();
     }
 }
 

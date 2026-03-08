@@ -16,14 +16,12 @@ public sealed class ExportScriptCommand(
     ILogger<ExportScriptCommand> logger,
     IAnsiConsole console,
     SettingsFileLoader settingsFileLoader,
-    ConfigurationMerger configurationMerger,
-    ShellScriptExporter exporter) : AsyncCommand<ExportScriptCommandSettings>
+    ConfigurationMerger configurationMerger) : AsyncCommand<ExportScriptCommandSettings>
 {
     private readonly ILogger<ExportScriptCommand> _logger = logger;
     private readonly IAnsiConsole _console = console;
     private readonly SettingsFileLoader _settingsFileLoader = settingsFileLoader;
     private readonly ConfigurationMerger _configurationMerger = configurationMerger;
-    private readonly ShellScriptExporter _exporter = exporter;
 
     public override async Task<int> ExecuteAsync(CommandContext context, ExportScriptCommandSettings settings, CancellationToken cancellationToken)
     {
@@ -56,7 +54,7 @@ public sealed class ExportScriptCommand(
                 _ => ShellTarget.Bash
             };
 
-            var script = _exporter.Export(resolved, target);
+            var script = ShellScriptExporter.Export(resolved, target);
 
             if (!string.IsNullOrEmpty(settings.OutputFile))
             {

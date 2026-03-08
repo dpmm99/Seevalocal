@@ -39,19 +39,15 @@ public sealed class AutoSetupTests
         if (!dotnetAvailable)
             return; // dotnet not installed — skip assertion
 
-        var factory = new CSharpCodingPipelineFactory(TestHelpers.LoggerFactory);
-        var result = await factory.EnsurePrerequisitesAsync(
-            TestHelpers.MakeEvalSetConfig("CSharpCoding"),
-            TestHelpers.MakeConfig(),
+        var result = await CSharpCodingPipelineFactory.EnsurePrerequisitesAsync(
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
     }
 
     [Fact]
-    public async Task TranslationFactory_EnsurePrerequisites_NoJudgeConfig_Fails()
+    public void TranslationFactory_EnsurePrerequisites_NoJudgeConfig_Fails()
     {
-        var factory = new TranslationPipelineFactory(TestHelpers.LoggerFactory);
         var config = new ResolvedConfig
         {
             Judge = null, // no judge configured
@@ -69,7 +65,7 @@ public sealed class AutoSetupTests
             }
         };
 
-        var result = factory.EnsurePrerequisites(evalSet, config);
+        var result = TranslationPipelineFactory.EnsurePrerequisites(evalSet, config);
 
         Assert.True(result.IsFailed);
         Assert.Contains(result.Errors, static e => e.Message.Contains("Judge endpoint is not configured"));

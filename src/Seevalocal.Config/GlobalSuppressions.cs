@@ -5,4 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Config.Loading.SettingsFileLoader.LoadAsync(System.String,System.Threading.CancellationToken)~System.Threading.Tasks.Task{FluentResults.Result{Seevalocal.Core.Models.PartialConfig}}")]
+[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "Just don't want to see this when there are more significant code suggestions to look at.", Scope = "module")]

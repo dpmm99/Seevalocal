@@ -7,14 +7,9 @@ namespace Seevalocal.UI.Services;
 /// <summary>
 /// Avalonia implementation of file picker service.
 /// </summary>
-public sealed class DefaultFilePickerService : IFilePickerService
+public sealed class DefaultFilePickerService(TopLevel? topLevel = null) : IFilePickerService
 {
-    private readonly TopLevel? _topLevel;
-
-    public DefaultFilePickerService(TopLevel? topLevel = null)
-    {
-        _topLevel = topLevel;
-    }
+    private readonly TopLevel? _topLevel = topLevel;
 
     public async Task<string?> ShowOpenFileDialogAsync(string title, string? filters = null, string? initialDirectory = null)
     {

@@ -1,7 +1,8 @@
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
+using Seevalocal.UI.Commands;
 
-namespace Seevalocal.UI.Commands;
+namespace Seevalocal.UI;
 
 /// <summary>
 /// Converts parsed CLI flags into a <see cref="PartialConfig"/> that can be layered
@@ -41,8 +42,8 @@ public static class CliSettingsAdapter
             };
         }
 
-        var serverConfig = (manage != null || s.Host != null || s.Port != null || model != null
-                            || s.ServerUrl != null || s.ApiKey != null)
+        var serverConfig = manage != null || s.Host != null || s.Port != null || model != null
+                            || s.ServerUrl != null || s.ApiKey != null
             ? new PartialServerConfig
             {
                 Manage = manage ?? false,
@@ -82,7 +83,7 @@ public static class CliSettingsAdapter
             : null;
 
         // Judge config uses ServerConfig for connection and properties for scoring
-        var judgeConfig = (s.JudgeUrl != null || s.JudgeModelFilePath != null || s.JudgeHfRepo != null)
+        var judgeConfig = s.JudgeUrl != null || s.JudgeModelFilePath != null || s.JudgeHfRepo != null
             ? new PartialJudgeConfig
             {
                 Manage = false,
@@ -105,7 +106,7 @@ public static class CliSettingsAdapter
             }
             : null;
 
-        var runMeta = (s.MaxConcurrent != null || s.StopOnFailure || s.ContinueOnFailure || s.TimeoutSeconds != null || s.RetryCount != null)
+        var runMeta = s.MaxConcurrent != null || s.StopOnFailure || s.ContinueOnFailure || s.TimeoutSeconds != null || s.RetryCount != null
             ? new PartialRunMeta
             {
                 MaxConcurrentEvals = s.MaxConcurrent,

@@ -19,7 +19,7 @@ public class CsvResultWriterTests : IDisposable
     }
 
     private static EvalResult MakeResult(string id, bool succeeded, params MetricValue[] metrics) =>
-        new EvalResult
+        new()
         {
             EvalItemId = id,
             EvalSetId = "test-set",

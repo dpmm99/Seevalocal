@@ -83,18 +83,18 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     public async Task<HashSet<string>> GetCompletedItemIdsAsync(string evalSetId, string phase, CancellationToken ct)
     {
         var completed = new HashSet<string>();
-        
+
         await using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE EvalSetId = @evalSetId AND Phase = @phase";
         cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
         cmd.Parameters.AddWithValue("@phase", phase);
-        
+
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             completed.Add(reader.GetString(0));
         }
-        
+
         return completed;
     }
 
@@ -104,18 +104,18 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     public async Task<IReadOnlyList<EvalResult>> GetResultsForPhaseAsync(string evalSetId, string phase, CancellationToken ct)
     {
         var results = new List<EvalResult>();
-        
+
         await using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT * FROM EvalResults WHERE EvalSetId = @evalSetId AND Phase = @phase";
         cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
         cmd.Parameters.AddWithValue("@phase", phase);
-        
+
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             results.Add(ReadResult(reader));
         }
-        
+
         return results;
     }
 
@@ -135,13 +135,13 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key, @value);
                 INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key2, @value2)
                 """;
-            
+
             var configJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
             cmd.Parameters.AddWithValue("@key", "startup_config");
             cmd.Parameters.AddWithValue("@value", configJson);
             cmd.Parameters.AddWithValue("@key2", "started_at");
             cmd.Parameters.AddWithValue("@value2", DateTimeOffset.UtcNow.ToString("O"));
-            
+
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
@@ -157,7 +157,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var configJson = await LoadMetadataAsync("startup_config", ct);
         if (string.IsNullOrEmpty(configJson)) return null;
-        
+
         return JsonSerializer.Deserialize<ResolvedConfig>(configJson);
     }
 
@@ -174,13 +174,13 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 INSERT INTO StageOutputs (EvalItemId, StageName, OutputKey, OutputValue, CompletedAt)
                 VALUES (@evalItemId, @stageName, @outputKey, @outputValue, @completedAt)
                 """;
-            
+
             cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
             cmd.Parameters.AddWithValue("@stageName", stageName);
             cmd.Parameters.AddWithValue("@outputKey", outputKey);
             cmd.Parameters.AddWithValue("@outputValue", outputValue is string s ? s : (outputValue != null ? JsonSerializer.Serialize(outputValue) : DBNull.Value));
             cmd.Parameters.AddWithValue("@completedAt", DateTimeOffset.UtcNow.ToString("O"));
-            
+
             await cmd.ExecuteNonQueryAsync(ct);
         }
         finally
@@ -207,18 +207,18 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     public async Task<Dictionary<string, object?>> GetStageOutputsAsync(string evalItemId, CancellationToken ct)
     {
         var outputs = new Dictionary<string, object?>();
-        
+
         await using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT StageName, OutputKey, OutputValue FROM StageOutputs WHERE EvalItemId = @evalItemId";
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
-        
+
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             var stageName = reader.GetString(0);
             var outputKey = reader.GetString(1);
             var key = $"{stageName}.{outputKey}";
-            
+
             if (reader.IsDBNull(2))
             {
                 outputs[key] = null;
@@ -237,7 +237,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 }
             }
         }
-        
+
         return outputs;
     }
 
@@ -441,7 +441,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             cmd.Parameters.AddWithValue("@key", "finalized");
             cmd.Parameters.AddWithValue("@value", "true");
             await cmd.ExecuteNonQueryAsync(ct);
-            
+
             _finalized = true;
         }
         finally
@@ -464,7 +464,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             Succeeded = reader.GetInt32("Succeeded") == 1,
             FailureReason = reader.IsDBNull("FailureReason") ? null : reader.GetString("FailureReason"),
             Metrics = JsonSerializer.Deserialize<List<MetricValue>>(reader.GetString("MetricsJson")) ?? [],
-            AllStageOutputs = JsonSerializer.Deserialize<Dictionary<string, object?>>(reader.GetString("AllStageOutputsJson")) ?? new Dictionary<string, object?>(),
+            AllStageOutputs = JsonSerializer.Deserialize<Dictionary<string, object?>>(reader.GetString("AllStageOutputsJson")) ?? [],
             RawLlmResponse = reader.IsDBNull("RawLlmResponse") ? null : reader.GetString("RawLlmResponse"),
             StartedAt = DateTimeOffset.Parse(reader.GetString("StartedAt")),
             DurationSeconds = reader.GetDouble("DurationSeconds")
@@ -481,7 +481,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         {
             _connection.Close();
             _connection.Dispose();
-            
+
             // Clear the SQLite connection pool to ensure all connections are released
             SqliteConnection.ClearAllPools();
         }

@@ -1,7 +1,7 @@
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace Seevalocal.UI;
+namespace Seevalocal.UI.Converters;
 
 /// <summary>
 /// Converts bool to "Managing locally" / "Connecting to existing" text.
@@ -68,8 +68,8 @@ public sealed class ThreeStateBoolConverter : IValueConverter
     {
         if (value is string s)
         {
-            if (s.ToLowerInvariant() == "true") return true;
-            if (s.ToLowerInvariant() == "false") return false;
+            if (s.Equals("true", StringComparison.InvariantCultureIgnoreCase)) return true;
+            if (s.Equals("false", StringComparison.InvariantCultureIgnoreCase)) return false;
         }
         return null; // unspecified
     }

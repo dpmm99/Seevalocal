@@ -21,7 +21,7 @@ public sealed class ParquetResultWriter(
     private readonly bool _writeResultsParquet = writeResultsParquet;
     private readonly ILogger<ParquetResultWriter> _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ParquetResultWriter>.Instance;
     private readonly List<EvalResult> _buffer = [];
-    private readonly object _bufferLock = new();
+    private readonly Lock _bufferLock = new();
 
     public Task WriteResultAsync(EvalResult result, CancellationToken ct)
     {
@@ -38,7 +38,7 @@ public sealed class ParquetResultWriter(
 
         List<EvalResult> snapshot;
         lock (_bufferLock)
-            snapshot = new List<EvalResult>(_buffer);
+            snapshot = [.. _buffer];
 
         if (snapshot.Count == 0) return;
 
@@ -69,7 +69,7 @@ public sealed class ParquetResultWriter(
         var filePath = Path.Combine(_outputDir, "results.parquet");
 
         await using var fileStream = File.Create(filePath);
-        using var writer = await ParquetWriter.CreateAsync(schema, fileStream, cancellationToken: ct)
+        await using var writer = await ParquetWriter.CreateAsync(schema, fileStream, cancellationToken: ct)
             .ConfigureAwait(false);
 
         using var groupWriter = writer.CreateRowGroup();

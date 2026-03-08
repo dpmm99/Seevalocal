@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Lifecycle;
 using Xunit;
 
 namespace Seevalocal.Server.Tests;
@@ -17,7 +16,7 @@ public sealed class LlamaServerArgBuilderTests
     [Fact]
     public void Build_NullSettings_EmitsHostAndPort()
     {
-        var args = _builder.Build(new LlamaServerSettings(), DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), DefaultServerConfig());
 
         _ = args.Should().Contain("--host").And.Contain("127.0.0.1");
         _ = args.Should().Contain("--port").And.Contain("8080");
@@ -27,7 +26,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_NullableInts_AreOmitted()
     {
         var settings = new LlamaServerSettings(); // all null
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         _ = args.Should().NotContain("-c");
         _ = args.Should().NotContain("-b");
@@ -39,7 +38,7 @@ public sealed class LlamaServerArgBuilderTests
     [Fact]
     public void Build_NullableDoubles_AreOmitted()
     {
-        var args = _builder.Build(new LlamaServerSettings(), DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), DefaultServerConfig());
 
         _ = args.Should().NotContain("--temp");
         _ = args.Should().NotContain("--top-p");
@@ -53,7 +52,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ContextWindowTokens_EmitsCorrectFlag()
     {
         var settings = new LlamaServerSettings { ContextWindowTokens = 4096 };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-c", "4096");
     }
@@ -62,7 +61,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_BatchSizeTokens_EmitsCorrectFlag()
     {
         var settings = new LlamaServerSettings { BatchSizeTokens = 512 };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-b", "512");
     }
@@ -71,7 +70,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_GpuLayerCount_EmitsCorrectFlag()
     {
         var settings = new LlamaServerSettings { GpuLayerCount = 32 };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-ngl", "32");
     }
@@ -80,7 +79,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_SamplingTemperature_UsesInvariantCulture()
     {
         var settings = new LlamaServerSettings { SamplingTemperature = 0.7 };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         // Must use "." not "," as decimal separator regardless of locale
         AssertFlagValue(args, "--temp", "0.7");
@@ -90,7 +89,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_Seed_EmitsCorrectFlag()
     {
         var settings = new LlamaServerSettings { Seed = 42 };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "--seed", "42");
     }
@@ -101,7 +100,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_FlashAttentionTrue_EmitsFaOn()
     {
         var settings = new LlamaServerSettings { EnableFlashAttention = true };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-fa", "on");
     }
@@ -110,7 +109,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_FlashAttentionFalse_EmitsFaOff()
     {
         var settings = new LlamaServerSettings { EnableFlashAttention = false };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-fa", "off");
     }
@@ -119,7 +118,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_FlashAttentionNull_OmitsFaFlag()
     {
         var settings = new LlamaServerSettings { EnableFlashAttention = null };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         _ = args.Should().NotContain("-fa");
     }
@@ -128,7 +127,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ContinuousBatchingTrue_EmitsEnableFlag()
     {
         var settings = new LlamaServerSettings { EnableContinuousBatching = true };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         _ = args.Should().Contain("--cont-batching");
         _ = args.Should().NotContain("--no-cont-batching");
@@ -138,7 +137,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ContinuousBatchingFalse_EmitsDisableFlag()
     {
         var settings = new LlamaServerSettings { EnableContinuousBatching = false };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         _ = args.Should().Contain("--no-cont-batching");
         _ = args.Should().NotContain("--cont-batching");
@@ -148,7 +147,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ContextShiftNull_OmitsFlag()
     {
         var settings = new LlamaServerSettings { EnableContextShift = null };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         _ = args.Should().NotContain("--context-shift");
         _ = args.Should().NotContain("--no-context-shift");
@@ -160,8 +159,8 @@ public sealed class LlamaServerArgBuilderTests
         var settingsOn = new LlamaServerSettings { EnableJinja = true };
         var settingsOff = new LlamaServerSettings { EnableJinja = false };
 
-        _ = _builder.Build(settingsOn, DefaultServerConfig()).Should().Contain("--jinja");
-        _ = _builder.Build(settingsOff, DefaultServerConfig()).Should().Contain("--no-jinja");
+        _ = LlamaServerArgBuilder.Build(settingsOn, DefaultServerConfig()).Should().Contain("--jinja");
+        _ = LlamaServerArgBuilder.Build(settingsOff, DefaultServerConfig()).Should().Contain("--no-jinja");
     }
 
     // ── KV cache types ────────────────────────────────────────────────────────
@@ -170,7 +169,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_KvCacheTypes_EmitCorrectly()
     {
         var settings = new LlamaServerSettings { KvCacheTypeK = "q8_0", KvCacheTypeV = "q4_0" };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "-ctk", "q8_0");
         AssertFlagValue(args, "-ctv", "q4_0");
@@ -182,7 +181,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ChatTemplate_EmitsCorrectly()
     {
         var settings = new LlamaServerSettings { ChatTemplate = "chatml" };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "--chat-template", "chatml");
     }
@@ -191,7 +190,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ReasoningFormat_EmitsCorrectly()
     {
         var settings = new LlamaServerSettings { ReasoningFormat = "deepseek" };
-        var args = _builder.Build(settings, DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(settings, DefaultServerConfig());
 
         AssertFlagValue(args, "--reasoning-format", "deepseek");
     }
@@ -202,7 +201,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ApiKeyInConfig_EmitsApiKeyFlag()
     {
         var config = new ServerConfig { Manage = true, Host = "127.0.0.1", Port = 8080, ApiKey = "sk-test" };
-        var args = _builder.Build(new LlamaServerSettings(), config);
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
 
         AssertFlagValue(args, "--api-key", "sk-test");
     }
@@ -210,7 +209,7 @@ public sealed class LlamaServerArgBuilderTests
     [Fact]
     public void Build_NoApiKey_OmitsFlag()
     {
-        var args = _builder.Build(new LlamaServerSettings(), DefaultServerConfig());
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), DefaultServerConfig());
 
         _ = args.Should().NotContain("--api-key");
     }
@@ -224,7 +223,7 @@ public sealed class LlamaServerArgBuilderTests
         {
             Model = new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = "/models/test.gguf" }
         };
-        var args = _builder.Build(new LlamaServerSettings(), config);
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
 
         AssertFlagValue(args, "-m", "/models/test.gguf");
     }
@@ -241,7 +240,7 @@ public sealed class LlamaServerArgBuilderTests
                 HfQuant = "q4_k_m",
             }
         };
-        var args = _builder.Build(new LlamaServerSettings(), config);
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
 
         AssertFlagValue(args, "--hf-repo", "unsloth/phi-4-GGUF");
         AssertFlagValue(args, "--hf-file", "q4_k_m");
@@ -254,7 +253,7 @@ public sealed class LlamaServerArgBuilderTests
     public void Build_ExtraArgs_AppendedVerbatim()
     {
         var config = DefaultServerConfig() with { ExtraArgs = ["--lora", "/loras/my.bin"] };
-        var args = _builder.Build(new LlamaServerSettings(), config);
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
 
         var list = args.ToList();
         var loraIdx = list.IndexOf("--lora");

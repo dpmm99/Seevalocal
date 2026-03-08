@@ -65,8 +65,7 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         var judgeStage = new JudgeStage(
             _loggerFactory.CreateLogger<JudgeStage>(),
             promptTemplate: judgePromptTemplate ?? DefaultTemplates.TranslationJudgeTemplate,
-            maxScore: 10,
-            passThresholdRatio: 0.6);
+            minScore: 0, maxScore: 10);
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
         {
@@ -78,7 +77,7 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
     /// <summary>
     /// Checks that the judge endpoint is configured and that the data directories exist.
     /// </summary>
-    public FluentResults.Result EnsurePrerequisites(
+    public static FluentResults.Result EnsurePrerequisites(
         EvalSetConfig evalSetConfig,
         ResolvedConfig resolvedConfig)
     {

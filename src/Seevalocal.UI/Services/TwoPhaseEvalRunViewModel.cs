@@ -3,8 +3,9 @@ using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Metrics.Models;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
+using Seevalocal.UI.Commands;
 using Seevalocal.UI.ViewModels;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -149,7 +150,8 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 // Create HTTP client for primary server
                 var primaryHttpClient = CreateHttpClient(primaryServerInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                _primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger);
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                _primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
             }
 
             // Create the primary phase orchestrator now that server is ready
@@ -281,7 +283,8 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
             var judgeHttpClient = CreateHttpClient(judgeServerInfo);
             var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-            judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger);
+            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+            judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
         }
 
         try
@@ -304,7 +307,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
             StatusLine = "Phase 2: Judge evaluation...";
             OnPropertyChanged(nameof(StatusLine));
-            var maxConcurrent = Config.Run.MaxConcurrentEvals ?? 4;
+            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
             await judgeOrchestrator.RunAsync(maxConcurrent, ct);
 
             _logger.LogInformation("Judge phase completed");

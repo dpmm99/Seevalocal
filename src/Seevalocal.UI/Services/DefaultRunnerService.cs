@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Pipelines;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Seevalocal.UI.ViewModels;
 using System.Net.Http.Headers;
@@ -16,27 +16,18 @@ namespace Seevalocal.UI.Services;
 /// Judge server is only started after primary phase completes (for locally managed judges).
 /// Supports checkpoint/resume from SQLite database.
 /// </summary>
-public sealed class DefaultRunnerService : IRunnerService
+public sealed class DefaultRunnerService(
+    PipelineRegistry pipelineRegistry,
+    DataSources.DataSourceFactory dataSourceFactory,
+    IServerLifecycleService serverLifecycleService,
+    ILoggerFactory loggerFactory,
+    ILogger<DefaultRunnerService> logger) : IRunnerService
 {
-    private readonly PipelineRegistry _pipelineRegistry;
-    private readonly DataSources.DataSourceFactory _dataSourceFactory;
-    private readonly IServerLifecycleService _serverLifecycleService;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly ILogger<DefaultRunnerService> _logger;
-
-    public DefaultRunnerService(
-        PipelineRegistry pipelineRegistry,
-        DataSources.DataSourceFactory dataSourceFactory,
-        IServerLifecycleService serverLifecycleService,
-        ILoggerFactory loggerFactory,
-        ILogger<DefaultRunnerService> logger)
-    {
-        _pipelineRegistry = pipelineRegistry;
-        _dataSourceFactory = dataSourceFactory;
-        _serverLifecycleService = serverLifecycleService;
-        _loggerFactory = loggerFactory;
-        _logger = logger;
-    }
+    private readonly PipelineRegistry _pipelineRegistry = pipelineRegistry;
+    private readonly DataSources.DataSourceFactory _dataSourceFactory = dataSourceFactory;
+    private readonly IServerLifecycleService _serverLifecycleService = serverLifecycleService;
+    private readonly ILoggerFactory _loggerFactory = loggerFactory;
+    private readonly ILogger<DefaultRunnerService> _logger = logger;
 
     public async Task<int> RunAsync(
         ResolvedConfig config,
@@ -115,7 +106,7 @@ public sealed class DefaultRunnerService : IRunnerService
         }
 
         // 5. Create the primary phase orchestrator (server will be started in StartAsync)
-        var orchestratorLogger = _loggerFactory.CreateLogger<Core.Pipeline.PipelineOrchestrator>();
+        var orchestratorLogger = _loggerFactory.CreateLogger<PipelineOrchestrator>();
         var progress = new Progress<Core.EvalProgress>();
 
         // Create external server client if not managing server
@@ -131,7 +122,8 @@ public sealed class DefaultRunnerService : IRunnerService
             };
             var primaryHttpClient = CreateHttpClient(primaryServerInfo);
             var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-            primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger);
+            var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
+            primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
         }
 
         // Create external judge client if the original pipeline has JudgeStage
@@ -154,7 +146,8 @@ public sealed class DefaultRunnerService : IRunnerService
                 };
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger);
+                var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
+                judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
                 _logger.LogInformation("Created judge client for external judge at {BaseUrl}", judgeBaseUrl);
             }
             else

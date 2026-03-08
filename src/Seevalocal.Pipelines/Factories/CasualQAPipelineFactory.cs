@@ -56,8 +56,8 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         var opts = evalSetConfig.PipelineOptions ?? new Dictionary<string, object?>();
 
         var enableExactMatch = ParseBool(opts, "enableExactMatch", false);
+        var judgeMinScore = ParseInt(opts, "judgeMinScore", 0);
         var judgeMaxScore = ParseInt(opts, "judgeMaxScore", 10);
-        var passThresholdRatio = ParseDouble(opts, "judgePassThresholdRatio", 0.6);
 
         List<IEvalStage> stages =
         [
@@ -70,8 +70,7 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         stages.Add(new JudgeStage(
             _loggerFactory.CreateLogger<JudgeStage>(),
             promptTemplate: DefaultTemplates.CasualQAJudgeTemplate,
-            maxScore: judgeMaxScore,
-            passThresholdRatio: passThresholdRatio));
+            minScore: judgeMinScore, maxScore: judgeMaxScore));
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
         {
@@ -101,19 +100,6 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
                 int i => i,
                 double d => (int)d,
                 string s when int.TryParse(s, out var p) => p,
-                _ => fallback,
-            };
-    }
-
-    private static double ParseDouble(IReadOnlyDictionary<string, object?> opts, string key, double fallback)
-    {
-        return !opts.TryGetValue(key, out var raw) || raw is null
-            ? fallback
-            : raw switch
-            {
-                double d => d,
-                int i => i,
-                string s when double.TryParse(s, out var p) => p,
                 _ => fallback,
             };
     }

@@ -21,7 +21,7 @@ public class PromptTemplateEngineTests
         var engine = new PromptTemplateEngine();
         var item = MakeItem();
         var config = new DataSourceConfig();
-        var result = engine.Apply(item, config);
+        var result = PromptTemplateEngine.Apply(item, config);
         Assert.Same(item, result); // record equality but reference-same if no change
     }
 
@@ -34,7 +34,7 @@ public class PromptTemplateEngineTests
         {
             PromptTemplate = "Translate: {prompt}\nTranslation:"
         };
-        var result = engine.Apply(item, config);
+        var result = PromptTemplateEngine.Apply(item, config);
         Assert.Equal("Translate: bonjour\nTranslation:", result.UserPrompt);
     }
 
@@ -44,7 +44,7 @@ public class PromptTemplateEngineTests
         var engine = new PromptTemplateEngine();
         var item = MakeItem(prompt: "original");
         var config = new DataSourceConfig { PromptTemplate = "Wrapped: {prompt}" };
-        var result = engine.Apply(item, config);
+        var result = PromptTemplateEngine.Apply(item, config);
         Assert.Equal("original", result.Metadata["originalPrompt"]);
     }
 
@@ -57,7 +57,7 @@ public class PromptTemplateEngineTests
         {
             PromptTemplate = "[{id}] {prompt} / {expected}"
         };
-        var result = engine.Apply(item, config);
+        var result = PromptTemplateEngine.Apply(item, config);
         Assert.Equal("[item-42] Q / A", result.UserPrompt);
     }
 
@@ -70,7 +70,7 @@ public class PromptTemplateEngineTests
         {
             PromptTemplate = "Translate to {meta.lang}: {prompt}"
         };
-        var result = engine.Apply(item, config);
+        var result = PromptTemplateEngine.Apply(item, config);
         Assert.Equal("Translate to fr: text", result.UserPrompt);
     }
 
@@ -80,7 +80,7 @@ public class PromptTemplateEngineTests
         var engine = new PromptTemplateEngine();
         var item = MakeItem();
         var config = new DataSourceConfig { PromptTemplate = "No placeholder here" };
-        _ = Assert.Throws<ArgumentException>(() => engine.Apply(item, config));
+        _ = Assert.Throws<ArgumentException>(() => PromptTemplateEngine.Apply(item, config));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class PromptTemplateEngineTests
         };
         // We need meta for this to work meaningfully
         var itemWithMeta = item with { Metadata = new Dictionary<string, string> { ["role"] = "French" } };
-        var result = engine.Apply(itemWithMeta, config);
+        var result = PromptTemplateEngine.Apply(itemWithMeta, config);
         Assert.Equal("You are a French assistant.", result.SystemPrompt);
     }
 }

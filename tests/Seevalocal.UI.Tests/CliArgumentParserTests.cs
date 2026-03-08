@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Seevalocal.Core.Models;
+using Seevalocal.UI;
 using Seevalocal.UI.Commands;
 using Xunit;
 

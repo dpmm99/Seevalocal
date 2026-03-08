@@ -4,7 +4,7 @@ using Seevalocal.Core.Models;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 
-namespace Seevalocal.Server.Download;
+namespace Seevalocal.Server;
 
 /// <summary>
 /// Downloads and caches llama-server binaries from GitHub Releases.
@@ -197,7 +197,7 @@ public sealed class LlamaServerDownloader(HttpClient httpClient, ILogger<LlamaSe
             fileStream.Close();
             _logger.LogDebug("Archive downloaded to {TempPath}, extracting...", tempArchivePath);
 
-            await ExtractBinaryAsync(tempArchivePath, asset.Name, binaryName, targetDirectory, ct);
+            await ExtractBinaryAsync(tempArchivePath, asset.Name, targetDirectory, ct);
 
             return !File.Exists(binaryPath)
                 ? (Result<string>)Result.Fail(
@@ -217,7 +217,7 @@ public sealed class LlamaServerDownloader(HttpClient httpClient, ILogger<LlamaSe
     }
 
     private static async Task ExtractBinaryAsync(
-        string archivePath, string assetName, string binaryName, string targetDirectory, CancellationToken ct)
+        string archivePath, string assetName, string targetDirectory, CancellationToken ct)
     {
         if (assetName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
@@ -251,7 +251,7 @@ public sealed class LlamaServerDownloader(HttpClient httpClient, ILogger<LlamaSe
 
     // ── Verification ──────────────────────────────────────────────────────────
 
-    private async Task<bool> VerifyBinaryAsync(string binaryPath, CancellationToken ct)
+    private static async Task<bool> VerifyBinaryAsync(string binaryPath, CancellationToken ct)
     {
         try
         {

@@ -23,7 +23,7 @@ public sealed class CsvResultWriter(
     private readonly bool _writeSummaryCsv = writeSummaryCsv;
     private readonly ILogger<CsvResultWriter> _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<CsvResultWriter>.Instance;
     private readonly List<EvalResult> _buffer = [];
-    private readonly object _bufferLock = new();
+    private readonly Lock _bufferLock = new();
 
     public Task WriteResultAsync(EvalResult result, CancellationToken ct)
     {
@@ -40,7 +40,7 @@ public sealed class CsvResultWriter(
 
         List<EvalResult> snapshot;
         lock (_bufferLock)
-            snapshot = new List<EvalResult>(_buffer);
+            snapshot = [.. _buffer];
 
         if (snapshot.Count == 0) return;
 

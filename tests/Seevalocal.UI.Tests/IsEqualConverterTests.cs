@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Seevalocal.Core.Models;
+using Seevalocal.UI.Converters;
 using Xunit;
 
 namespace Seevalocal.UI.Tests;

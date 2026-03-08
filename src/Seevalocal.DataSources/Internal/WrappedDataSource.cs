@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
 
@@ -14,8 +13,7 @@ namespace Seevalocal.DataSources.Internal;
 internal sealed class WrappedDataSource(
     IDataSource inner,
     DataSourceConfig config,
-    PromptTemplateEngine templateEngine,
-    ILogger logger) : IDataSource
+    PromptTemplateEngine templateEngine) : IDataSource
 {
     private readonly IDataSource _inner = inner;
     private readonly DataSourceConfig _config = config;
@@ -81,7 +79,7 @@ internal sealed class WrappedDataSource(
             ? throw new InvalidDataException(
                 $"[DataSource:{Name}] Duplicate ID '{item.Id}' detected. " +
                 "All IDs within a dataset must be unique.")
-            : _templateEngine.Apply(item, _config);
+            : PromptTemplateEngine.Apply(item, _config);
     }
 
     public Task<int?> GetCountAsync(CancellationToken ct)

@@ -5,7 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Metrics.Writers.CsvResultWriter.FinalizeAsync(System.Threading.CancellationToken)~System.Threading.Tasks.Task")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Metrics.Writers.JsonResultWriter.WriteResultAsync(Seevalocal.Core.EvalResult,System.Threading.CancellationToken)~System.Threading.Tasks.Task")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Metrics.Writers.JsonResultWriter.WriteSummaryAsync(Seevalocal.Metrics.Models.RunSummary,System.Threading.CancellationToken)~System.Threading.Tasks.Task")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Metrics.Writers.ParquetResultWriter.FinalizeAsync(System.Threading.CancellationToken)~System.Threading.Tasks.Task")]
+[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "Just don't want to see this when there are more significant code suggestions to look at.", Scope = "module")]

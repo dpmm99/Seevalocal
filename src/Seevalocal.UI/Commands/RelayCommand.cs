@@ -1,6 +1,6 @@
 using System.Windows.Input;
 
-namespace Seevalocal.UI;
+namespace Seevalocal.UI.Commands;
 
 /// <summary>
 /// Simple relay command implementation for MVVM.

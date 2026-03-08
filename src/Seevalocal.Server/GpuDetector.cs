@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
 using System.Runtime.InteropServices;
 
-namespace Seevalocal.Server.Detection;
+namespace Seevalocal.Server;
 
 /// <summary>
 /// Detects the available GPU type on the current host.
@@ -23,7 +23,7 @@ public sealed class GpuDetector(ILogger<GpuDetector> logger)
     public async Task<GpuKind> DetectAsync(CancellationToken cancellationToken = default)
     {
         // 1. Check for multi-GPU setup with mixed vendors (NVIDIA + AMD)
-        var gpuInfo = await DetectAllGpusAsync(cancellationToken);
+        var gpuInfo = DetectAllGpus();
         if (gpuInfo.HasMixedVendor)
         {
             // Multi-GPU setup with at least one non-puny GPU - prefer Vulkan for better compatibility
@@ -34,7 +34,7 @@ public sealed class GpuDetector(ILogger<GpuDetector> logger)
         }
 
         // 2. CUDA check (only if no mixed vendor setup)
-        if (await HasCudaAsync(cancellationToken))
+        if (gpuInfo.NvidiaCount > 0 && await HasCudaAsync(cancellationToken))
         {
             _logger.LogInformation("GPU detection: CUDA detected");
             return GpuKind.Cuda;
@@ -62,7 +62,7 @@ public sealed class GpuDetector(ILogger<GpuDetector> logger)
     /// <summary>
     /// Detects all GPUs and their vendors/VRAM using LibreHardwareMonitorLib.
     /// </summary>
-    private async Task<GpuInfo> DetectAllGpusAsync(CancellationToken ct)
+    private GpuInfo DetectAllGpus()
     {
         var info = new GpuInfo();
         var gpus = new List<GpuDevice>();
@@ -177,7 +177,7 @@ public sealed class GpuDetector(ILogger<GpuDetector> logger)
         }
     }
 
-    private bool HasVulkan()
+    private static bool HasVulkan()
     {
         // Check for Vulkan runtime DLL/SO
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Seevalocal.UI.ViewModels"
              xmlns:local="using:Seevalocal.UI"
+             xmlns:convert="using:Seevalocal.UI.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="Seevalocal.UI.Views.WizardView"
              x:DataType="vm:MainWindowViewModel">
@@ -12,7 +13,7 @@
     <!-- Step Indicator - Only visible when this view is visible -->
     <Border Grid.Row="0" Background="#1E1E2E" CornerRadius="8" Padding="16" Margin="0,0,0,16">
       <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ContinueRun}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ContinueRun}}">
           <TextBlock Text="0"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -20,7 +21,7 @@
           <TextBlock Text="Resume from checkpoint" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ModelAndServer}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ModelAndServer}}">
           <TextBlock Text="1"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -28,7 +29,7 @@
           <TextBlock Text="Configure llama-server" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PerformanceSettings}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PerformanceSettings}}">
           <TextBlock Text="2"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -36,7 +37,7 @@
           <TextBlock Text="GPU &amp; memory" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
           <TextBlock Text="3"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -44,7 +45,7 @@
           <TextBlock Text="Evaluation data" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
           <TextBlock Text="4"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -52,7 +53,7 @@
           <TextBlock Text="LLM-as-judge" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
           <TextBlock Text="5"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -60,7 +61,7 @@
           <TextBlock Text="Results &amp; export" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
           <TextBlock Text="6"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
@@ -75,7 +76,7 @@
       <ScrollViewer HorizontalScrollBarVisibility="Disabled">
         <Grid>
           <!-- Step 0: Continue Run -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ContinueRun}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ContinueRun}}">
             <TextBlock Text="Continue Existing Run" Classes="stepTitle"/>
             <TextBlock Text="Resume a previous evaluation run from a checkpoint database."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -103,7 +104,7 @@
           </StackPanel>
 
           <!-- Step 1: Model & Server -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ModelAndServer}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ModelAndServer}}">
             <TextBlock Text="Model &amp; Server Configuration" Classes="stepTitle"/>
             <TextBlock Text="Choose how to run llama-server - either manage it locally or connect to an existing instance."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -165,7 +166,7 @@
           </StackPanel>
 
           <!-- Step 2: Performance Settings -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PerformanceSettings}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PerformanceSettings}}">
             <TextBlock Text="Performance Settings" Classes="stepTitle"/>
             <TextBlock Text="Configure llama-server options. Leave blank to use server defaults."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -330,7 +331,7 @@
             </Border>
           </StackPanel>
           <!-- Step 3: Evaluation Dataset -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
             <TextBlock Text="Evaluation Dataset" Classes="stepTitle"/>
             <TextBlock Text="Select the pipeline type and configure your evaluation dataset."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -372,7 +373,7 @@
           </StackPanel>
 
           <!-- Step 4: Scoring -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
             <TextBlock Text="Scoring Configuration" Classes="stepTitle"/>
             <TextBlock Text="Configure LLM-as-judge for automated scoring of evaluation results."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -597,7 +598,7 @@
           </StackPanel>
 
           <!-- Step 5: Output -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
             <TextBlock Text="Output Configuration" Classes="stepTitle"/>
             <TextBlock Text="Configure where results are saved and export options."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -615,14 +616,14 @@
 
               <TextBlock Grid.Row="2" Grid.Column="0" Text="Shell Dialect:" Classes="label" VerticalAlignment="Center"/>
               <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="16">
-                <RadioButton Content="Bash" GroupName="shell" IsChecked="{Binding ShellTarget, Converter={x:Static local:ShellTargetConverter.Instance}, ConverterParameter=Bash}"/>
-                <RadioButton Content="PowerShell" GroupName="shell" IsChecked="{Binding ShellTarget, Converter={x:Static local:ShellTargetConverter.Instance}, ConverterParameter=PowerShell}"/>
+                <RadioButton Content="Bash" GroupName="shell" IsChecked="{Binding ShellTarget, Converter={x:Static convert:ShellTargetConverter.Instance}, ConverterParameter=Bash}"/>
+                <RadioButton Content="PowerShell" GroupName="shell" IsChecked="{Binding ShellTarget, Converter={x:Static convert:ShellTargetConverter.Instance}, ConverterParameter=PowerShell}"/>
               </StackPanel>
             </Grid>
           </StackPanel>
 
           <!-- Step 6: Review & Run -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
             <TextBlock Text="Review &amp; Run" Classes="stepTitle"/>
             <TextBlock Text="Review your configuration before starting the evaluation."
                        Classes="helpText" Margin="0,0,0,16"/>
@@ -631,7 +632,7 @@
               <StackPanel Spacing="12">
                 <TextBlock Text="Server Configuration" Classes="sectionHeader"/>
                 <TextBlock Classes="reviewLabel">
-                  Mode: <Run Text="{Binding ManageServer, Converter={x:Static local:BoolToTextConverter.Instance}}"/>
+                  Mode: <Run Text="{Binding ManageServer, Converter={x:Static convert:BoolToTextConverter.Instance}}"/>
                 </TextBlock>
                 <TextBlock Classes="reviewLabel">
                   Pipeline: <Run Text="{Binding PipelineName}"/>
@@ -640,7 +641,7 @@
                   Output: <Run Text="{Binding OutputDir}"/>
                 </TextBlock>
                 <TextBlock Classes="reviewLabel">
-                  Judge: <Run Text="{Binding EnableJudge, Converter={x:Static local:BoolToYesNoConverter.Instance}}"/>
+                  Judge: <Run Text="{Binding EnableJudge, Converter={x:Static convert:BoolToYesNoConverter.Instance}}"/>
                 </TextBlock>
               </StackPanel>
             </Border>

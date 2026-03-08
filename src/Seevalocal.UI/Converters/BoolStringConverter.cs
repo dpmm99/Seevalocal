@@ -1,7 +1,7 @@
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace Seevalocal.UI.ViewModels;
+namespace Seevalocal.UI.Converters;
 
 /// <summary>
 /// Converts between bool and string ("true"/"false") for checkbox bindings.
@@ -14,7 +14,7 @@ public sealed class BoolStringConverter : IValueConverter
     {
         if (value is string s)
         {
-            return s.ToLowerInvariant() == "true";
+            return s.Equals("true", StringComparison.InvariantCultureIgnoreCase);
         }
         return value is bool b && b;
     }

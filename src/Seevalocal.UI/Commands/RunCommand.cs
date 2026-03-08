@@ -3,7 +3,7 @@ using Seevalocal.Config.Loading;
 using Seevalocal.Config.Merging;
 using Seevalocal.Config.Validation;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -30,10 +30,10 @@ public sealed class RunCommand(
 
     public override Task<int> ExecuteAsync(CommandContext context, RunCommandSettings settings, CancellationToken cancellationToken)
     {
-        return ExecuteAsyncInternal(context, settings, cancellationToken);
+        return ExecuteAsyncInternal(settings, cancellationToken);
     }
 
-    private async Task<int> ExecuteAsyncInternal(CommandContext context, RunCommandSettings settings, CancellationToken cancellationToken)
+    private async Task<int> ExecuteAsyncInternal(RunCommandSettings settings, CancellationToken cancellationToken)
     {
         try
         {

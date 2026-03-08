@@ -2,7 +2,7 @@ using Avalonia.Data.Converters;
 using Avalonia.Media;
 using System.Globalization;
 
-namespace Seevalocal.UI;
+namespace Seevalocal.UI.Converters;
 
 /// <summary>
 /// Converts null to true, non-null to false (or inverted with parameter).

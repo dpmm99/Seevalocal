@@ -12,7 +12,7 @@ namespace Seevalocal.DataSources;
 public sealed class DataSourceFactory(ILoggerFactory loggerFactory)
 {
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
-    private readonly PromptTemplateEngine _templateEngine = new PromptTemplateEngine();
+    private readonly PromptTemplateEngine _templateEngine = new();
 
     /// <summary>
     /// Creates an IDataSource from the given config.
@@ -43,11 +43,11 @@ public sealed class DataSourceFactory(ILoggerFactory loggerFactory)
             DataSourceKind.ParquetFile
                 => new ParquetDataSource(name, config, logger),
             DataSourceKind.InlineList
-                => new InlineDataSource(name, config, logger),
+                => new InlineDataSource(name, config),
             _ => throw new ArgumentOutOfRangeException(nameof(config.Kind), config.Kind, "Unknown DataSourceKind")
         };
 
-        var wrapped = new WrappedDataSource(inner, config, _templateEngine, logger);
+        var wrapped = new WrappedDataSource(inner, config, _templateEngine);
         return Result.Ok<IDataSource>(wrapped);
     }
 }

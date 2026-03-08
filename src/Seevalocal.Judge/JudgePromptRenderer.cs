@@ -8,10 +8,10 @@ namespace Seevalocal.Judge;
 /// in a judge prompt template. Unknown {metadata.KEY} placeholders are replaced with an empty
 /// string and a warning is logged.
 /// </summary>
-public sealed class JudgePromptRenderer(ILogger<JudgePromptRenderer> logger)
+public sealed partial class JudgePromptRenderer(ILogger<JudgePromptRenderer> logger)
 {
     private static readonly Regex MetadataPlaceholder =
-        new(@"\{metadata\.(?<key>[^}]+)\}", RegexOptions.Compiled);
+        MetadataPlaceholderRegex();
 
     private readonly ILogger<JudgePromptRenderer> _logger = logger;
 
@@ -37,7 +37,7 @@ public sealed class JudgePromptRenderer(ILogger<JudgePromptRenderer> logger)
             .Replace("{expectedOutput}", expectedOutput, StringComparison.Ordinal)
             .Replace("{actualOutput}", actualOutput, StringComparison.Ordinal);
 
-        result = MetadataPlaceholder.Replace(result, match =>
+        return MetadataPlaceholder.Replace(result, match =>
         {
             var key = match.Groups["key"].Value;
             if (metadata.TryGetValue(key, out var value))
@@ -48,7 +48,8 @@ public sealed class JudgePromptRenderer(ILogger<JudgePromptRenderer> logger)
                 key);
             return string.Empty;
         });
-
-        return result;
     }
+
+    [GeneratedRegex(@"\{metadata\.(?<key>[^}]+)\}", RegexOptions.Compiled)]
+    private static partial Regex MetadataPlaceholderRegex();
 }

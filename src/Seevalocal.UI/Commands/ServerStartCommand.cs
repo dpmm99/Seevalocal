@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.ComponentModel;

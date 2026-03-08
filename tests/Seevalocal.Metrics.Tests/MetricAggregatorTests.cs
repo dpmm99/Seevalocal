@@ -8,7 +8,7 @@ namespace Seevalocal.Metrics.Tests;
 public class MetricAggregatorTests
 {
     private static EvalResult MakeResult(string id, bool succeeded, params MetricValue[] metrics) =>
-        new EvalResult
+        new()
         {
             EvalItemId = id,
             EvalSetId = "test-set",
@@ -19,22 +19,26 @@ public class MetricAggregatorTests
         };
 
     private static MetricValue IntMetric(string name, int value, string? stage = null) =>
-        new MetricValue { Name = name, Value = new MetricScalar.IntMetric(value), SourceStage = stage };
+        new()
+        { Name = name, Value = new MetricScalar.IntMetric(value), SourceStage = stage };
 
     private static MetricValue DoubleMetric(string name, double value, string? stage = null) =>
-        new MetricValue { Name = name, Value = new MetricScalar.DoubleMetric(value), SourceStage = stage };
+        new()
+        { Name = name, Value = new MetricScalar.DoubleMetric(value), SourceStage = stage };
 
     private static MetricValue BoolMetric(string name, bool value) =>
-        new MetricValue { Name = name, Value = new MetricScalar.BoolMetric(value) };
+        new()
+        { Name = name, Value = new MetricScalar.BoolMetric(value) };
 
     private static MetricValue StringMetric(string name, string value) =>
-        new MetricValue { Name = name, Value = new MetricScalar.StringMetric(value) };
+        new()
+        { Name = name, Value = new MetricScalar.StringMetric(value) };
 
     [Fact]
     public void Aggregate_EmptyResults_ReturnsZeroCounts()
     {
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", []);
+        var summary = MetricAggregator.Aggregate("set1", []);
         Assert.Equal(0, summary.TotalItemCount);
         Assert.Equal(0, summary.SucceededItemCount);
         Assert.Equal(0, summary.FailedItemCount);
@@ -52,7 +56,7 @@ public class MetricAggregatorTests
             MakeResult("3", false),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         Assert.Equal(3, summary.TotalItemCount);
         Assert.Equal(2, summary.SucceededItemCount);
         Assert.Equal(1, summary.FailedItemCount);
@@ -68,7 +72,7 @@ public class MetricAggregatorTests
             .ToList();
 
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
 
         Assert.True(summary.MetricSummaries.ContainsKey("llmLatencySeconds"));
         var m = summary.MetricSummaries["llmLatencySeconds"];
@@ -92,7 +96,7 @@ public class MetricAggregatorTests
             MakeResult("3", true, IntMetric("promptTokenCount", 30)),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         var m = summary.MetricSummaries["promptTokenCount"];
         Assert.Equal(MetricType.Int, m.Type);
         Assert.Equal(10.0, m.MinValue!.Value, precision: 9);
@@ -111,7 +115,7 @@ public class MetricAggregatorTests
             MakeResult("4", true, BoolMetric("exactMatch", true)),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         var m = summary.MetricSummaries["exactMatch"];
         Assert.Equal(MetricType.Bool, m.Type);
         Assert.Equal(3, m.TrueCount);
@@ -128,7 +132,7 @@ public class MetricAggregatorTests
             MakeResult("2", true, BoolMetric("exactMatch", false)),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         var m = summary.MetricSummaries["exactMatch"];
         Assert.Equal(0, m.TrueCount);
         Assert.Equal(2, m.FalseCount);
@@ -146,7 +150,7 @@ public class MetricAggregatorTests
             MakeResult("4", true, StringMetric("language", "en")),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         var m = summary.MetricSummaries["language"];
         Assert.Equal(MetricType.String, m.Type);
         Assert.Equal("en", m.ModeValue);
@@ -160,7 +164,7 @@ public class MetricAggregatorTests
             MakeResult("1", true, DoubleMetric("llmLatencySeconds", 5.0)),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         var m = summary.MetricSummaries["llmLatencySeconds"];
         Assert.Equal(0.0, m.StdDevValue!.Value);
     }
@@ -176,7 +180,7 @@ public class MetricAggregatorTests
                 BoolMetric("exactMatch", true)),
         };
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("set1", results);
+        var summary = MetricAggregator.Aggregate("set1", results);
         Assert.Contains("promptTokenCount", summary.MetricSummaries.Keys);
         Assert.Contains("llmLatencySeconds", summary.MetricSummaries.Keys);
         Assert.Contains("exactMatch", summary.MetricSummaries.Keys);
@@ -186,7 +190,7 @@ public class MetricAggregatorTests
     public void Aggregate_EvalSetIdPreserved()
     {
         var agg = new MetricAggregator();
-        var summary = agg.Aggregate("my-eval-set", []);
+        var summary = MetricAggregator.Aggregate("my-eval-set", []);
         Assert.Equal("my-eval-set", summary.EvalSetId);
     }
 }

@@ -14,7 +14,7 @@ namespace Seevalocal.Judge;
 /// </para>
 /// <para>Thread-safe; a single instance is shared across all concurrently running eval items.</para>
 /// </summary>
-public sealed class JudgeStage(
+public sealed partial class JudgeStage(
     JudgeConfig config,
     JudgePromptRenderer renderer,
     JudgeResponseParser parser,
@@ -47,18 +47,18 @@ public sealed class JudgeStage(
     /// </summary>
     /// <param name="logger">Logger for the stage</param>
     /// <param name="promptTemplate">Jinja-style template for judge prompt</param>
+    /// <param name="minScore">Minimum score value (default 0)</param>
     /// <param name="maxScore">Maximum score value (default 10)</param>
-    /// <param name="passThresholdRatio">Ratio of maxScore required to pass (default 0.6)</param>
     public JudgeStage(
         ILogger<JudgeStage> logger,
         string promptTemplate,
-        int maxScore = 10,
-        double passThresholdRatio = 0.6)
+        int minScore = 0,
+        int maxScore = 10)
         : this(
             new JudgeConfig
             {
                 JudgePromptTemplate = promptTemplate,
-                ScoreMinValue = 0,
+                ScoreMinValue = minScore,
                 ScoreMaxValue = maxScore,
                 JudgeSamplingTemperature = 0.0,
                 JudgeMaxTokenCount = 512,
@@ -205,10 +205,10 @@ public sealed class JudgeStage(
     // Helpers
     // ──────────────────────────────────────────────────────────────────────
 
-    private static IReadOnlyDictionary<string, object?> BuildOutputs(
+    private static Dictionary<string, object?> BuildOutputs(
         string judgeText,
         ParsedJudgeResponse parsed) =>
-        new Dictionary<string, object?>
+        new()
         {
             ["JudgeStage.rawResponse"] = judgeText,
             ["JudgeStage.score"] = parsed.NormalizedScore,
@@ -251,7 +251,7 @@ public sealed class JudgeStage(
             numericScore = directScore;
         }
         // Try to extract score from JSON
-        else if (raw.Trim().StartsWith("{", StringComparison.Ordinal))
+        else if (raw.Trim().StartsWith('{'))
         {
             try
             {
@@ -277,7 +277,7 @@ public sealed class JudgeStage(
         }
 
         // Try to extract first number from narrative response
-        var match = System.Text.RegularExpressions.Regex.Match(raw, @"\d+(?:\.\d+)?");
+        var match = NumericScorePattern().Match(raw);
         if (match.Success && double.TryParse(match.Value, out var extractedScore))
         {
             var ratio = maxScore > 0 ? extractedScore / maxScore : 0;
@@ -314,4 +314,7 @@ public sealed class JudgeStage(
         // Default: return null if no score could be extracted
         return null;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\d+(?:\.\d+)?")]
+    private static partial System.Text.RegularExpressions.Regex NumericScorePattern();
 }

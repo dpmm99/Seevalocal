@@ -76,7 +76,7 @@ public class ParquetResultWriterTests : IDisposable
     }
 
     private static EvalResult MakeResult(string id, params MetricValue[] metrics) =>
-        new EvalResult
+        new()
         {
             EvalItemId = id,
             EvalSetId = "test-set",

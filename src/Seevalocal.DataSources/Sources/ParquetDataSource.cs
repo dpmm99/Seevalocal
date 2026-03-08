@@ -21,7 +21,7 @@ internal sealed class ParquetDataSource(string name, DataSourceConfig config, IL
         var filePath = Path.GetFullPath(_config.DataFilePath!);
         _logger.LogDebug("[{Name}] Loading Parquet from {Path}", Name, filePath);
 
-        using var fileStream = File.OpenRead(filePath);
+        await using var fileStream = File.OpenRead(filePath);
         using var reader = await ParquetReader.CreateAsync(fileStream, cancellationToken: ct);
 
         var globalIndex = 0;
@@ -96,7 +96,7 @@ internal sealed class ParquetDataSource(string name, DataSourceConfig config, IL
         var filePath = Path.GetFullPath(_config.DataFilePath);
         if (!File.Exists(filePath)) return null;
 
-        using var fileStream = File.OpenRead(filePath);
+        await using var fileStream = File.OpenRead(filePath);
         using var reader = await ParquetReader.CreateAsync(fileStream, cancellationToken: ct);
         long total = 0;
         for (var rg = 0; rg < reader.RowGroupCount; rg++)

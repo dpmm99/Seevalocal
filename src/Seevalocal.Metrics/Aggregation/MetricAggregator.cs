@@ -15,7 +15,7 @@ public sealed class MetricAggregator
     /// Bool metrics: true count, false count, true ratio.
     /// Numeric metrics: min, max, mean, median, p25, p75, p95, stddev, sum.
     /// </summary>
-    public RunSummary Aggregate(
+    public static RunSummary Aggregate(
         string evalSetId,
         IReadOnlyList<EvalResult> results,
         string runName = "",

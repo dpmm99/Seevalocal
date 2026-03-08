@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -43,7 +43,7 @@ public sealed class ServerCheckCommand(
                 httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {settings.ApiKey}");
 
             var clientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-            var client = new LlamaServerClient(info, httpClient, clientLogger);
+            var client = new LlamaServerClient(info, httpClient, clientLogger, 10);
 
             var healthResult = await client.GetHealthAsync(cancellationToken);
 

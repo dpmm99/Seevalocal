@@ -2,7 +2,7 @@ using Avalonia.Data.Converters;
 using Seevalocal.Core.Models;
 using System.Globalization;
 
-namespace Seevalocal.UI;
+namespace Seevalocal.UI.Converters;
 
 /// <summary>
 /// Converts between ShellTarget? enum and boolean for radio button binding.

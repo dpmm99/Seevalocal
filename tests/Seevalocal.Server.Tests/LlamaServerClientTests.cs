@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using RichardSzalay.MockHttp;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Client;
 using Seevalocal.Server.Models;
 using System.Net;
 using Xunit;

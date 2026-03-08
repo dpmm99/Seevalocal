@@ -70,18 +70,29 @@ public sealed class CapturingStage(string name = "CapturingStage") : IEvalStage
 
 /// <summary>
 /// A result collector that captures all results in memory.
+/// Thread-safe for concurrent collection.
 /// </summary>
 public sealed class CapturingResultCollector : IResultCollector
 {
     private readonly List<EvalResult> _results = [];
+    private readonly Lock _lock = new();
 
     public Task CollectAsync(EvalResult result, CancellationToken ct)
     {
-        _results.Add(result);
+        lock (_lock)
+        {
+            _results.Add(result);
+        }
         return Task.CompletedTask;
     }
 
     public Task FinalizeAsync(CancellationToken ct) => Task.CompletedTask;
 
-    public IReadOnlyList<EvalResult> GetResults() => _results.AsReadOnly();
+    public IReadOnlyList<EvalResult> GetResults()
+    {
+        lock (_lock)
+        {
+            return _results.AsReadOnly();
+        }
+    }
 }

@@ -5,6 +5,7 @@
         xmlns:vm="using:Seevalocal.UI.ViewModels"
         xmlns:views="using:Seevalocal.UI.Views"
         xmlns:local="using:Seevalocal.UI"
+        xmlns:converters="using:Seevalocal.UI.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
         x:Class="Seevalocal.UI.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -39,35 +40,35 @@
         <TextBlock Text="Seevalocal" FontSize="20" FontWeight="Bold" 
                    Foreground="#89B4FA" Margin="0,8,0,16"/>
         
-        <Button Classes="navButton" 
-                Classes.active="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Wizard}}"
+        <Button Classes="navButton"
+                Classes.active="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Wizard}}"
                 Command="{Binding NavigateToWizardCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="📝" FontSize="16"/>
             <TextBlock Text="Setup Wizard" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
-        
+
         <Button Classes="navButton"
-                Classes.active="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.RunDashboard}}"
+                Classes.active="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.RunDashboard}}"
                 Command="{Binding NavigateToDashboardCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="▶️" FontSize="16"/>
             <TextBlock Text="Run Dashboard" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
-        
+
         <Button Classes="navButton"
-                Classes.active="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Results}}"
+                Classes.active="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Results}}"
                 Command="{Binding NavigateToResultsCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="📊" FontSize="16"/>
             <TextBlock Text="Results Viewer" VerticalAlignment="Center"/>
           </StackPanel>
         </Button>
-        
+
         <Button Classes="navButton"
-                Classes.active="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"
+                Classes.active="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"
                 Command="{Binding NavigateToSettingsCommand}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <TextBlock Text="⚙️" FontSize="16"/>
@@ -104,20 +105,20 @@
       <Grid RowDefinitions="*">
         <!-- Wizard View -->
         <views:WizardView Grid.Row="0" x:Name="WizardView"
-                          IsVisible="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Wizard}}"/>
+                          IsVisible="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Wizard}}"/>
 
         <!-- Run Dashboard View -->
         <views:RunDashboardView Grid.Row="0" x:Name="RunDashboardView"
-            IsVisible="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.RunDashboard}}"/>
+            IsVisible="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.RunDashboard}}"/>
 
         <!-- Results View -->
         <views:ResultsView Grid.Row="0" x:Name="ResultsView"
-            IsVisible="{Binding CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Results}}"/>
+            IsVisible="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Results}}"/>
 
         <!-- Settings View -->
         <views:SettingsView Grid.Row="0" x:Name="SettingsView"
             DataContext="{Binding SettingsViewModel}"
-            IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static local:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"/>
+            IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"/>
       </Grid>
     </Border>
   </Grid>

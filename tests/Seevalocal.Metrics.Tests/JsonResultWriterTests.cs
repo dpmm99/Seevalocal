@@ -18,7 +18,7 @@ public class JsonResultWriterTests : IDisposable
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
-    private static EvalResult MakeResult(string id = "001") => new EvalResult
+    private static EvalResult MakeResult(string id = "001") => new()
     {
         EvalItemId = id,
         EvalSetId = "test-set",

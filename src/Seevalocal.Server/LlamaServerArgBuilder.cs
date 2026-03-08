@@ -1,6 +1,6 @@
 using Seevalocal.Core.Models;
 
-namespace Seevalocal.Server.Lifecycle;
+namespace Seevalocal.Server;
 
 /// <summary>
 /// Converts <see cref="LlamaServerSettings"/> and <see cref="ServerConfig"/> into a
@@ -12,7 +12,7 @@ public sealed class LlamaServerArgBuilder
     /// <summary>
     /// Builds the full argument list for launching llama-server.
     /// </summary>
-    public string[] Build(LlamaServerSettings settings, ServerConfig serverConfig)
+    public static string[] Build(LlamaServerSettings settings, ServerConfig serverConfig)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(serverConfig);

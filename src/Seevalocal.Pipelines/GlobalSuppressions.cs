@@ -5,6 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Pipelines.PipelineOrchestrator.RunAsync(System.Int32,System.Threading.CancellationToken)~System.Threading.Tasks.Task{System.Collections.Generic.IReadOnlyList{Seevalocal.Core.EvalResult}}")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Pipelines.Setup.CommonAutoSetup.PrintSummary(Seevalocal.Core.Models.ResolvedConfig,System.String,Microsoft.Extensions.Logging.ILogger)")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Pipelines.Setup.CommonAutoSetup.RunAsync(Seevalocal.Core.Models.ResolvedConfig,Microsoft.Extensions.Logging.ILogger,System.Boolean,System.Threading.CancellationToken)~System.Threading.Tasks.Task{FluentResults.Result}")]
+[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "Just don't want to see this when there are more significant code suggestions to look at.", Scope = "module")]

@@ -52,84 +52,84 @@ public sealed class ShellScriptExporterTests
     [Fact]
     public void Export_Bash_ContainsShebang()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().StartWith("#!/usr/bin/env bash");
     }
 
     [Fact]
     public void Export_Bash_ContainsRunName()
     {
-        var script = _exporter.Export(ManagedConfig("my-run"), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig("my-run"), ShellTarget.Bash);
         _ = script.Should().Contain("my-run");
     }
 
     [Fact]
     public void Export_Bash_ContainsModelPath()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("/models/phi-4-Q4_K_M.gguf");
     }
 
     [Fact]
     public void Export_Bash_ContainsContextWindowFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--ctx").And.Contain("8192");
     }
 
     [Fact]
     public void Export_Bash_ContainsParallelSlotFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--parallel").And.Contain("4");
     }
 
     [Fact]
     public void Export_Bash_ContainsFlashAttentionFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--flash-attn");
     }
 
     [Fact]
     public void Export_Bash_ContainsTemperatureFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--temp").And.Contain("0.2");
     }
 
     [Fact]
     public void Export_Bash_ContainsSeevalocalCommand()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("seevalocal");
     }
 
     [Fact]
     public void Export_Bash_ContainsManageFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--manage");
     }
 
     [Fact]
     public void Export_Bash_Unmanaged_ContainsNoManageFlag()
     {
-        var script = _exporter.Export(UnmanagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(UnmanagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("--no-manage");
     }
 
     [Fact]
     public void Export_Bash_Unmanaged_UsesBaseUrl()
     {
-        var script = _exporter.Export(UnmanagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(UnmanagedConfig(), ShellTarget.Bash);
         _ = script.Should().Contain("http://remote:8080");
     }
 
     [Fact]
     public void Export_Bash_Unmanaged_DoesNotContainManageFlag()
     {
-        var script = _exporter.Export(UnmanagedConfig(), ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(UnmanagedConfig(), ShellTarget.Bash);
         _ = script.Should().NotContain("--manage");
     }
 
@@ -149,7 +149,7 @@ public sealed class ShellScriptExporterTests
             },
         };
 
-        var script = _exporter.Export(config, ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(config, ShellTarget.Bash);
 
         _ = script.Should().NotContain("--parallel");
         _ = script.Should().NotContain("--ctx");
@@ -163,28 +163,28 @@ public sealed class ShellScriptExporterTests
     [Fact]
     public void Export_PowerShell_ContainsSeevalocalCommand()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.PowerShell);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.PowerShell);
         _ = script.Should().Contain("seevalocal");
     }
 
     [Fact]
     public void Export_PowerShell_ContainsModelPath()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.PowerShell);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.PowerShell);
         _ = script.Should().Contain("/models/phi-4-Q4_K_M.gguf");
     }
 
     [Fact]
     public void Export_PowerShell_ContainsManageFlag()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.PowerShell);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.PowerShell);
         _ = script.Should().Contain("--manage");
     }
 
     [Fact]
     public void Export_PowerShell_Unmanaged_NoManageFlag()
     {
-        var script = _exporter.Export(UnmanagedConfig(), ShellTarget.PowerShell);
+        var script = ShellScriptExporter.Export(UnmanagedConfig(), ShellTarget.PowerShell);
         _ = script.Should().NotContain("--manage");
         _ = script.Should().Contain("--no-manage");
     }
@@ -192,7 +192,7 @@ public sealed class ShellScriptExporterTests
     [Fact]
     public void Export_PowerShell_NoLlamaServerCommands()
     {
-        var script = _exporter.Export(ManagedConfig(), ShellTarget.PowerShell);
+        var script = ShellScriptExporter.Export(ManagedConfig(), ShellTarget.PowerShell);
         _ = script.Should().NotContain("Start-Process");
         _ = script.Should().NotContain("Stop-Process");
         _ = script.Should().NotContain("-PassThru");
@@ -220,7 +220,7 @@ public sealed class ShellScriptExporterTests
             },
         };
 
-        var script = _exporter.Export(config, ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(config, ShellTarget.Bash);
 
         _ = script.Should().Contain("'");  // single-quoted
         _ = script.Should().Contain("/my models/phi 4.gguf");
@@ -249,7 +249,7 @@ public sealed class ShellScriptExporterTests
             },
         };
 
-        var script = _exporter.Export(config, ShellTarget.Bash);
+        var script = ShellScriptExporter.Export(config, ShellTarget.Bash);
 
         _ = script.Should().Contain("--hf-repo").And.Contain("bartowski/phi-4-GGUF");
     }

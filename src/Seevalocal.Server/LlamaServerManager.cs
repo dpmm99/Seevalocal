@@ -1,21 +1,18 @@
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Client;
-using Seevalocal.Server.Detection;
-using Seevalocal.Server.Download;
 using Seevalocal.Server.Models;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
-namespace Seevalocal.Server.Lifecycle;
+namespace Seevalocal.Server;
 
 /// <summary>
 /// Manages the full lifecycle of a llama-server process.
 /// If <see cref="ServerConfig.Manage"/> is false, simply validates connectivity.
 /// Thread-safe after <see cref="StartAsync"/> completes.
 /// </summary>
-public sealed class LlamaServerManager(
+public sealed partial class LlamaServerManager(
     LlamaServerArgBuilder argBuilder,
     LlamaServerDownloader downloader,
     GpuDetector gpuDetector,
@@ -97,7 +94,7 @@ public sealed class LlamaServerManager(
             ProgressPercent = 10,
             Message = "Building server arguments..."
         });
-        var args = _argBuilder.Build(settings, config);
+        var args = LlamaServerArgBuilder.Build(settings, config);
         _logger.LogDebug("llama-server args: {Args}", string.Join(" ", args));
 
         // 3. Start process (15-25%)
@@ -120,7 +117,7 @@ public sealed class LlamaServerManager(
         _process = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
 
         // Regex to match loading dots (llama-server outputs "." during model load)
-        var dotPattern = new Regex(@"^\.*$", RegexOptions.Compiled);
+        var dotPattern = LoadingDotsPattern();
 
         _process.OutputDataReceived += (_, e) =>
         {
@@ -392,6 +389,9 @@ public sealed class LlamaServerManager(
             _process.Dispose();
         }
     }
+
+    [GeneratedRegex(@"^\.*$", RegexOptions.Compiled)]
+    private static partial Regex LoadingDotsPattern();
 }
 
 /// <summary>

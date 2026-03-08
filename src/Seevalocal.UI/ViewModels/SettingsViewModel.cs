@@ -1,4 +1,5 @@
 using Seevalocal.Core.Models;
+using Seevalocal.UI.Commands;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;

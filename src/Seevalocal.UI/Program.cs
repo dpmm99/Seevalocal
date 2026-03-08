@@ -5,9 +5,7 @@ using Seevalocal.Config.Merging;
 using Seevalocal.Config.Validation;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Pipelines.Factories;
-using Seevalocal.Server.Detection;
-using Seevalocal.Server.Download;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using Serilog;
@@ -160,7 +158,7 @@ file class TypeRegistrar(IServiceCollection services) : ITypeRegistrar
     public ITypeResolver Build() => new TypeResolver(_services.BuildServiceProvider());
     public void Register(Type service, Type implementation) => _services.AddSingleton(service, implementation);
     public void RegisterInstance(Type service, object implementation) => _services.AddSingleton(service, implementation);
-    public void RegisterLazy(Type service, Func<object> factory) => _services.AddSingleton(service, provider => factory());
+    public void RegisterLazy(Type service, Func<object> factory) => _services.AddSingleton(service, _ => factory());
 }
 
 file class TypeResolver(IServiceProvider provider) : ITypeResolver, IDisposable

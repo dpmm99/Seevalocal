@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Client;
+using Seevalocal.Server;
 using System.Diagnostics;
 using System.Threading.Channels;
 
@@ -10,44 +10,296 @@ namespace Seevalocal.Core.Pipeline;
 /// Orchestrates the evaluation of all items in a dataset.
 /// Manages concurrency, retry, progress reporting, and result collection.
 /// Includes resilience to llama-server crashes with automatic retry and circuit breaker.
-/// Supports two-phase execution (primary evaluation, then judge evaluation) and checkpoint/resume.
+/// Supports checkpoint/resume via PersistentResultCollector.
 /// </summary>
+/// <remarks>
+/// <para><strong>Concurrency Control:</strong></para>
+/// <para>
+/// Concurrency is now controlled by semaphores inside each <c>LlamaServerClient</c> instance,
+/// not by this orchestrator. Each client has its own semaphore (default: 10 concurrent requests),
+/// which is acquired before making HTTP calls to the llama-server and released after receiving
+/// the response.
+/// </para>
+/// <para>
+/// This design ensures:
+/// </para>
+/// <list type="bullet">
+/// <item>One semaphore per server instance (primary and judge have separate semaphores)</item>
+/// <item>Natural lifetime - semaphore lifetime matches client/server lifetime</item>
+/// <item>Automatic deduplication - one client = one semaphore per server</item>
+/// <item>Cleaner separation - orchestrator orchestrates, client handles server communication</item>
+/// </list>
+/// <para>
+/// The <c>maxConcurrentEvals</c> parameter passed to <c>RunAsync</c> now controls the number of
+/// concurrent eval items being processed, while the client's semaphore controls concurrent
+/// requests to each server. For best results, these should be similar values.
+/// </para>
+/// </remarks>
+/// <remarks>
+/// Creates a full-featured orchestrator with checkpoint/resume support.
+/// </remarks>
 public sealed class PipelineOrchestrator(
     IDataSource dataSource,
     EvalPipeline pipeline,
-    EvalSetConfig evalSetConfig,
+    EvalSetConfig? evalSetConfig,
     ResolvedConfig resolvedConfig,
-    LlamaServerClient primaryClient,
+    LlamaServerClient? primaryClient,
     LlamaServerClient? judgeClient,
     IResultCollector resultCollector,
-    IProgress<EvalProgress> progress,
+    IProgress<EvalProgress>? progress,
     ILogger<PipelineOrchestrator> logger,
     HashSet<string>? completedItemIds = null,
-    string phase = "primary")
+    string phase = "primary",
+    bool returnResults = false)
 {
     private readonly IDataSource _dataSource = dataSource;
     private readonly EvalPipeline _pipeline = pipeline;
-    private readonly EvalSetConfig _evalSetConfig = evalSetConfig;
+    private readonly EvalSetConfig? _evalSetConfig = evalSetConfig;
     private readonly ResolvedConfig _resolvedConfig = resolvedConfig;
-    private readonly LlamaServerClient _primaryClient = primaryClient;
+    private readonly LlamaServerClient? _primaryClient = primaryClient;
     private readonly LlamaServerClient? _judgeClient = judgeClient;
     private readonly IResultCollector _resultCollector = resultCollector;
-    private readonly IProgress<EvalProgress> _progress = progress;
+    private readonly IProgress<EvalProgress>? _progress = progress;
+    private Action<EvalProgress>? _progressEvent;  // Not readonly - used by event
     private readonly ILogger<PipelineOrchestrator> _logger = logger;
-    private readonly HashSet<string>? _completedItemIds = completedItemIds;  // Items already done in this phase
-    private readonly string _phase = phase;  // "primary" or "judge"
+    private readonly HashSet<string>? _completedItemIds = completedItemIds;
+    private readonly string _phase = phase;
+    private readonly bool _returnResults = returnResults;
 
     // Circuit breaker state for server crash resilience
     private int _consecutiveServerCrashes;
-    private const int MaxConsecutiveServerCrashes = 5;  // Stop after 5 consecutive crashes
-    private readonly object _crashLock = new();
+    private const int MaxConsecutiveServerCrashes = 5;
+    private readonly Lock _crashLock = new();
 
     /// <summary>
-    /// Run all items concurrently, up to maxConcurrentCount.
-    /// Skips items that were already completed (checkpoint resume).
-    /// Returns when all items are complete or cancellation is requested.
+    /// Progress event for simple scenarios (non-checkpoint).
     /// </summary>
-    public async Task RunAsync(int maxConcurrentCount, CancellationToken ct)
+    public event Action<EvalProgress>? ProgressChanged
+    {
+        add => _progressEvent += value;
+        remove => _progressEvent -= value;
+    }
+
+    /// <summary>
+    /// Creates a simple orchestrator without checkpoint/resume support.
+    /// </summary>
+    public PipelineOrchestrator(
+        EvalPipeline pipeline,
+        IDataSource dataSource,
+        IResultCollector collector,
+        ResolvedConfig config,
+        LlamaServerClient primaryClient,
+        LlamaServerClient? judgeClient,
+        ILogger<PipelineOrchestrator> logger)
+        : this(
+            dataSource,
+            pipeline,
+            null,  // evalSetConfig
+            config,
+            primaryClient,
+            judgeClient,
+            collector,
+            null,  // progress (use event instead)
+            logger,
+            null,  // completedItemIds
+            "single",
+            returnResults: true)
+    {
+    }
+
+    /// <summary>
+    /// Run all items concurrently. Returns results if configured for simple mode.
+    /// </summary>
+    public async Task<IReadOnlyList<EvalResult>> RunAsync(
+        int maxConcurrentEvals,
+        CancellationToken ct)
+    {
+        if (_returnResults)
+        {
+            // Simple mode: return results at end
+            return await RunSimpleAsync(maxConcurrentEvals, ct);
+        }
+        else
+        {
+            // Checkpoint mode: results via collector, void return
+            await RunWithCheckpointAsync(maxConcurrentEvals, ct);
+            return _resultCollector.GetResults();
+        }
+    }
+
+    /// <summary>
+    /// Simple execution without checkpoint/resume.
+    /// </summary>
+    private async Task<IReadOnlyList<EvalResult>> RunSimpleAsync(int maxConcurrentEvals, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Pipeline '{PipelineName}' starting. MaxConcurrency={MaxConcurrency}",
+            _pipeline.PipelineName, maxConcurrentEvals);
+
+        var totalCount = await _dataSource.GetCountAsync(ct);
+        var overallSw = Stopwatch.StartNew();
+        var completedCount = 0;
+        var completedTokensPerSecondSum = 0.0;
+        var completedWithTokens = 0;
+
+        var channel = Channel.CreateUnbounded<EvalItem>(
+            new UnboundedChannelOptions { SingleWriter = true });
+
+        // Initial progress report
+        _progressEvent?.Invoke(new EvalProgress
+        {
+            EvalItemId = "",
+            Succeeded = false,
+            CompletedCount = 0,
+            TotalCount = totalCount ?? -1,
+            ElapsedSeconds = 0,
+            EstimatedRemainingSeconds = 60 * (totalCount ?? 0),
+            AverageCompletionTokensPerSecond = 0
+        });
+
+        // Producer: stream items into channel
+        var producer = Task.Run(async () =>
+        {
+            try
+            {
+                var itemsWritten = 0;
+                await foreach (var item in _dataSource.GetItemsAsync(ct))
+                {
+                    await channel.Writer.WriteAsync(item, ct);
+                    itemsWritten++;
+                }
+                _logger.LogDebug("Producer wrote {ItemsWritten} items to channel", itemsWritten);
+                channel.Writer.Complete();
+            }
+            catch (OperationCanceledException)
+            {
+                channel.Writer.Complete();
+                _logger.LogInformation("Producer cancelled");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Producer encountered an error");
+                channel.Writer.Complete(ex);
+            }
+        }, ct);
+
+        var semaphore = new SemaphoreSlim(maxConcurrentEvals, maxConcurrentEvals);
+        List<Task> consumerTasks = [];
+        var itemsRead = 0;
+
+        await foreach (var item in channel.Reader.ReadAllAsync(ct))
+        {
+            await semaphore.WaitAsync(ct);
+
+            var capturedItem = item;
+            itemsRead++;
+            _logger.LogDebug("Consumer read item {ItemNumber}: {ItemId}", itemsRead, capturedItem.Id);
+            consumerTasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await RunItemSimpleAsync(capturedItem, ct);
+
+                    await _resultCollector.CollectAsync(result, ct);
+
+                    var done = Interlocked.Increment(ref completedCount);
+
+                    // Estimate tokens/s for progress
+                    var tpsMetric = result.Metrics.FirstOrDefault(m => m.Name == "promptTokensPerSecond");
+                    double? avgTps = null;
+                    if (tpsMetric?.Value is MetricScalar.DoubleMetric d)
+                    {
+                        completedWithTokens++;
+                        completedTokensPerSecondSum += d.Value;
+                        avgTps = completedTokensPerSecondSum / completedWithTokens;
+                    }
+
+                    var elapsed = overallSw.Elapsed.TotalSeconds;
+                    double? remaining = totalCount.HasValue && done > 0
+                        ? (elapsed / done) * (totalCount.Value - done)
+                        : null;
+
+                    _progressEvent?.Invoke(new EvalProgress
+                    {
+                        EvalItemId = capturedItem.Id,
+                        Succeeded = result.Succeeded,
+                        CompletedCount = done,
+                        TotalCount = totalCount ?? -1,
+                        ElapsedSeconds = elapsed,
+                        EstimatedRemainingSeconds = remaining,
+                        AverageCompletionTokensPerSecond = avgTps
+                    });
+
+                    _logger.LogDebug(
+                        "Pipeline '{PipelineName}' completed item '{ItemId}' in {DurationSeconds:F2}s. Succeeded={Succeeded}",
+                        _pipeline.PipelineName, capturedItem.Id, result.DurationSeconds, result.Succeeded);
+                }
+                catch (Exception ex)
+                {
+                    // Log the exception but don't rethrow - we want to continue processing other items
+                    _logger.LogError(ex, "Pipeline '{PipelineName}' failed to process item '{ItemId}'",
+                        _pipeline.PipelineName, capturedItem.Id);
+                    
+                    // Create a failed result so the item is still counted
+                    var failedResult = new EvalResult
+                    {
+                        EvalItemId = capturedItem.Id,
+                        EvalSetId = _evalSetConfig?.Id ?? "",
+                        Succeeded = false,
+                        FailureReason = ex.Message,
+                        Metrics = [],
+                        AllStageOutputs = new Dictionary<string, object?>(),
+                        StartedAt = DateTimeOffset.UtcNow,
+                        DurationSeconds = 0
+                    };
+                    
+                    await _resultCollector.CollectAsync(failedResult, ct);
+                    _ = Interlocked.Increment(ref completedCount);
+                }
+                finally
+                {
+                    _ = semaphore.Release();
+                }
+            }, ct));
+        }
+
+        _logger.LogDebug("Consumer finished reading {ItemsRead} items from channel, waiting for {TaskCount} tasks", itemsRead, consumerTasks.Count);
+        await producer;
+        _logger.LogDebug("Producer completed");
+        await Task.WhenAll(consumerTasks);
+        _logger.LogDebug("All {TaskCount} consumer tasks completed", consumerTasks.Count);
+        await _resultCollector.FinalizeAsync(ct);
+
+        overallSw.Stop();
+        _logger.LogInformation(
+            "Pipeline '{PipelineName}' finished. {CompletedCount} items in {DurationSeconds:F2}s",
+            _pipeline.PipelineName, completedCount, overallSw.Elapsed.TotalSeconds);
+
+        return _resultCollector.GetResults();
+    }
+
+    /// <summary>
+    /// Run item without retry/circuit breaker (simple mode).
+    /// </summary>
+    private async Task<EvalResult> RunItemSimpleAsync(EvalItem item, CancellationToken ct)
+    {
+        var context = new EvalStageContext
+        {
+            Item = item,
+            Config = _resolvedConfig,
+            PrimaryClient = _primaryClient,
+            JudgeClient = _judgeClient,
+            CancellationToken = ct
+        };
+
+        var continueOnStageFailure = _resolvedConfig.Run?.ContinueOnEvalFailure ?? true;
+        return await _pipeline.RunItemAsync(context, continueOnStageFailure, evalSetId: "", ct: ct);
+    }
+
+    /// <summary>
+    /// Full execution with checkpoint/resume, retry, and circuit breaker.
+    /// </summary>
+    private async Task RunWithCheckpointAsync(int maxConcurrentCount, CancellationToken ct)
     {
         var runSw = Stopwatch.StartNew();
 
@@ -57,13 +309,13 @@ public sealed class PipelineOrchestrator(
 
         _logger.LogInformation(
             "Orchestrator starting: EvalSet={EvalSetId}, Pipeline={PipelineName}, Phase={Phase}, MaxConcurrent={MaxConcurrentCount}, TotalItems={TotalItems}, Skipped={SkippedCount}",
-            _evalSetConfig.Id, _pipeline.PipelineName, _phase, maxConcurrentCount, effectiveTotal?.ToString() ?? "unknown", skippedCount);
+            _evalSetConfig?.Id ?? "unknown", _pipeline.PipelineName, _phase, maxConcurrentCount, effectiveTotal?.ToString() ?? "unknown", skippedCount);
 
         // Set result collector on pipeline for checkpoint saving
         if (_resultCollector is PersistentResultCollector persistentCollector)
         {
             _pipeline.ResultCollector = persistentCollector;
-            
+
             // Save startup parameters for primary phase
             if (_phase == "primary")
             {
@@ -123,7 +375,7 @@ public sealed class PipelineOrchestrator(
 
         var consumerTasks = Enumerable
             .Range(0, maxConcurrentCount)
-            .Select(_ => ConsumeAsync(channel.Reader, semaphore, effectiveTotal, runSw, ct, () => Interlocked.Increment(ref localCompletedCount), processingTasks))
+            .Select(_ => ConsumeAsync(channel.Reader, semaphore, effectiveTotal, runSw, () => Interlocked.Increment(ref localCompletedCount), processingTasks, ct))
             .ToArray();
 
         await Task.WhenAll([producerTask, .. consumerTasks]);
@@ -134,7 +386,7 @@ public sealed class PipelineOrchestrator(
         runSw.Stop();
         _logger.LogInformation(
             "Orchestrator finished: EvalSet={EvalSetId}, Phase={Phase}, Completed={CompletedCount}, Skipped={SkippedCount}, Elapsed={ElapsedSeconds:F2}s",
-            _evalSetConfig.Id, _phase, localCompletedCount, skippedCount, runSw.Elapsed.TotalSeconds);
+            _evalSetConfig?.Id ?? "unknown", _phase, localCompletedCount, skippedCount, runSw.Elapsed.TotalSeconds);
     }
 
     private async Task ConsumeAsync(
@@ -142,9 +394,9 @@ public sealed class PipelineOrchestrator(
         SemaphoreSlim semaphore,
         int? totalCount,
         Stopwatch runSw,
-        CancellationToken ct,
         Func<int> incrementCompleted,
-        System.Collections.Concurrent.ConcurrentBag<Task> processingTasks)
+        System.Collections.Concurrent.ConcurrentBag<Task> processingTasks,
+        CancellationToken ct)
     {
         await foreach (var item in reader.ReadAllAsync(ct))
         {
@@ -184,7 +436,7 @@ public sealed class PipelineOrchestrator(
             estimatedRemaining = remaining > 0 ? remaining / rate : 0.0;
         }
 
-        _progress.Report(new EvalProgress
+        _progress?.Report(new EvalProgress
         {
             EvalItemId = item.Id,
             Succeeded = result.Succeeded,
@@ -219,7 +471,7 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig.Id,
+                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"llama-server crashed {MaxConsecutiveServerCrashes} consecutive times. Server may be unstable or misconfigured.",
                     Metrics = [],
@@ -241,10 +493,7 @@ public sealed class PipelineOrchestrator(
             EvalResult result;
             try
             {
-                result = await _pipeline.RunItemAsync(
-                    context,
-                    _resolvedConfig.Run.ContinueOnEvalFailure,
-                    _evalSetConfig.Id);
+                result = await _pipeline.RunItemAsync(context, _resolvedConfig.Run?.ContinueOnEvalFailure ?? true, _evalSetConfig?.Id ?? "", ct);
             }
             catch (HttpRequestException httpEx) when (IsServerCrashException(httpEx))
             {
@@ -259,7 +508,7 @@ public sealed class PipelineOrchestrator(
                 }
 
                 if (_consecutiveServerCrashes >= MaxConsecutiveServerCrashes)
-                    continue;  // Will be caught by circuit breaker check on next iteration
+                    continue;
 
                 // Retry with backoff
                 if (attempt < retryConfig.MaxRetryCount)
@@ -278,7 +527,7 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig.Id,
+                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"llama-server crashed {retryConfig.MaxRetryCount + 1} times. Server may be unstable.",
                     Metrics = [],
@@ -307,7 +556,7 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig.Id,
+                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"Transient failure after {retryConfig.MaxRetryCount + 1} attempts: {ex.Message}",
                     Metrics = [],
@@ -323,7 +572,7 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig.Id,
+                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = ex.Message,
                     Metrics = [],
@@ -354,23 +603,13 @@ public sealed class PipelineOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Determines if an HTTP exception indicates a server crash (vs. a normal error response).
-    /// </summary>
     private static bool IsServerCrashException(HttpRequestException ex)
     {
-        // Server crash indicators:
-        // - Connection refused/reset (server died)
-        // - 502/503/504 during request (server unavailable)
-        // - Stream closed unexpectedly
         return ex.StatusCode is System.Net.HttpStatusCode.BadGateway  // 502
                               or System.Net.HttpStatusCode.ServiceUnavailable  // 503
                               or System.Net.HttpStatusCode.GatewayTimeout;  // 504
     }
 
-    /// <summary>
-    /// Determines if an exception is transient and worth retrying.
-    /// </summary>
     private static bool IsTransientException(Exception ex)
     {
         return ex is HttpRequestException httpEx && httpEx.StatusCode is not null
@@ -409,7 +648,6 @@ public static class PipelineOrchestratorFactory
         CancellationToken ct,
         LlamaServerClient? judgeClient = null)
     {
-        // Load completed items for this phase (checkpoint resume)
         var completedItemIds = await resultCollector.GetCompletedItemIdsAsync(evalSetConfig.Id, "primary", ct);
 
         logger.LogInformation("Primary phase: {CompletedCount} items already completed (will resume from checkpoint)", completedItemIds.Count);
@@ -420,7 +658,7 @@ public static class PipelineOrchestratorFactory
             evalSetConfig,
             resolvedConfig,
             primaryClient,
-            judgeClient: judgeClient,  // Judge client for external judges (null for locally managed judges)
+            judgeClient,
             resultCollector,
             progress,
             logger,
@@ -443,7 +681,6 @@ public static class PipelineOrchestratorFactory
         ILogger<PipelineOrchestrator> logger,
         CancellationToken ct)
     {
-        // Load completed items for judge phase (checkpoint resume)
         var completedItemIds = await resultCollector.GetCompletedItemIdsAsync(evalSetConfig.Id, "judge", ct);
 
         logger.LogInformation("Judge phase: {CompletedCount} items already judged (will resume from checkpoint)", completedItemIds.Count);
@@ -453,7 +690,7 @@ public static class PipelineOrchestratorFactory
             pipeline,
             evalSetConfig,
             resolvedConfig,
-            primaryClient: null,  // Not used in judge phase
+            primaryClient: null,
             judgeClient,
             resultCollector,
             progress,
@@ -463,7 +700,7 @@ public static class PipelineOrchestratorFactory
     }
 
     /// <summary>
-    /// Checks if a separate phase is needed for judgment (both the model-being-evaluated server and judge server are locally managed).
+    /// Checks if a separate judge phase is needed (both primary and judge servers are locally managed).
     /// </summary>
     public static bool NeedsJudgePhase(ResolvedConfig config)
     {

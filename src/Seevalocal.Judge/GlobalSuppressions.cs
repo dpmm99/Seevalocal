@@ -5,4 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.Judge.JudgeStage.ExecuteAsync(Seevalocal.Core.EvalStageContext)~System.Threading.Tasks.Task{Seevalocal.Core.StageResult}")]
+[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "Just don't want to see this when there are more significant code suggestions to look at.", Scope = "module")]

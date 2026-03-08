@@ -14,7 +14,7 @@ public sealed class ShellScriptExporter
     /// Produces a shell script string for the given config and target shell dialect.
     /// The script runs Seevalocal with all settings as CLI arguments.
     /// </summary>
-    public string Export(ResolvedConfig config, ShellTarget target)
+    public static string Export(ResolvedConfig config, ShellTarget target)
     {
         return target switch
         {
@@ -45,9 +45,9 @@ public sealed class ShellScriptExporter
         if (config.Server.Manage)
         {
             args.Add("--manage");
-            if (config.Server.Model is { Kind: ModelSourceKind.LocalFile } model)
+            if (config.Server.Model is { Kind: ModelSourceKind.LocalFile } model && !string.IsNullOrEmpty(model.FilePath))
                 args.Add($"--model-file {EscapeBash(model.FilePath)}");
-            else if (config.Server.Model is { Kind: ModelSourceKind.HuggingFace } hf)
+            else if (config.Server.Model is { Kind: ModelSourceKind.HuggingFace } hf && !string.IsNullOrEmpty(hf.HfRepo))
                 args.Add($"--hf-repo {EscapeBash(hf.HfRepo)}");
         }
         else
@@ -126,9 +126,9 @@ public sealed class ShellScriptExporter
         {
             if (!string.IsNullOrEmpty(judge.BaseUrl))
                 args.Add($"--judge-url {EscapeBash(judge.BaseUrl)}");
-            if (judge.ServerConfig.Model is { Kind: ModelSourceKind.LocalFile } judgeModel)
+            if (judge.ServerConfig.Model is { Kind: ModelSourceKind.LocalFile } judgeModel && !string.IsNullOrEmpty(judgeModel.FilePath))
                 args.Add($"--judge-model-file {EscapeBash(judgeModel.FilePath)}");
-            else if (judge.ServerConfig.Model is { Kind: ModelSourceKind.HuggingFace } judgeHf)
+            else if (judge.ServerConfig.Model is { Kind: ModelSourceKind.HuggingFace } judgeHf && !string.IsNullOrEmpty(judgeHf.HfRepo))
                 args.Add($"--judge-hf-repo {EscapeBash(judgeHf.HfRepo)}");
             if (!string.IsNullOrEmpty(judge.ServerConfig.ApiKey))
                 args.Add($"--judge-api-key {EscapeBash(judge.ServerConfig.ApiKey)}");
@@ -187,9 +187,9 @@ public sealed class ShellScriptExporter
         if (config.Server.Manage)
         {
             args.Add("--manage");
-            if (config.Server.Model is { Kind: ModelSourceKind.LocalFile } model)
+            if (config.Server.Model is { Kind: ModelSourceKind.LocalFile } model && !string.IsNullOrEmpty(model.FilePath))
                 args.Add($"--model-file {EscapePs(model.FilePath)}");
-            else if (config.Server.Model is { Kind: ModelSourceKind.HuggingFace } hf)
+            else if (config.Server.Model is { Kind: ModelSourceKind.HuggingFace } hf && !string.IsNullOrEmpty(hf.HfRepo))
                 args.Add($"--hf-repo {EscapePs(hf.HfRepo)}");
         }
         else
@@ -268,9 +268,9 @@ public sealed class ShellScriptExporter
         {
             if (!string.IsNullOrEmpty(judge.BaseUrl))
                 args.Add($"--judge-url {EscapePs(judge.BaseUrl)}");
-            if (judge.ServerConfig.Model is { Kind: ModelSourceKind.LocalFile } judgeModel)
+            if (judge.ServerConfig.Model is { Kind: ModelSourceKind.LocalFile } judgeModel && !string.IsNullOrEmpty(judgeModel.FilePath))
                 args.Add($"--judge-model-file {EscapePs(judgeModel.FilePath)}");
-            else if (judge.ServerConfig.Model is { Kind: ModelSourceKind.HuggingFace } judgeHf)
+            else if (judge.ServerConfig.Model is { Kind: ModelSourceKind.HuggingFace } judgeHf && !string.IsNullOrEmpty(judgeHf.HfRepo))
                 args.Add($"--judge-hf-repo {EscapePs(judgeHf.HfRepo)}");
             if (!string.IsNullOrEmpty(judge.ServerConfig.ApiKey))
                 args.Add($"--judge-api-key {EscapePs(judge.ServerConfig.ApiKey)}");

@@ -10,9 +10,7 @@ using Seevalocal.Core.Pipeline;
 using Seevalocal.DataSources;
 using Seevalocal.Pipelines;
 using Seevalocal.Pipelines.Factories;
-using Seevalocal.Server.Detection;
-using Seevalocal.Server.Download;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Seevalocal.UI.Services;
 using Seevalocal.UI.ViewModels;
 using Serilog;
@@ -123,11 +121,11 @@ public partial class App : Application
         _ = services.AddSingleton<IConfigurationService, DefaultConfigurationService>();
 
         // Pipeline registry - register all built-in pipeline factories
-        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp => 
+        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp =>
             new TranslationPipelineFactory(sp.GetRequiredService<ILoggerFactory>()));
-        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp => 
+        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp =>
             new CSharpCodingPipelineFactory(sp.GetRequiredService<ILoggerFactory>()));
-        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp => 
+        _ = services.AddSingleton<IBuiltinPipelineFactory>(sp =>
             new CasualQAPipelineFactory(sp.GetRequiredService<ILoggerFactory>()));
         _ = services.AddSingleton<PipelineRegistry>();
 

@@ -36,8 +36,6 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
         List<MetricValue> allMetrics = [];
         var overallSucceeded = true;
         string? firstFailureReason = null;
-        string lastCompletedStage = "None";
-
         _logger.LogDebug("Pipeline {PipelineName} starting for item {EvalItemId}",
             PipelineName, context.Item.Id);
 
@@ -91,7 +89,7 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
             }
 
             // Save stage outputs to checkpoint database
-            lastCompletedStage = stage.StageName;
+            var lastCompletedStage = stage.StageName;
             if (ResultCollector != null)
             {
                 // Save partial progress in case of crash

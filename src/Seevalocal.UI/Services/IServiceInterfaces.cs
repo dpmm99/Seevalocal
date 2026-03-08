@@ -1,7 +1,7 @@
 using FluentResults;
 using Seevalocal.Core.Models;
 using Seevalocal.Metrics.Models;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Seevalocal.UI.ViewModels;
 using System.Collections.ObjectModel;

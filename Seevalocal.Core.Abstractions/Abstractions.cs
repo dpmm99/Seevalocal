@@ -42,8 +42,8 @@ public record EvalStageContext
     /// <summary>The fully resolved run configuration.</summary>
     public required ResolvedConfig Config { get; init; }
 
-    /// <summary>HTTP client for the primary LLM endpoint. Never null.</summary>
-    public required ILlamaServerClient PrimaryClient { get; init; }
+    /// <summary>HTTP client for the primary LLM endpoint. Might be null during judge phase in two-phase configuration.</summary>
+    public required ILlamaServerClient? PrimaryClient { get; init; }
 
     /// <summary>HTTP client for the judge LLM endpoint. Null if no judge is configured.</summary>
     public ILlamaServerClient? JudgeClient { get; init; }

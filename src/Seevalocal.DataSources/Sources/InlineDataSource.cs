@@ -5,7 +5,7 @@ using Seevalocal.DataSources.Internal;
 
 namespace Seevalocal.DataSources.Sources;
 
-internal sealed class InlineDataSource(string name, DataSourceConfig config, ILogger logger) : IDataSource
+internal sealed class InlineDataSource(string name, DataSourceConfig config) : IDataSource
 {
     private readonly DataSourceConfig _config = config;
 

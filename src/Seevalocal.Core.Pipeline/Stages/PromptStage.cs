@@ -39,7 +39,7 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         _logger.LogDebug("[PromptStage] Sending request for item {EvalItemId}", item.Id);
 
         var sw = Stopwatch.StartNew();
-        var result = await (context.PrimaryClient ?? context.JudgeClient).ChatCompletionAsync(request, ct);
+        var result = await (context.PrimaryClient ?? context.JudgeClient)!.ChatCompletionAsync(request, ct);
         sw.Stop();
 
         if (result.IsFailed)
@@ -70,7 +70,7 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         return StageResult.Success(outputs, metrics);
     }
 
-    private static IReadOnlyList<ChatMessage> BuildMessages(EvalItem item)
+    private static List<ChatMessage> BuildMessages(EvalItem item)
     {
         List<ChatMessage> messages = [];
 
@@ -82,7 +82,7 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         return messages;
     }
 
-    private static IReadOnlyList<MetricValue> BuildMetrics(ChatCompletionResponse response, double wallClockSeconds)
+    private static List<MetricValue> BuildMetrics(ChatCompletionResponse response, double wallClockSeconds)
     {
         List<MetricValue> metrics = [];
 

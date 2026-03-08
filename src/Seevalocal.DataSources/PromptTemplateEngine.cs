@@ -13,7 +13,7 @@ public sealed class PromptTemplateEngine
     /// If PromptTemplate is set, the original UserPrompt is saved to Metadata["originalPrompt"].
     /// Throws <see cref="ArgumentException"/> if PromptTemplate is set but does not contain {prompt}.
     /// </summary>
-    public EvalItem Apply(EvalItem item, DataSourceConfig config)
+    public static EvalItem Apply(EvalItem item, DataSourceConfig config)
     {
         var promptTemplate = config.PromptTemplate;
         var sysTemplate = config.SystemPromptTemplate;

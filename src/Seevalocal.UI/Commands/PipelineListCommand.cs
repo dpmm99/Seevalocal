@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Pipeline;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -9,7 +8,6 @@ namespace Seevalocal.UI.Commands;
 /// Implements the 'pipeline list' command: lists registered pipeline names and descriptions.
 /// </summary>
 public sealed class PipelineListCommand(
-    ILogger<PipelineListCommand> logger,
     IAnsiConsole console,
     IEnumerable<IBuiltinPipelineFactory> factories) : Command<PipelineListCommandSettings>
 {
@@ -38,6 +36,4 @@ public sealed class PipelineListCommand(
     }
 }
 
-public sealed class PipelineListCommandSettings : CommandSettings
-{
-}
+public sealed class PipelineListCommandSettings : CommandSettings;

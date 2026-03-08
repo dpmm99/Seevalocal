@@ -1,9 +1,7 @@
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
-using Seevalocal.Server.Detection;
-using Seevalocal.Server.Download;
-using Seevalocal.Server.Lifecycle;
+using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using System.Collections.Concurrent;
 

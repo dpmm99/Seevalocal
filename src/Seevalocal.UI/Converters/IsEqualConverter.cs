@@ -1,7 +1,7 @@
 using Avalonia.Data.Converters;
 using System.Globalization;
 
-namespace Seevalocal.UI;
+namespace Seevalocal.UI.Converters;
 
 /// <summary>
 /// Converts by comparing the value to a parameter using Equals.

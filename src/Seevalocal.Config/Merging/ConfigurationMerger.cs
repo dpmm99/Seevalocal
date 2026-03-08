@@ -46,9 +46,6 @@ public sealed class ConfigurationMerger
     // Helpers — pick last non-null value from the list for a given selector
     // -------------------------------------------------------------------------
 
-    
-    // -------------------------------------------------------------------------
-
     private static RunMeta MergeRunMeta(IReadOnlyList<PartialConfig> all)
     {
         return new RunMeta
@@ -217,7 +214,7 @@ public sealed class ConfigurationMerger
         }
     }
 
-    private static IReadOnlyList<EvalSetConfig> MergeEvalSets(IReadOnlyList<PartialConfig> all)
+    private static IReadOnlyList<EvalSetConfig> MergeEvalSets(List<PartialConfig> all)
     {
         // EvalSets are taken from the highest-priority file that defines them.
         for (var i = all.Count - 1; i >= 0; i--)
@@ -237,10 +234,10 @@ public sealed class ConfigurationMerger
 
         // Merge judge server config
         var serverConfig = MergeJudgeServerConfig(all);
-        
+
         // Merge judge server settings
         var serverSettings = MergeJudgeServerSettings(all);
-        
+
         // Get other judge properties from last to first
         return new JudgeConfig
         {
@@ -318,21 +315,6 @@ public sealed class ConfigurationMerger
         };
     }
 
-    private static T? LastJudge<T>(IReadOnlyList<PartialConfig> all, Func<PartialJudgeConfig, T?> sel)
-        where T : class
-    {
-        for (var i = all.Count - 1; i >= 0; i--)
-        {
-            var j = all[i].Judge;
-            if (j is not null)
-            {
-                var v = sel(j);
-                if (v is not null) return v;
-            }
-        }
-        return null;
-    }
-
     private static string? LastJudgeStr(IReadOnlyList<PartialConfig> all, Func<PartialJudgeConfig, string?> sel)
     {
         for (var i = all.Count - 1; i >= 0; i--)
@@ -376,21 +358,6 @@ public sealed class ConfigurationMerger
     }
 
     private static bool? LastJudgeBool(IReadOnlyList<PartialConfig> all, Func<PartialJudgeConfig, bool?> sel)
-    {
-        for (var i = all.Count - 1; i >= 0; i--)
-        {
-            var j = all[i].Judge;
-            if (j is not null)
-            {
-                var v = sel(j);
-                if (v.HasValue) return v;
-            }
-        }
-        return null;
-    }
-
-    private static T? LastJudgeRef<T>(IReadOnlyList<PartialConfig> all, Func<PartialJudgeConfig, T?> sel)
-        where T : struct
     {
         for (var i = all.Count - 1; i >= 0; i--)
         {

@@ -5,8 +5,4 @@
 
 using System.Diagnostics.CodeAnalysis;
 
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.DataSources.Sources.CsvDataSource.GetItemsAsync(System.Threading.CancellationToken)~System.Collections.Generic.IAsyncEnumerable{Seevalocal.Core.Models.EvalItem}")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.DataSources.Sources.DirectoryDataSource.GetItemsAsync(System.Threading.CancellationToken)~System.Collections.Generic.IAsyncEnumerable{Seevalocal.Core.Models.EvalItem}")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.DataSources.Sources.JsonDataSource.GetItemsAsync(System.Threading.CancellationToken)~System.Collections.Generic.IAsyncEnumerable{Seevalocal.Core.Models.EvalItem}")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.DataSources.Sources.ParquetDataSource.GetItemsAsync(System.Threading.CancellationToken)~System.Collections.Generic.IAsyncEnumerable{Seevalocal.Core.Models.EvalItem}")]
-[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "<Pending>", Scope = "member", Target = "~M:Seevalocal.DataSources.Sources.YamlDataSource.GetItemsAsync(System.Threading.CancellationToken)~System.Collections.Generic.IAsyncEnumerable{Seevalocal.Core.Models.EvalItem}")]
+[assembly: SuppressMessage("Performance", "CA1873:Avoid potentially expensive logging", Justification = "Just don't want to see this when there are more significant code suggestions to look at.", Scope = "module")]

@@ -10,19 +10,19 @@ namespace Seevalocal.Judge;
 /// Parses raw judge LLM output into a <see cref="ParsedJudgeResponse"/>.
 /// Thread-safe; share a single instance.
 /// </summary>
-public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
+public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
 {
     // Matches the first floating-point or integer number in a string.
     private static readonly Regex FirstNumberPattern =
-        new(@"(?<![.\d])-?\d+(?:\.\d+)?(?![.\d])", RegexOptions.Compiled);
+        GenFirstNumberPattern();
 
     // Matches PASS or FAIL as whole words (case-insensitive).
     private static readonly Regex PassFailPattern =
-        new(@"\b(?<verdict>PASS|FAIL)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        GenPassFailPattern();
 
     // Strips markdown JSON fences: ```json ... ``` or ``` ... ```
     private static readonly Regex JsonFencePattern =
-        new(@"^```(?:json)?\s*\n?(.*?)\n?```\s*$", RegexOptions.Compiled | RegexOptions.Singleline);
+        GenJsonFencePattern();
 
     private readonly ILogger<JudgeResponseParser> _logger = logger;
 
@@ -40,7 +40,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             JudgeResponseFormat.NumericScore => ParseNumericScore(rawText, config),
             JudgeResponseFormat.PassFail => ParsePassFail(rawText),
             JudgeResponseFormat.StructuredJson => ParseStructuredJson(rawText, config),
-            _ => Failure($"Unknown JudgeResponseFormat: {config.ResponseFormat}")
+            _ => Failure()
         };
     }
 
@@ -56,7 +56,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] Could not extract numeric score from judge response: {RawText}",
                 rawText);
-            return Failure($"Could not extract numeric score from judge response: \"{rawText}\"");
+            return Failure();
         }
 
         if (!double.TryParse(match.Value, System.Globalization.NumberStyles.Float,
@@ -65,7 +65,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] Extracted token '{Token}' is not a valid double from response: {RawText}",
                 match.Value, rawText);
-            return Failure($"Extracted token '{match.Value}' is not a valid double");
+            return Failure();
         }
 
         var normalized = Normalize(raw, config.ScoreMinValue, config.ScoreMaxValue);
@@ -90,7 +90,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] Could not find PASS/FAIL in judge response: {RawText}",
                 rawText);
-            return Failure($"Could not find PASS or FAIL in judge response: \"{rawText}\"");
+            return Failure();
         }
 
         var passed = match.Groups["verdict"].Value.Equals("PASS", StringComparison.OrdinalIgnoreCase);
@@ -122,7 +122,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] Could not parse JSON from judge response: {RawText} — {Error}",
                 rawText, ex.Message);
-            return Failure($"Could not parse JSON from judge response: \"{rawText}\" — {ex.Message}");
+            return Failure();
         }
 
         if (payload is null)
@@ -130,7 +130,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] JSON deserialization returned null for response: {RawText}",
                 rawText);
-            return Failure($"JSON deserialization returned null for response: \"{rawText}\"");
+            return Failure();
         }
 
         if (!payload.Score.HasValue)
@@ -138,7 +138,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
             _logger.LogError(
                 "[JudgeResponseParser] JSON response missing 'score' field: {RawText}",
                 rawText);
-            return Failure($"JSON response missing 'score' field: \"{rawText}\"");
+            return Failure();
         }
 
         var normalized = Normalize(payload.Score.Value, config.ScoreMinValue, config.ScoreMaxValue);
@@ -176,7 +176,7 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
         return Math.Clamp(normalized, 0.0, 1.0);
     }
 
-    private static ParsedJudgeResponse Failure(string reason) =>
+    private static ParsedJudgeResponse Failure() =>
         new() { ParseSucceeded = false };
 
     // ──────────────────────────────────────────────────────────────────────
@@ -189,4 +189,11 @@ public sealed class JudgeResponseParser(ILogger<JudgeResponseParser> logger)
         public double? Score { get; set; }
         public bool? Passed { get; set; }
     }
+
+    [GeneratedRegex(@"(?<![.\d])-?\d+(?:\.\d+)?(?![.\d])", RegexOptions.Compiled)]
+    private static partial Regex GenFirstNumberPattern();
+    [GeneratedRegex(@"\b(?<verdict>PASS|FAIL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex GenPassFailPattern();
+    [GeneratedRegex(@"^```(?:json)?\s*\n?(.*?)\n?```\s*$", RegexOptions.Compiled | RegexOptions.Singleline)]
+    private static partial Regex GenJsonFencePattern();
 }

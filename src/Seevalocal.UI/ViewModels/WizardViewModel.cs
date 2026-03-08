@@ -1,4 +1,5 @@
 using Seevalocal.Core.Models;
+using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -246,7 +247,7 @@ public sealed class WizardViewModel : IWizardViewModel
         ((RelayCommand)GoForwardCommand).NotifyCanExecuteChanged();
     }
 
-    public IReadOnlyList<string> ValidateCurrentStep() => CurrentStep switch
+    public List<string> ValidateCurrentStep() => CurrentStep switch
     {
         WizardStepKind.ContinueRun => ValidateContinueRunStep(),
         WizardStepKind.ModelAndServer => ValidateServerStep(),
@@ -255,7 +256,7 @@ public sealed class WizardViewModel : IWizardViewModel
         _ => []
     };
 
-    private IReadOnlyList<string> ValidateContinueRunStep()
+    private List<string> ValidateContinueRunStep()
     {
         List<string> errors = [];
         if (_continueFromCheckpoint && string.IsNullOrWhiteSpace(_checkpointDatabasePath))
@@ -269,7 +270,7 @@ public sealed class WizardViewModel : IWizardViewModel
         return errors;
     }
 
-    private IReadOnlyList<string> ValidateServerStep()
+    private List<string> ValidateServerStep()
     {
         List<string> errors = [];
         if (_manageServer)
@@ -287,7 +288,7 @@ public sealed class WizardViewModel : IWizardViewModel
         return errors;
     }
 
-    private IReadOnlyList<string> ValidateDatasetStep()
+    private List<string> ValidateDatasetStep()
     {
         List<string> errors = [];
 
@@ -315,7 +316,7 @@ public sealed class WizardViewModel : IWizardViewModel
         return errors;
     }
 
-    private IReadOnlyList<string> ValidateScoringStep()
+    private List<string> ValidateScoringStep()
     {
         List<string> errors = [];
 
