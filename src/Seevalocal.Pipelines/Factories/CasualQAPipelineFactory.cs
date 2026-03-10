@@ -56,11 +56,6 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         var opts = evalSetConfig.PipelineOptions ?? new Dictionary<string, object?>();
 
         var enableExactMatch = ParseBool(opts, "enableExactMatch", false);
-        var judgeMinScore = ParseInt(opts, "judgeMinScore", 0);
-        var judgeMaxScore = ParseInt(opts, "judgeMaxScore", 10);
-
-        // Use judge template from config if set, otherwise use pipeline-specific default
-        var judgeTemplate = resolvedConfig.Judge?.JudgePromptTemplate ?? "casualqa";
 
         List<IEvalStage> stages =
         [
@@ -70,10 +65,20 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         if (enableExactMatch)
             stages.Add(new ExactMatchStage(_loggerFactory.CreateLogger<ExactMatchStage>()));
 
+        // Create JudgeStage using JudgeConfig from resolved config
+        // If no judge config exists, create a default one with pipeline-specific template
+        var judgeConfig = resolvedConfig.Judge ?? new JudgeConfig
+        {
+            JudgePromptTemplate = "casualqa",
+            ScoreMinValue = 0,
+            ScoreMaxValue = 10,
+        };
+        
         stages.Add(new JudgeStage(
+            judgeConfig,
             _loggerFactory.CreateLogger<JudgeStage>(),
-            promptTemplate: judgeTemplate,
-            minScore: judgeMinScore, maxScore: judgeMaxScore));
+            _loggerFactory.CreateLogger<JudgePromptRenderer>(),
+            _loggerFactory.CreateLogger<JudgeResponseParser>()));
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
         {
@@ -90,19 +95,6 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
             {
                 bool b => b,
                 string s => bool.TryParse(s, out var p) ? p : fallback,
-                _ => fallback,
-            };
-    }
-
-    private static int ParseInt(IReadOnlyDictionary<string, object?> opts, string key, int fallback)
-    {
-        return !opts.TryGetValue(key, out var raw) || raw is null
-            ? fallback
-            : raw switch
-            {
-                int i => i,
-                double d => (int)d,
-                string s when int.TryParse(s, out var p) => p,
                 _ => fallback,
             };
     }

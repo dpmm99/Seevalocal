@@ -30,8 +30,8 @@ public static class DefaultTemplates
         - Completeness, 30 points: Does it address the full scope of the prompt?
         - Quality, 20 points: Is it well-formed, clear, and free of errors?
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence explaining your score>", "score": <0-10>}
+        Respond ONLY with a JSON object in this exact format (rationale MUST come first and MUST consider all parts of the rubric verbally BEFORE giving numbers):
+        {"rationale": "<one sentence explaining your score>", "score": <0-100>}
         """;
 
     /// <summary>

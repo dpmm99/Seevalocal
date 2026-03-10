@@ -603,8 +603,23 @@ public sealed class EvalResultViewModel(EvalResult result)
     public double? JudgeScore =>
          (_result.Metrics.FirstOrDefault(static m => m.Name.Contains("Score") && m.Value is MetricScalar.DoubleMetric)?.Value as MetricScalar.DoubleMetric)?.Value;
 
-    public IEnumerable<(string Name, string Value)> MetricDisplay =>
+    public IEnumerable<MetricDisplayItem> MetricDisplay =>
         _result.Metrics
-            .Select(static m => (m.Name, Value: m.Value?.ToString() ?? ""))
+            .Select(static m => new MetricDisplayItem(m.Name, m.Value?.ToString() ?? ""))
             .Where(static m => !string.IsNullOrEmpty(m.Value));
+}
+
+/// <summary>
+/// Display item for metrics in the UI.
+/// </summary>
+public sealed class MetricDisplayItem
+{
+    public string Name { get; }
+    public string Value { get; }
+
+    public MetricDisplayItem(string name, string value)
+    {
+        Name = name;
+        Value = value;
+    }
 }

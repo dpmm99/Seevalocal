@@ -18,6 +18,9 @@ To-fix list:
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
 Make it clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
 Pause doesn't work
+Metrics don't need to say the type like "IntMetric { Value = 49 }"
+"Early completions" should be listed top to bottom, not bottom to top
+Tokens/sec display doesn't work in judge phase.
 
 To-test list:
 Continuation of an interrupted run

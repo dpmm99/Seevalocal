@@ -163,8 +163,8 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
 
     private static string StripMarkdownFences(string text)
     {
-        var match = JsonFencePattern.Match(text);
-        return match.Success ? match.Groups[1].Value.Trim() : text;
+        var match = new Regex("```(json)?(.*)```", RegexOptions.Singleline).Match(text);
+        return match.Success ? match.Groups[2].Value.Trim() : text;
     }
 
     /// <summary>

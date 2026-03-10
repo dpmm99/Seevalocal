@@ -1,6 +1,5 @@
 using FluentResults;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
 
@@ -29,6 +28,7 @@ public sealed partial class JudgeStage(
 
     /// <summary>
     /// Convenience constructor that creates internal collaborators from DI-injected loggers.
+    /// Uses the provided JudgeConfig for all judge settings.
     /// </summary>
     public JudgeStage(
         JudgeConfig config,
@@ -42,35 +42,8 @@ public sealed partial class JudgeStage(
     { }
 
     /// <summary>
-    /// Constructor for programmatic pipeline creation.
-    /// Creates a JudgeConfig from the provided parameters.
-    /// </summary>
-    /// <param name="logger">Logger for the stage</param>
-    /// <param name="promptTemplate">Jinja-style template for judge prompt. Can be a template name ("standard", "pass-fail", "structured-json") or the full template content.</param>
-    /// <param name="minScore">Minimum score value (default 0)</param>
-    /// <param name="maxScore">Maximum score value (default 10)</param>
-    public JudgeStage(
-        ILogger<JudgeStage> logger,
-        string promptTemplate,
-        double minScore = 0,
-        double maxScore = 10)
-        : this(
-            new JudgeConfig
-            {
-                JudgePromptTemplate = promptTemplate,
-                ScoreMinValue = minScore,
-                ScoreMaxValue = maxScore,
-                JudgeSamplingTemperature = 0.0,
-                JudgeMaxTokenCount = 512,
-            },
-            new JudgePromptRenderer(NullLogger<JudgePromptRenderer>.Instance),
-            new JudgeResponseParser(NullLogger<JudgeResponseParser>.Instance),
-            logger)
-    { }
-
-    /// <summary>
-    /// Resolves a template name to its full content.
-    /// If the input looks like a template name (short, lowercase, no newlines), looks it up in DefaultTemplates.
+    /// Resolves a template name to its full content using reflection.
+    /// If the input looks like a template name (short, no newlines), looks it up in DefaultTemplates.
     /// Otherwise returns the input as-is (assumed to be full template content).
     /// </summary>
     private static string ResolveTemplate(string templateNameOrContent)
@@ -82,17 +55,26 @@ public sealed partial class JudgeStage(
         if (templateNameOrContent.Contains('\n') || templateNameOrContent.Length > 100)
             return templateNameOrContent;
 
-        // Otherwise, look it up by name (case-insensitive)
-        return templateNameOrContent.ToLowerInvariant() switch
-        {
-            "standard" => DefaultTemplates.Standard,
-            "pass-fail" => DefaultTemplates.PassFail,
-            "structured-json" => DefaultTemplates.StructuredJson,
-            "translation" => DefaultTemplates.TranslationJudgeTemplate,
-            "casualqa" => DefaultTemplates.CasualQAJudgeTemplate,
-            "codequality" => DefaultTemplates.CodeQualityJudgeTemplate,
-            _ => DefaultTemplates.Standard, // Fallback
-        };
+        // Use reflection to find the matching template in DefaultTemplates
+        var templateType = typeof(DefaultTemplates);
+        var constants = templateType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
+            .ToList();
+
+        // Try to find a matching constant by name (convert kebab-case to PascalCase)
+        var pascalCaseName = string.Concat(templateNameOrContent.Split('-').Select(s => char.ToUpperInvariant(s[0]) + s.Substring(1)));
+        var match = constants.FirstOrDefault(f => f.Name.Equals(pascalCaseName, StringComparison.OrdinalIgnoreCase));
+
+        if (match != null)
+            return (string)match.GetValue(null)!;
+
+        // Also try direct match for constants that already have the right casing
+        match = constants.FirstOrDefault(f => f.Name.Equals(templateNameOrContent, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+            return (string)match.GetValue(null)!;
+
+        // Fallback to standard template
+        return DefaultTemplates.Standard;
     }
 
     /// <inheritdoc />
