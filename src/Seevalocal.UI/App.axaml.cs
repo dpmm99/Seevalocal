@@ -21,6 +21,11 @@ public partial class App : Application
 {
     private IServiceProvider? _serviceProvider;
 
+    /// <summary>
+    /// Gets the service provider for the application.
+    /// </summary>
+    public IServiceProvider? Services => _serviceProvider;
+
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -54,6 +59,10 @@ public partial class App : Application
                 };
 
                 vm.WizardState.OnStartRun = vm.StartRunAsync;
+
+                // Wire up toast notifications
+                var toastService = _serviceProvider.GetRequiredService<IToastService>();
+                vm.WizardState.OnShowNotification = msg => toastService.Show(msg);
             }
 
             desktop.MainWindow = mainWindow;
@@ -76,6 +85,7 @@ public partial class App : Application
                 var script = vm.ExportScript(shellTarget);
 
                 var filePicker = _serviceProvider.GetRequiredService<IFilePickerService>();
+                var toastService = _serviceProvider.GetRequiredService<IToastService>();
 
                 // Choose sensible default file name & filters based on shell target
                 var isPowerShell = shellTarget == Core.Models.ShellTarget.PowerShell;
@@ -94,16 +104,15 @@ public partial class App : Application
                 await File.WriteAllTextAsync(path, script);
 
                 Log.Information("Export script saved to {Path}", path);
-                vm.WizardState.OnShowNotification?.Invoke($"Script saved to {path}");
+                toastService.ShowSuccess($"Script saved to {path}");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to save exported script");
-                // Attempt to show a simple notification to the user if possible
-                if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                if (_serviceProvider != null)
                 {
-                    var vm = desktop.MainWindow?.DataContext as MainWindowViewModel;
-                    vm?.WizardState.OnShowNotification?.Invoke($"Failed to save script: {ex.Message}");
+                    var toastService = _serviceProvider.GetRequiredService<IToastService>();
+                    toastService.ShowError($"Failed to save script: {ex.Message}");
                 }
             }
         }
@@ -146,11 +155,14 @@ public partial class App : Application
         // File picker service
         _ = services.AddSingleton<IFilePickerService, DefaultFilePickerService>();
 
+        // Toast notification service
+        _ = services.AddSingleton<IToastService, ToastService>();
+
         // Shell Script Exporter
         _ = services.AddSingleton<IShellScriptExporter, ShellScriptExporterWrapper>();
 
         // ViewModels
-        _ = services.AddSingleton<IWizardViewModel>(static sp => new WizardViewModel(sp.GetRequiredService<IFilePickerService>()));
+        _ = services.AddSingleton<IWizardViewModel>(static sp => new WizardViewModel(sp.GetRequiredService<IFilePickerService>(), sp.GetRequiredService<IToastService>()));
         _ = services.AddSingleton<MainWindowViewModel>();
     }
 }

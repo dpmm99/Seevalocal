@@ -50,11 +50,11 @@ public sealed class LlamaServerArgBuilder
         // ── Network ──────────────────────────────────────────────────────────
         var host = settings.Host ?? serverConfig.Host;
         args.Add("--host");
-        args.Add(host);
+        args.Add(host ?? "127.0.0.1");
 
         var port = settings.Port ?? serverConfig.Port;
         args.Add("--port");
-        args.Add(port.ToString());
+        args.Add(port?.ToString() ?? "8080");
 
         var apiKey = settings.ApiKey ?? serverConfig.ApiKey;
         if (apiKey is not null)
@@ -121,7 +121,7 @@ public sealed class LlamaServerArgBuilder
 
     private static void AppendString(List<string> args, string? value, string flag)
     {
-        if (value is null) return;
+        if (string.IsNullOrEmpty(value)) return;
         args.Add(flag);
         args.Add(value);
     }

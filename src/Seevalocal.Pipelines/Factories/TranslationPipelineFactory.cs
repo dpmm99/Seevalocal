@@ -47,7 +47,6 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         var opts = evalSetConfig.PipelineOptions;
         var sourceLanguage = opts?.GetValueOrDefault("sourceLanguage") as string ?? "English";
         var targetLanguage = opts?.GetValueOrDefault("targetLanguage") as string ?? "French";
-        var judgePromptTemplate = opts?.GetValueOrDefault("judgePromptTemplate") as string;
         _ =
             "You are a professional translator. " +
             $"Translate the following text from {sourceLanguage} to {targetLanguage} accurately and naturally. " +
@@ -62,10 +61,13 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         // For translation, we use a system prompt via the item's SystemPrompt field
         // The pipeline expects items to have SystemPrompt set, or we can inject it via data source
 
+        // Use judge template from config if set, otherwise use pipeline-specific default
+        var judgeTemplate = resolvedConfig.Judge?.JudgePromptTemplate ?? "translation";
+
         var judgeStage = new JudgeStage(
             _loggerFactory.CreateLogger<JudgeStage>(),
-            promptTemplate: judgePromptTemplate ?? DefaultTemplates.TranslationJudgeTemplate,
-            minScore: 0, maxScore: 10);
+            promptTemplate: judgeTemplate,
+            minScore: resolvedConfig.Judge?.ScoreMin ?? 0, maxScore: resolvedConfig.Judge?.ScoreMax ?? 10);
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
         {

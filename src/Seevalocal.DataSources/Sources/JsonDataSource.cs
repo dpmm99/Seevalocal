@@ -53,15 +53,20 @@ internal sealed class JsonDataSource(string name, DataSourceConfig config, bool 
 
     private EvalItem ParseObject(JsonElement el, FieldMapping mapping, int index)
     {
-        var id = GetString(el, mapping.IdField)
+        var idField = mapping.IdField ?? "id";
+        var userPromptField = mapping.UserPromptField ?? "prompt";
+        var expectedOutputField = mapping.ExpectedOutputField ?? "expected";
+        var systemPromptField = mapping.SystemPromptField;
+
+        var id = GetString(el, idField)
                  ?? IdGenerator.Generate(Name, index);
 
-        var userPrompt = GetString(el, mapping.UserPromptField) ?? "";
-        var expectedOutput = mapping.ExpectedOutputField is not null
-            ? GetString(el, mapping.ExpectedOutputField)
+        var userPrompt = GetString(el, userPromptField) ?? "";
+        var expectedOutput = expectedOutputField is not null
+            ? GetString(el, expectedOutputField)
             : null;
-        var systemPrompt = mapping.SystemPromptField is not null
-            ? GetString(el, mapping.SystemPromptField)
+        var systemPrompt = systemPromptField is not null
+            ? GetString(el, systemPromptField)
             : _config.DefaultSystemPrompt;
 
         Dictionary<string, string> metadata = [];

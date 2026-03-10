@@ -105,3 +105,21 @@ public sealed class ThreeStateBoolTextConverter : IValueConverter
         };
     }
 }
+
+/// <summary>
+/// Negates a boolean value. Used for radio button bindings where one option is the inverse of the other.
+/// </summary>
+public sealed class BoolNegationConverter : IValueConverter
+{
+    public static readonly BoolNegationConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is bool b ? !b : false;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is bool b ? !b : false;
+    }
+}

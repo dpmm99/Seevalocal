@@ -39,6 +39,8 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private bool _disposed;
     private int _earlyCompletionsLimit = 10;
 
+    private CancellationTokenSource? _cts;
+
     // ─── Constructor ──────────────────────────────────────────────────────────
 
     public TwoPhaseEvalRunViewModel(
@@ -69,13 +71,36 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         PauseCommand = new RelayCommand(TogglePause, () => IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
         LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
+
+        // Subscribe to server error events
+        _serverLifecycle.ServerErrorReceived += OnServerErrorReceived;
+    }
+
+    private void OnServerErrorReceived(object? sender, ServerErrorEventArgs e)
+    {
+        // Update status line with error from llama-server
+        StatusLine = $"llama-server error: {e.ErrorMessage}";
+        OnPropertyChanged(nameof(StatusLine));
+        _logger.LogWarning("llama-server error: {ErrorMessage}", e.ErrorMessage);
     }
 
     // ─── IEvalRunViewModel Implementation ─────────────────────────────────────
 
     public ResolvedConfig Config { get; }
-    public bool IsRunning { get; private set; }
-    public bool IsPaused { get; private set; }
+
+    private bool _isRunning;
+    public bool IsRunning
+    {
+        get => _isRunning;
+        private set => SetField(ref _isRunning, value);
+    }
+
+    private bool _isPaused;
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set => SetField(ref _isPaused, value);
+    }
     public double ProgressPercent { get; private set; }
     public int CompletedCount { get; private set; }
     public int TotalCount { get; private set; }
@@ -115,10 +140,12 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         StatusLine = IsPaused ? "Paused" : "Running...";
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
+        ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
     }
 
     public void Cancel()
     {
+        _cts?.Cancel();
         StatusLine = "Cancelling...";
         OnPropertyChanged(nameof(StatusLine));
     }
@@ -134,9 +161,15 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         if (IsRunning)
             throw new InvalidOperationException("A run is already in progress.");
 
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt);
         IsRunning = true;
         IsPaused = false;
+
+        // Notify commands that their CanExecute state has changed
+        ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
+        ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsPaused));
 
         // Check if we're continuing from a checkpoint
         var checkpointStatus = Config.Run.ContinueFromCheckpoint ? " (continuing from checkpoint)" : "";
@@ -147,7 +180,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         OnPropertyChanged(nameof(CompletedCount));
 
         // Get total count from data source
-        var totalCount = await _dataSource.GetCountAsync(cts.Token);
+        var totalCount = await _dataSource.GetCountAsync(_cts.Token);
         if (totalCount.HasValue)
         {
             TotalCount = totalCount.Value;
@@ -161,14 +194,14 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 Config.Run.ContinueFromCheckpoint ? " (continuing from checkpoint)" : "");
 
             // Start primary server if managed (before creating orchestrator so UI shows progress)
-            if (Config.Server.Manage && _serverLifecycle != null)
+            if (Config.Server.Manage != false && _serverLifecycle != null)
             {
                 StatusLine = $"Starting primary llama-server at {DateTimeOffset.Now:HH:mm:ss}...";
                 OnPropertyChanged(nameof(StatusLine));
                 var startResult = await _serverLifecycle.StartAsync(
                     Config.Server,
                     Config.LlamaServer,
-                    cts.Token);
+                    _cts.Token);
 
                 if (startResult.IsFailed)
                 {
@@ -181,17 +214,17 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 // Save the resolved binary path for resume capability
                 if (primaryServerInfo.BinaryPath is not null && _collector is PersistentResultCollector persistentCollector)
                 {
-                    await persistentCollector.SaveServerBinaryPathAsync("primary", primaryServerInfo.BinaryPath, cts.Token);
+                    await persistentCollector.SaveServerBinaryPathAsync("primary", primaryServerInfo.BinaryPath, _cts.Token);
                 }
 
                 // Create HTTP client for primary server
                 var primaryHttpClient = CreateHttpClient(primaryServerInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
                 _primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
 
                 // Initialize semaphore based on actual server slot count
-                await _primaryClient.InitializeSemaphoreFromServerAsync(cts.Token);
+                await _primaryClient.InitializeSemaphoreFromServerAsync(_cts.Token);
 
                 // Store slot count for orchestrator
                 _primarySlotCount = Config.Run?.MaxConcurrentEvals ?? primaryServerInfo.TotalSlots;
@@ -209,18 +242,18 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 _collector,
                 _progress,
                 orchestratorLogger,
-                cts.Token);
+                _cts.Token);
 
             // Phase 1: Primary evaluation
             StatusLine = "Phase 1: Primary evaluation...";
             OnPropertyChanged(nameof(StatusLine));
-            await RunPrimaryPhaseAsync(cts.Token);
+            await RunPrimaryPhaseAsync(_cts.Token);
             _primaryPhaseComplete = true;
 
             // Phase 2: Judge evaluation
             StatusLine = "Phase 1 complete at {DateTimeOffset.Now:HH:mm:ss}. Starting judge server...";
             OnPropertyChanged(nameof(StatusLine));
-            await RunJudgePhaseAsync(cts.Token);
+            await RunJudgePhaseAsync(_cts.Token);
 
             HadFailures = Results.Any(static r => !r.Succeeded);
         }
@@ -240,11 +273,16 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         {
             IsRunning = false;
             IsPaused = false;
+            OnPropertyChanged(nameof(IsRunning));
+            OnPropertyChanged(nameof(IsPaused));
+            ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
 
             // Stop all servers and close database when the run completes
             await StopAllServersAsync();
             await _collector.DisposeAsync();
-            cts.Dispose();
+            _cts.Dispose();
+            _cts = null;
 
             if (!StatusLine.StartsWith("Complete") && !StatusLine.StartsWith("Error") && !StatusLine.StartsWith("Done") && !StatusLine.StartsWith("Cancelled"))
             {
@@ -305,7 +343,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             var judgeServerConfig = judgeConfig.ServerConfig;
 
             // Ensure judge uses different port than primary
-            if (Config.Server.Manage && judgeServerConfig.Port == Config.Server.Port)
+            if (Config.Server.Manage != false && judgeServerConfig.Port == Config.Server.Port)
             {
                 judgeServerConfig = judgeServerConfig with { Port = judgeServerConfig.Port + 1 };
             }
@@ -332,7 +370,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
             var judgeHttpClient = CreateHttpClient(judgeServerInfo);
             var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+            var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
             judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
 
             // Initialize semaphore based on actual server slot count
@@ -397,7 +435,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private async Task StopAllServersAsync(bool force = false)
     {
         // Stop primary server if it wasn't already stopped (e.g., if judge phase wasn't run)
-        if (force || (Config.Server.Manage && _serverLifecycle != null && !_primaryPhaseComplete))
+        if (force || (Config.Server.Manage != false && _serverLifecycle != null && !_primaryPhaseComplete))
         {
             try
             {
@@ -447,7 +485,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
 
             // Notify command that CanExecute may have changed
-            if (LoadMoreEarlyCompletionsCommand is Commands.RelayCommand cmd)
+            if (LoadMoreEarlyCompletionsCommand is RelayCommand cmd)
             {
                 cmd.NotifyCanExecuteChanged();
             }
@@ -486,6 +524,14 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
+    private bool SetField<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        OnPropertyChanged(name);
+        return true;
+    }
+
     // ─── IAsyncDisposable & IDisposable ───────────────────────────────────────
 
     public async ValueTask DisposeAsync()
@@ -497,6 +543,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
         // Unsubscribe from events
         _progress.ProgressChanged -= OnProgressChanged;
+        _serverLifecycle.ServerErrorReceived -= OnServerErrorReceived;
 
         // Dispose async resources
         try

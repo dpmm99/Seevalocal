@@ -93,6 +93,9 @@ public interface IServerLifecycleService : IAsyncDisposable
     /// <summary>Exposes llama-server loading progress events.</summary>
     event EventHandler<ServerLoadingProgressEventArgs>? LoadingProgressChanged;
 
+    /// <summary>Exposes llama-server error output events.</summary>
+    event EventHandler<ServerErrorEventArgs>? ServerErrorReceived;
+
     /// <summary>Gets the last reported loading progress (for late subscribers).</summary>
     ServerLoadingProgressEventArgs? LastLoadingProgress { get; }
 

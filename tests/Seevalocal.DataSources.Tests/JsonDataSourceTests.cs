@@ -1,3 +1,4 @@
+using Seevalocal.Core.Models;
 using Xunit;
 
 namespace Seevalocal.DataSources.Tests;
@@ -67,11 +68,11 @@ public class JsonDataSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task Jsonl_LoadsItems()
+    public async Task Jsonl_LoadsItems_WithDefaultMapping()
     {
         var path = WriteFile("data.jsonl", """
-            {"id":"001","prompt":"A","expected":"B"}
-            {"id":"002","prompt":"C","expected":"D"}
+            {"id":"001","question":"A","answer":"B"}
+            {"id":"002","question":"C","answer":"D"}
             """);
 
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
@@ -84,6 +85,33 @@ public class JsonDataSourceTests : IDisposable
 
         Assert.Equal(2, items.Count);
         Assert.Equal("A", items[0].UserPrompt);
+        Assert.Equal("B", items[0].ExpectedOutput);
+    }
+
+    [Fact]
+    public async Task Jsonl_LoadsItems_WithCustomMapping()
+    {
+        var path = WriteFile("data.jsonl", """
+            {"id":"001","prompt":"A","expected":"B"}
+            {"id":"002","prompt":"C","expected":"D"}
+            """);
+
+        var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
+        var ds = factory.Create("test", new DataSourceConfig
+        {
+            Kind = DataSourceKind.JsonlFile,
+            DataFilePath = path,
+            FieldMapping = new FieldMapping
+            {
+                UserPromptField = "prompt",
+                ExpectedOutputField = "expected",
+            }
+        }).Value;
+        var items = await TestHelpers.CollectAsync(ds);
+
+        Assert.Equal(2, items.Count);
+        Assert.Equal("A", items[0].UserPrompt);
+        Assert.Equal("B", items[0].ExpectedOutput);
     }
 
     [Fact]

@@ -36,6 +36,11 @@ internal sealed class CsvDataSource(string name, DataSourceConfig config, ILogge
         _ = csv.ReadHeader();
         var headers = csv.HeaderRecord ?? [];
 
+        var idField = mapping.IdField ?? "id";
+        var userPromptField = mapping.UserPromptField ?? "prompt";
+        var expectedOutputField = mapping.ExpectedOutputField ?? "expected";
+        var systemPromptField = mapping.SystemPromptField;
+
         ValidateHeaders(headers, mapping, filePath);
 
         var index = 0;
@@ -43,17 +48,17 @@ internal sealed class CsvDataSource(string name, DataSourceConfig config, ILogge
         {
             ct.ThrowIfCancellationRequested();
 
-            var id = HasColumn(headers, mapping.IdField)
-                ? csv.GetField<string>(mapping.IdField)
+            var id = HasColumn(headers, idField)
+                ? csv.GetField<string>(idField)
                 : null;
             id ??= IdGenerator.Generate(Name, index);
 
-            var userPrompt = csv.GetField<string>(mapping.UserPromptField) ?? "";
-            var expectedOutput = mapping.ExpectedOutputField is not null && HasColumn(headers, mapping.ExpectedOutputField)
-                ? csv.GetField<string>(mapping.ExpectedOutputField)
+            var userPrompt = csv.GetField<string>(userPromptField) ?? "";
+            var expectedOutput = expectedOutputField is not null && HasColumn(headers, expectedOutputField)
+                ? csv.GetField<string>(expectedOutputField)
                 : null;
-            var systemPrompt = mapping.SystemPromptField is not null && HasColumn(headers, mapping.SystemPromptField)
-                ? csv.GetField<string>(mapping.SystemPromptField)
+            var systemPrompt = systemPromptField is not null && HasColumn(headers, systemPromptField)
+                ? csv.GetField<string>(systemPromptField)
                 : _config.DefaultSystemPrompt;
 
             Dictionary<string, string> metadata = [];
@@ -85,9 +90,10 @@ internal sealed class CsvDataSource(string name, DataSourceConfig config, ILogge
 
     private void ValidateHeaders(string[] headers, FieldMapping mapping, string filePath)
     {
-        if (!HasColumn(headers, mapping.UserPromptField))
+        var userPromptField = mapping.UserPromptField ?? "prompt";
+        if (!HasColumn(headers, userPromptField))
             throw new InvalidDataException(
-                $"[{Name}] Column '{mapping.UserPromptField}' not found in {filePath}. Available: {string.Join(", ", headers)}");
+                $"[{Name}] Column '{userPromptField}' not found in {filePath}. Available: {string.Join(", ", headers)}");
 
         foreach (var field in mapping.MetadataFields)
         {

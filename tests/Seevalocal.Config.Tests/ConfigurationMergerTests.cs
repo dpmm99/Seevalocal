@@ -101,9 +101,9 @@ public sealed class ConfigurationMergerTests
     {
         var result = _merger.Merge([]);
 
-        _ = result.Run.OutputDirectoryPath.Should().Be("./results");
-        _ = result.Run.ExportShellTarget.Should().Be(ShellTarget.Bash);
-        _ = result.Run.ContinueOnEvalFailure.Should().BeTrue();
+        _ = result.Run.OutputDirectoryPath.Should().BeNull();
+        _ = result.Run.ExportShellTarget.Should().BeNull();
+        _ = result.Run.ContinueOnEvalFailure.Should().BeNull();
     }
 
     [Fact]
@@ -182,9 +182,9 @@ public sealed class ConfigurationMergerTests
     {
         var result = _merger.Merge([]);
 
-        _ = result.Server.Host.Should().Be("127.0.0.1");
-        _ = result.Server.Port.Should().Be(8080);
-        _ = result.Server.Manage.Should().BeFalse();
+        _ = result.Server.Host.Should().BeNull();
+        _ = result.Server.Port.Should().BeNull();
+        _ = result.Server.Manage.Should().BeNull();
     }
 
     [Fact]
@@ -273,5 +273,143 @@ public sealed class ConfigurationMergerTests
         var result = _merger.Merge([first, second]);
 
         _ = result.LlamaServer.ExtraArgs.Should().ContainSingle().Which.Should().Be("--arg-from-second");
+    }
+
+    // -------------------------------------------------------------------------
+    // DataSource config merging
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Merge_DataSource_NullByDefault()
+    {
+        var result = _merger.Merge([]);
+        _ = result.DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = result.DataSource.FilePath.Should().BeNull();
+    }
+
+    [Fact]
+    public void Merge_DataSource_TakenFromLastFileWithDataSource()
+    {
+        var first = new PartialConfig
+        {
+            DataSource = new PartialDataSourceConfig
+            {
+                Kind = DataSourceKind.SingleFile,
+                FilePath = "/path/to/first.json",
+            },
+        };
+        var second = new PartialConfig
+        {
+            DataSource = new PartialDataSourceConfig
+            {
+                Kind = DataSourceKind.JsonlFile,
+                FilePath = "/path/to/second.jsonl",
+            },
+        };
+
+        var result = _merger.Merge([first, second]);
+
+        _ = result.DataSource.Kind.Should().Be(DataSourceKind.JsonlFile);
+        _ = result.DataSource.FilePath.Should().Be("/path/to/second.jsonl");
+    }
+
+    [Fact]
+    public void Merge_DataSource_FallsBackToFirstFile_WhenSecondHasNone()
+    {
+        var first = new PartialConfig
+        {
+            DataSource = new PartialDataSourceConfig
+            {
+                Kind = DataSourceKind.SplitDirectories,
+                PromptDirectoryPath = "/prompts",
+                ExpectedOutputDirectoryPath = "/expected",
+            },
+        };
+        var second = new PartialConfig(); // no DataSource
+
+        var result = _merger.Merge([first, second]);
+
+        _ = result.DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
+        _ = result.DataSource.PromptDirectoryPath.Should().Be("/prompts");
+        _ = result.DataSource.ExpectedOutputDirectoryPath.Should().Be("/expected");
+    }
+
+    // -------------------------------------------------------------------------
+    // Judge ServerSettings merging
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Merge_JudgeServerSettings_AllFieldsMerged()
+    {
+        var first = new PartialConfig
+        {
+            Judge = new PartialJudgeConfig
+            {
+                Enable = true,
+                ServerSettings = new PartialLlamaServerSettings
+                {
+                    ContextWindowTokens = 4096,
+                    GpuLayerCount = 35,
+                    SamplingTemperature = 0.5,
+                },
+            },
+        };
+        var second = new PartialConfig
+        {
+            Judge = new PartialJudgeConfig
+            {
+                ServerSettings = new PartialLlamaServerSettings
+                {
+                    ContextWindowTokens = 8192, // overrides first
+                    // GpuLayerCount and SamplingTemperature not set → falls back to first
+                },
+            },
+        };
+
+        var result = _merger.Merge([first, second]);
+
+        _ = result.Judge.Should().NotBeNull();
+        _ = result.Judge!.Enable.Should().BeTrue();
+        _ = result.Judge.ServerSettings!.ContextWindowTokens.Should().Be(8192);
+        _ = result.Judge.ServerSettings.GpuLayerCount.Should().Be(35);
+        _ = result.Judge.ServerSettings.SamplingTemperature.Should().Be(0.5);
+    }
+
+    [Fact]
+    public void Merge_JudgeServerConfig_AllFieldsMerged()
+    {
+        var first = new PartialConfig
+        {
+            Judge = new PartialJudgeConfig
+            {
+                Enable = true,
+                ServerConfig = new PartialServerConfig
+                {
+                    Host = "127.0.0.1",
+                    Port = 8081,
+                    ApiKey = "key1",
+                    Model = new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = "/judge1.gguf" },
+                },
+            },
+        };
+        var second = new PartialConfig
+        {
+            Judge = new PartialJudgeConfig
+            {
+                ServerConfig = new PartialServerConfig
+                {
+                    Host = "0.0.0.0", // overrides first
+                    Port = 9090,      // overrides first
+                    // ApiKey and Model not set → falls back to first
+                },
+            },
+        };
+
+        var result = _merger.Merge([first, second]);
+
+        _ = result.Judge!.ServerConfig!.Host.Should().Be("0.0.0.0");
+        _ = result.Judge.ServerConfig.Port.Should().Be(9090);
+        _ = result.Judge.ServerConfig.ApiKey.Should().Be("key1");
+        _ = result.Judge.ServerConfig.Model!.FilePath.Should().Be("/judge1.gguf");
     }
 }

@@ -1,3 +1,4 @@
+using Seevalocal.Core.Models;
 using Xunit;
 
 namespace Seevalocal.DataSources.Tests;

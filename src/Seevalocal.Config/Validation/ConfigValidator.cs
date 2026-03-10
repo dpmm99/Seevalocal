@@ -36,7 +36,7 @@ public sealed class ConfigValidator(
 
     private static void ValidateServer(ServerConfig server, List<ValidationError> errors)
     {
-        if (server.Manage)
+        if (server.Manage != false)
         {
             if (server.Model is null)
                 errors.Add(new ValidationError(

@@ -80,6 +80,20 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         PauseCommand = new RelayCommand(TogglePause, () => IsRunning);
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
         LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
+
+        // Subscribe to server error events if server lifecycle is available
+        if (_serverLifecycle != null)
+        {
+            _serverLifecycle.ServerErrorReceived += OnServerErrorReceived;
+        }
+    }
+
+    private void OnServerErrorReceived(object? sender, ServerErrorEventArgs e)
+    {
+        // Update status line with error from llama-server
+        StatusLine = $"llama-server error: {e.ErrorMessage}";
+        OnPropertyChanged(nameof(StatusLine));
+        _logger.LogWarning("llama-server error: {ErrorMessage}", e.ErrorMessage);
     }
 
     private void OnProgressChanged(EvalProgress progress)
@@ -147,7 +161,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         // Notify command that CanExecute may have changed (on UI thread for Avalonia)
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            if (LoadMoreEarlyCompletionsCommand is Commands.RelayCommand cmd)
+            if (LoadMoreEarlyCompletionsCommand is RelayCommand cmd)
             {
                 cmd.NotifyCanExecuteChanged();
             }
@@ -327,6 +341,12 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         Results.Clear();
         CompletedCount = 0;
 
+        // Notify commands that their CanExecute state has changed
+        ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
+        ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRunning));
+        OnPropertyChanged(nameof(IsPaused));
+
         // Determine max concurrent evals - will be updated from server props if managing server
         var orchestratorMaxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
 
@@ -357,7 +377,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
                 var primaryHttpClient = CreateHttpClient(serverInfo);
                 var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
                 _managedPrimaryClient = new LlamaServerClient(serverInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
 
                 // Initialize semaphore based on actual server slot count
@@ -397,7 +417,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 10;
+                var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? 4;
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
 
                 // Initialize semaphore based on actual server slot count
@@ -450,7 +470,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             IsPaused = false;
             OnPropertyChanged(nameof(IsRunning));
             OnPropertyChanged(nameof(IsPaused));
+            ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
+            ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
             await StopAllServersAsync();
+            _cts.Dispose();
+            _cts = null;
         }
     }
 
@@ -507,6 +531,13 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         _disposed = true;
         _cts?.Cancel();
         _progress.ProgressChanged -= (_, progress) => OnProgressChanged(progress);
+
+        // Unsubscribe from server error events
+        if (_serverLifecycle != null)
+        {
+            _serverLifecycle.ServerErrorReceived -= OnServerErrorReceived;
+        }
+
         await StopAllServersAsync();
         _cts?.Dispose();
     }
@@ -573,5 +604,7 @@ public sealed class EvalResultViewModel(EvalResult result)
          (_result.Metrics.FirstOrDefault(static m => m.Name.Contains("Score") && m.Value is MetricScalar.DoubleMetric)?.Value as MetricScalar.DoubleMetric)?.Value;
 
     public IEnumerable<(string Name, string Value)> MetricDisplay =>
-        _result.Metrics.Select(static m => (m.Name, m.Value?.ToString() ?? ""));
+        _result.Metrics
+            .Select(static m => (m.Name, Value: m.Value?.ToString() ?? ""))
+            .Where(static m => !string.IsNullOrEmpty(m.Value));
 }

@@ -46,11 +46,11 @@ public static class CliSettingsAdapter
                             || s.ServerUrl != null || s.ApiKey != null
             ? new PartialServerConfig
             {
-                Manage = manage ?? false,
+                Manage = manage,
                 ExecutablePath = s.ExecutablePath,
                 Model = model,
-                Host = s.Host ?? "127.0.0.1",
-                Port = s.Port ?? 8080,
+                Host = s.Host,
+                Port = s.Port,
                 ApiKey = s.ApiKey,
                 BaseUrl = s.ServerUrl,
                 ExtraArgs = s.ExtraArgs?.ToList()
@@ -86,7 +86,6 @@ public static class CliSettingsAdapter
         var judgeConfig = s.JudgeUrl != null || s.JudgeModelFilePath != null || s.JudgeHfRepo != null
             ? new PartialJudgeConfig
             {
-                Manage = false,
                 ServerConfig = new PartialServerConfig
                 {
                     Manage = false,
@@ -94,7 +93,7 @@ public static class CliSettingsAdapter
                     ApiKey = s.JudgeApiKey
                 },
                 BaseUrl = s.JudgeUrl,
-                JudgePromptTemplate = s.JudgeTemplate ?? DefaultTemplates.Standard,
+                JudgePromptTemplate = s.JudgeTemplate ?? "standard",
                 ScoreMinValue = s.JudgeScoreMin ?? 0,
                 ScoreMaxValue = s.JudgeScoreMax ?? 10,
                 ServerSettings = s.JudgeModelFilePath != null || s.JudgeHfRepo != null

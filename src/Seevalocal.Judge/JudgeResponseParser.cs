@@ -68,12 +68,14 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
             return Failure();
         }
 
+        // Keep the raw score as-is, but also calculate normalized for backwards compatibility
         var normalized = Normalize(raw, config.ScoreMinValue, config.ScoreMaxValue);
         return new ParsedJudgeResponse
         {
             ParseSucceeded = true,
+            RawScore = raw,
             NormalizedScore = normalized,
-            Passed = normalized >= 0.5,
+            Passed = raw >= (config.ScoreMinValue + config.ScoreMaxValue) / 2.0,
             Rationale = null,
         };
     }
@@ -141,12 +143,14 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
             return Failure();
         }
 
+        // Keep the raw score as-is, but also calculate normalized for backwards compatibility
         var normalized = Normalize(payload.Score.Value, config.ScoreMinValue, config.ScoreMaxValue);
-        var passed = payload.Passed ?? (normalized >= 0.5);
+        var passed = payload.Passed ?? (payload.Score.Value >= (config.ScoreMinValue + config.ScoreMaxValue) / 2.0);
 
         return new ParsedJudgeResponse
         {
             ParseSucceeded = true,
+            RawScore = payload.Score.Value,
             NormalizedScore = normalized,
             Passed = passed,
             Rationale = payload.Rationale,

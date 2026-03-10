@@ -24,11 +24,15 @@ public enum WizardStepKind
 /// <summary>
 /// View model for the guided setup wizard.
 /// </summary>
-public sealed class WizardViewModel : IWizardViewModel
+public sealed partial class WizardViewModel : IWizardViewModel
 {
     private readonly IFilePickerService? _filePicker;
+    private readonly IToastService? _toastService;
     private WizardStepKind _currentStep = WizardStepKind.ContinueRun;
     private string? _checkpointDatabasePath;
+
+    // Track which fields have been edited by the user in the wizard
+    private readonly HashSet<string> _editedFields = [];
 
     // Server management
     private bool _manageServer = true;
@@ -102,6 +106,7 @@ public sealed class WizardViewModel : IWizardViewModel
     private string? _judgeLocalModelPath;
     private string? _judgeHfRepo;
     private string? _judgeHfToken;
+    private string? _judgeApiKey;
     private string? _judgeServerUrl;
     private string? _judgeExecutablePath;  // Local path to judge llama-server binary
     private int? _judgeContextWindowTokens;
@@ -136,6 +141,15 @@ public sealed class WizardViewModel : IWizardViewModel
     private ShellTarget? _shellTarget;
     private bool _continueFromCheckpoint;
 
+    // Output settings (from Settings screen)
+    private bool _writePerEvalJson;
+    private bool _writeSummaryJson = true;
+    private bool _writeSummaryCsv;
+    private bool _writeResultsParquet;
+    private bool _includeRawLlmResponse;
+    private bool _continueOnEvalFailure = true;
+    private int? _maxConcurrentEvals;
+
     // ─── Step navigation ──────────────────────────────────────────────────────
 
     public WizardStepKind CurrentStep
@@ -151,6 +165,7 @@ public sealed class WizardViewModel : IWizardViewModel
     public ICommand GoBackCommand { get; }
     public ICommand GoForwardCommand { get; }
     public ICommand ExportScriptCommand { get; }
+    public ICommand ResetToDefaultsCommand { get; }
 
     // Browse commands
     public ICommand BrowseLocalModelCommand { get; }
@@ -175,12 +190,14 @@ public sealed class WizardViewModel : IWizardViewModel
     string? IWizardViewModel.RunName => _runName;
     ShellTarget? IWizardViewModel.ShellTarget => _shellTarget;
 
-    public WizardViewModel(IFilePickerService? filePicker = null)
+    public WizardViewModel(IFilePickerService? filePicker = null, IToastService? toastService = null)
     {
         _filePicker = filePicker;
+        _toastService = toastService;
         GoBackCommand = new RelayCommand(GoBack, () => CanGoBack);
         GoForwardCommand = new RelayCommand(async () => await GoForwardAsync(), () => CanGoForward);
         ExportScriptCommand = new RelayCommand(() => OnExportScript?.Invoke());
+        ResetToDefaultsCommand = new RelayCommand(ResetToDefaults);
 
         BrowseLocalModelCommand = new RelayCommand<string>(async (param) => await BrowseLocalModelAsync(param));
         BrowseDataFileCommand = new RelayCommand(async () => await BrowseDataFileAsync());
@@ -222,7 +239,13 @@ public sealed class WizardViewModel : IWizardViewModel
 
     public async Task GoForwardAsync()
     {
-        if (!CanGoForward) return;
+        var validationErrors = ValidateCurrentStep();
+        if (validationErrors.Count > 0)
+        {
+            // Show error toast for validation failures
+            _toastService?.ShowError($"Configuration error: {validationErrors[0]}");
+            return;
+        }
 
         if (CurrentStep == WizardStepKind.ReviewAndRun)
         {
@@ -245,7 +268,16 @@ public sealed class WizardViewModel : IWizardViewModel
         OnPropertyChanged(nameof(CanGoForward));
         ((RelayCommand)GoBackCommand).NotifyCanExecuteChanged();
         ((RelayCommand)GoForwardCommand).NotifyCanExecuteChanged();
+
+        // Raise event for step change - MainWindow can sync settings on this
+        StepChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>
+    /// Event raised when the wizard step changes.
+    /// MainWindow listens to this to sync settings to unedited wizard fields.
+    /// </summary>
+    public event EventHandler? StepChanged;
 
     public List<string> ValidateCurrentStep() => CurrentStep switch
     {
@@ -431,7 +463,7 @@ public sealed class WizardViewModel : IWizardViewModel
             };
             if (_pipelineName != newName)
             {
-                _pipelineName = newName;
+                SetField(ref _pipelineName, newName);
                 OnPropertyChanged(nameof(PipelineName));
                 OnPropertyChanged(nameof(SelectedPipelineIndex));
             }
@@ -447,19 +479,8 @@ public sealed class WizardViewModel : IWizardViewModel
             if (SetField(ref _useSingleFileDataSource, value))
             {
                 OnPropertyChanged(nameof(UseDirectoryDataSource));
-                // Clear the opposite mode's fields when switching
-                if (value)
-                {
-                    _promptDir = null;
-                    _expectedDir = null;
-                    OnPropertyChanged(nameof(PromptDir));
-                    OnPropertyChanged(nameof(ExpectedDir));
-                }
-                else
-                {
-                    _dataFilePath = null;
-                    OnPropertyChanged(nameof(DataFilePath));
-                }
+                // Note: We do NOT clear path fields when switching modes
+                // This allows users to switch back and forth without losing their paths
             }
         }
     }
@@ -473,19 +494,8 @@ public sealed class WizardViewModel : IWizardViewModel
             if (SetField(ref _useSingleFileDataSource, !value))
             {
                 OnPropertyChanged(nameof(UseSingleFileDataSource));
-                // Clear the opposite mode's fields when switching
-                if (value)
-                {
-                    _dataFilePath = null;
-                    OnPropertyChanged(nameof(DataFilePath));
-                }
-                else
-                {
-                    _promptDir = null;
-                    _expectedDir = null;
-                    OnPropertyChanged(nameof(PromptDir));
-                    OnPropertyChanged(nameof(ExpectedDir));
-                }
+                // Note: We do NOT clear path fields when switching modes
+                // This allows users to switch back and forth without losing their paths
             }
         }
     }
@@ -504,6 +514,7 @@ public sealed class WizardViewModel : IWizardViewModel
     public string? JudgeLocalModelPath { get => _judgeLocalModelPath; set => SetField(ref _judgeLocalModelPath, value); }
     public string? JudgeHfRepo { get => _judgeHfRepo; set => SetField(ref _judgeHfRepo, value); }
     public string? JudgeHfToken { get => _judgeHfToken; set => SetField(ref _judgeHfToken, value); }
+    public string? JudgeApiKey { get => _judgeApiKey; set => SetField(ref _judgeApiKey, value); }
     public string? JudgeServerUrl { get => _judgeServerUrl; set => SetField(ref _judgeServerUrl, value); }
 
     /// <summary>Path to local judge llama-server executable (bypasses auto-update).</summary>
@@ -543,30 +554,66 @@ public sealed class WizardViewModel : IWizardViewModel
     public string? JudgeUrl { get => _judgeServerUrl; set => SetField(ref _judgeServerUrl, value); }
     public string JudgeTemplate { get => _judgeTemplate; set => SetField(ref _judgeTemplate, value); }
 
-    /// <summary>Selected index for the Judge Template ComboBox (0=standard, 1=pass-fail, 2=json).</summary>
+    /// <summary>Selected index for the Judge Template ComboBox.</summary>
     public int SelectedJudgeTemplateIndex
     {
-        get => JudgeTemplate switch
+        get
         {
-            "pass-fail" => 1,
-            "json" => 2,
-            _ => 0
-        };
+            var templates = GetJudgeTemplateNames();
+            var index = Array.IndexOf(templates, JudgeTemplate);
+            return index >= 0 ? index : 0;
+        }
         set
         {
-            var newTemplate = value switch
-            {
-                1 => "pass-fail",
-                2 => "json",
-                _ => "standard"
-            };
+            var templates = GetJudgeTemplateNames();
+            var newTemplate = (value >= 0 && value < templates.Length) ? templates[value] : templates[0];
             if (_judgeTemplate != newTemplate)
             {
-                _judgeTemplate = newTemplate;
+                SetField(ref _judgeTemplate, newTemplate);
                 OnPropertyChanged(nameof(JudgeTemplate));
                 OnPropertyChanged(nameof(SelectedJudgeTemplateIndex));
             }
         }
+    }
+
+    /// <summary>
+    /// Gets the available judge template names using reflection from DefaultTemplates class.
+    /// Returns kebab-case names (e.g., "standard", "pass-fail").
+    /// </summary>
+    public static string[] JudgeTemplateNames { get; } = GetJudgeTemplateNamesStatic();
+
+    private static string[] GetJudgeTemplateNamesStatic()
+    {
+        var templateType = typeof(Core.DefaultTemplates);
+        var constants = templateType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
+            .Select(f => f.Name)
+            .Order()
+            .ToArray();
+
+        // Convert PascalCase names to kebab-case for UI (e.g., "PassFail" -> "pass-fail")
+        return constants.Select(name =>
+            System.Text.RegularExpressions.Regex.Replace(name, "(?<!^)([A-Z])", "-$1").ToLowerInvariant()
+        ).ToArray();
+    }
+
+    /// <summary>
+    /// Gets the available judge template names using reflection from DefaultTemplates class.
+    /// Returns kebab-case names (e.g., "standard", "pass-fail").
+    /// </summary>
+    private static string[] GetJudgeTemplateNames()
+    {
+        var templateType = typeof(Core.DefaultTemplates);
+        var constants = templateType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
+            .Select(f => f.Name)
+            .Order()
+            .ToArray();
+
+        // Convert PascalCase names to kebab-case for UI (e.g., "PassFail" -> "pass-fail")
+        return constants.Select(name =>
+            CapitalLetterSplitRegex().Replace(name, "-$1").ToLowerInvariant()
+        ).ToArray();
     }
 
     public double JudgeScoreMin { get => _judgeScoreMin; set => SetField(ref _judgeScoreMin, value); }
@@ -578,201 +625,265 @@ public sealed class WizardViewModel : IWizardViewModel
     public string OutputDir { get => _outputDir; set => SetField(ref _outputDir, value); }
     public string? RunName { get => _runName; set => SetField(ref _runName, value); }
     public ShellTarget? ShellTarget { get => _shellTarget; set => SetField(ref _shellTarget, value); }
+
+    // Output settings (from Settings screen)
+    public bool WritePerEvalJson { get => _writePerEvalJson; set => SetField(ref _writePerEvalJson, value); }
+    public bool WriteSummaryJson { get => _writeSummaryJson; set => SetField(ref _writeSummaryJson, value); }
+    public bool WriteSummaryCsv { get => _writeSummaryCsv; set => SetField(ref _writeSummaryCsv, value); }
+    public bool WriteResultsParquet { get => _writeResultsParquet; set => SetField(ref _writeResultsParquet, value); }
+    public bool IncludeRawLlmResponse { get => _includeRawLlmResponse; set => SetField(ref _includeRawLlmResponse, value); }
+    public bool ContinueOnEvalFailure { get => _continueOnEvalFailure; set => SetField(ref _continueOnEvalFailure, value); }
+    public int? MaxConcurrentEvals { get => _maxConcurrentEvals; set => SetField(ref _maxConcurrentEvals, value); }
     public bool ContinueFromCheckpoint { get => _continueFromCheckpoint; set => SetField(ref _continueFromCheckpoint, value); }
 
     // ─── Build config from wizard state ──────────────────────────────────────
 
     public PartialConfig BuildPartialConfig()
     {
-        var model = ManageServer
-            ? UseLocalFile && LocalModelPath != null
-                ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = LocalModelPath }
-                : HfRepo != null
-                    ? new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = HfRepo, HfToken = HfToken }
-                    : null
+        // Only include fields that the user has explicitly modified
+        var model = _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(UseLocalFile)) ||
+                    _editedFields.Contains(nameof(LocalModelPath)) || _editedFields.Contains(nameof(HfRepo))
+            ? (ManageServer
+                ? (UseLocalFile && LocalModelPath != null
+                    ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = LocalModelPath }
+                    : HfRepo != null
+                        ? new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = HfRepo, HfToken = HfToken }
+                        : null)
+                : null)
             : null;
 
-        var server = new PartialServerConfig
-        {
-            Manage = ManageServer,
-            Model = model,
-            Host = ManageServer ? Host : null,
-            Port = ManageServer ? Port : null,
-            ApiKey = ApiKey,
-            ExecutablePath = _llamaServerExecutablePath,
-            BaseUrl = ManageServer ? null : ServerUrl
-        };
+        var server = _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(Host)) ||
+                     _editedFields.Contains(nameof(Port)) || _editedFields.Contains(nameof(ApiKey)) ||
+                     _editedFields.Contains(nameof(ServerUrl)) || _editedFields.Contains(nameof(LlamaServerExecutablePath)) ||
+                     _editedFields.Contains(nameof(LocalModelPath)) || _editedFields.Contains(nameof(HfRepo)) ||
+                     _editedFields.Contains(nameof(HfToken))
+            ? new PartialServerConfig
+            {
+                Manage = _editedFields.Contains(nameof(ManageServer)) ? ManageServer : null,
+                Model = model,
+                Host = _editedFields.Contains(nameof(Host)) && ManageServer ? Host : null,
+                Port = _editedFields.Contains(nameof(Port)) && ManageServer ? Port : null,
+                ApiKey = _editedFields.Contains(nameof(ApiKey)) ? ApiKey : null,
+                ExecutablePath = _editedFields.Contains(nameof(LlamaServerExecutablePath)) ? _llamaServerExecutablePath : null,
+                BaseUrl = _editedFields.Contains(nameof(ServerUrl)) && !ManageServer ? ServerUrl : null
+            }
+            : null;
 
-        // Build llama-server settings with all fields
+        // Build llama-server settings - only include edited fields
         var llamaSettings = BuildLlamaServerSettings();
 
-        // Build judge server settings
-        var judge = EnableJudge ? BuildJudgeConfig() : null;
+        // Build judge config - only include if judge-related fields were edited
+        var judge = _editedFields.Contains(nameof(EnableJudge)) || _editedFields.Contains(nameof(JudgeManageServer)) ||
+                    _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo)) ||
+                    _editedFields.Contains(nameof(JudgeApiKey)) || _editedFields.Contains(nameof(JudgeServerUrl)) ||
+                    _editedFields.Contains(nameof(SelectedJudgeTemplateIndex)) || _editedFields.Contains(nameof(JudgeScoreMin)) ||
+                    _editedFields.Contains(nameof(JudgeScoreMax))
+            ? (EnableJudge ? BuildJudgeConfig() : new PartialJudgeConfig { Enable = false })
+            : null;
 
-        var dataSource = DataFilePath != null
-            ? new DataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = DataFilePath }
-            : new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectoryPath = PromptDir, ExpectedOutputDirectoryPath = ExpectedDir };
+        // Build data source - only include if data source fields were edited
+        var dataSourceEdited = _editedFields.Contains(nameof(UseSingleFileDataSource)) ||
+                               _editedFields.Contains(nameof(DataFilePath)) ||
+                               _editedFields.Contains(nameof(PromptDir)) ||
+                               _editedFields.Contains(nameof(ExpectedDir));
+        var dataSource = dataSourceEdited ? (UseSingleFileDataSource ?
+            new DataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = DataFilePath } :
+            new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectoryPath = PromptDir, ExpectedOutputDirectoryPath = ExpectedDir }) : null;
 
-        var evalSet = new EvalSetConfig
+        var evalSet = dataSource != null || _editedFields.Contains(nameof(PipelineName))
+            ? new EvalSetConfig
+            {
+                PipelineName = _editedFields.Contains(nameof(PipelineName)) ? PipelineName : "CasualQA",
+                DataSource = dataSource ?? new DataSourceConfig { Kind = DataSourceKind.SingleFile }
+            }
+            : null;
+
+        // Build run meta - only include edited fields
+        var runEdited = _editedFields.Contains(nameof(RunName)) || _editedFields.Contains(nameof(OutputDir)) ||
+                        _editedFields.Contains(nameof(ShellTarget)) || _editedFields.Contains(nameof(ContinueFromCheckpoint)) ||
+                        _editedFields.Contains(nameof(ContinueOnEvalFailure)) || _editedFields.Contains(nameof(MaxConcurrentEvals));
+        var run = runEdited ? new PartialRunMeta
         {
-            PipelineName = PipelineName,
-            DataSource = dataSource,
-        };
+            RunName = _editedFields.Contains(nameof(RunName)) ? RunName : null,
+            OutputDirectoryPath = _editedFields.Contains(nameof(OutputDir)) ? OutputDir : null,
+            ExportShellTarget = _editedFields.Contains(nameof(ShellTarget)) ? ShellTarget : null,
+            ContinueFromCheckpoint = _editedFields.Contains(nameof(ContinueFromCheckpoint)) ? _continueFromCheckpoint : null,
+            ContinueOnEvalFailure = _editedFields.Contains(nameof(ContinueOnEvalFailure)) ? (_continueOnEvalFailure ? true : null) : null,
+            MaxConcurrentEvals = _editedFields.Contains(nameof(MaxConcurrentEvals)) ? _maxConcurrentEvals : null,
+        } : null;
 
-        var run = new PartialRunMeta
+        // Build output config - only include if output-related fields were edited
+        var outputEdited = _editedFields.Contains(nameof(WritePerEvalJson)) || _editedFields.Contains(nameof(WriteSummaryJson)) ||
+                           _editedFields.Contains(nameof(WriteSummaryCsv)) || _editedFields.Contains(nameof(WriteResultsParquet)) ||
+                           _editedFields.Contains(nameof(IncludeRawLlmResponse));
+        OutputConfig? output = outputEdited ? new OutputConfig
         {
-            RunName = RunName,
-            OutputDirectoryPath = OutputDir,
-            ExportShellTarget = ShellTarget,
-            ContinueFromCheckpoint = _continueFromCheckpoint,
-        };
-
-        var output = new OutputConfig
-        {
-            ShellTarget = ShellTarget,
-            OutputDir = OutputDir,
-        };
+            WritePerEvalJson = _editedFields.Contains(nameof(WritePerEvalJson)) ? _writePerEvalJson : true,
+            WriteSummaryJson = _editedFields.Contains(nameof(WriteSummaryJson)) ? _writeSummaryJson : true,
+            WriteSummaryCsv = _editedFields.Contains(nameof(WriteSummaryCsv)) ? _writeSummaryCsv : false,
+            WriteResultsParquet = _editedFields.Contains(nameof(WriteResultsParquet)) ? _writeResultsParquet : false,
+            IncludeRawLlmResponse = _editedFields.Contains(nameof(IncludeRawLlmResponse)) ? _includeRawLlmResponse : true,
+            ShellTarget = _editedFields.Contains(nameof(ShellTarget)) ? ShellTarget : null,
+            OutputDir = _editedFields.Contains(nameof(OutputDir)) ? OutputDir : null,
+        } : null;
 
         return new PartialConfig
         {
             Server = server,
             LlamaServer = llamaSettings,
-            EvalSets = [evalSet],
+            EvalSets = evalSet != null ? [evalSet] : [],
             Judge = judge,
             Run = run,
             Output = output,
+            DataSource = dataSourceEdited ? new PartialDataSourceConfig
+            {
+                Kind = _editedFields.Contains(nameof(UseSingleFileDataSource)) ? (UseSingleFileDataSource ? DataSourceKind.SingleFile : DataSourceKind.SplitDirectories) : null,
+                FilePath = _editedFields.Contains(nameof(DataFilePath)) && UseSingleFileDataSource ? DataFilePath : null,
+                PromptDirectoryPath = _editedFields.Contains(nameof(PromptDir)) && !UseSingleFileDataSource ? PromptDir : null,
+                ExpectedOutputDirectoryPath = _editedFields.Contains(nameof(ExpectedDir)) && !UseSingleFileDataSource ? ExpectedDir : null,
+            } : null,
         };
     }
 
     private PartialLlamaServerSettings? BuildLlamaServerSettings()
     {
-        var hasAnyValue = ContextWindowTokens != null || BatchSizeTokens != null || UbatchSizeTokens != null ||
-            ParallelSlotCount != null || EnableContinuousBatching != null || EnableCachePrompt != null ||
-            EnableContextShift != null || GpuLayerCount != null || !string.IsNullOrEmpty(SplitMode) ||
-            !string.IsNullOrEmpty(KvCacheTypeK) || !string.IsNullOrEmpty(KvCacheTypeV) ||
-            EnableKvOffload != null || EnableFlashAttention != null || SamplingTemperature != null ||
-            TopP != null || TopK != null || MinP != null || RepeatPenalty != null ||
-            RepeatLastNTokens != null || PresencePenalty != null || FrequencyPenalty != null ||
-            Seed != null || ThreadCount != null || HttpThreadCount != null ||
-            !string.IsNullOrEmpty(ChatTemplate) || EnableJinja != null ||
-            !string.IsNullOrEmpty(ReasoningFormat) || !string.IsNullOrEmpty(ModelAlias) ||
-            LogVerbosity != null || EnableMlock != null || EnableMmap != null ||
-            ServerTimeoutSeconds != null;
+        // Only include fields that were explicitly edited
+        var hasAnyValue = _editedFields.Contains(nameof(ContextWindowTokens)) || _editedFields.Contains(nameof(BatchSizeTokens)) ||
+            _editedFields.Contains(nameof(UbatchSizeTokens)) || _editedFields.Contains(nameof(ParallelSlotCount)) ||
+            _editedFields.Contains(nameof(EnableContinuousBatching)) || _editedFields.Contains(nameof(EnableCachePrompt)) ||
+            _editedFields.Contains(nameof(EnableContextShift)) || _editedFields.Contains(nameof(GpuLayerCount)) ||
+            _editedFields.Contains(nameof(SplitMode)) || _editedFields.Contains(nameof(KvCacheTypeK)) ||
+            _editedFields.Contains(nameof(KvCacheTypeV)) || _editedFields.Contains(nameof(EnableKvOffload)) ||
+            _editedFields.Contains(nameof(EnableFlashAttention)) || _editedFields.Contains(nameof(SamplingTemperature)) ||
+            _editedFields.Contains(nameof(TopP)) || _editedFields.Contains(nameof(TopK)) ||
+            _editedFields.Contains(nameof(MinP)) || _editedFields.Contains(nameof(RepeatPenalty)) ||
+            _editedFields.Contains(nameof(RepeatLastNTokens)) || _editedFields.Contains(nameof(PresencePenalty)) ||
+            _editedFields.Contains(nameof(FrequencyPenalty)) || _editedFields.Contains(nameof(Seed)) ||
+            _editedFields.Contains(nameof(ThreadCount)) || _editedFields.Contains(nameof(HttpThreadCount)) ||
+            _editedFields.Contains(nameof(ChatTemplate)) || _editedFields.Contains(nameof(EnableJinja)) ||
+            _editedFields.Contains(nameof(ReasoningFormat)) || _editedFields.Contains(nameof(ModelAlias)) ||
+            _editedFields.Contains(nameof(LogVerbosity)) || _editedFields.Contains(nameof(EnableMlock)) ||
+            _editedFields.Contains(nameof(EnableMmap)) || _editedFields.Contains(nameof(ServerTimeoutSeconds));
 
         if (!hasAnyValue) return null;
 
         return new PartialLlamaServerSettings
         {
-            ContextWindowTokens = ContextWindowTokens,
-            BatchSizeTokens = BatchSizeTokens,
-            UbatchSizeTokens = UbatchSizeTokens,
-            ParallelSlotCount = ParallelSlotCount,
-            EnableContinuousBatching = EnableContinuousBatching,
-            EnableCachePrompt = EnableCachePrompt,
-            EnableContextShift = EnableContextShift,
-            GpuLayerCount = GpuLayerCount,
-            SplitMode = SplitMode,
-            KvCacheTypeK = KvCacheTypeK,
-            KvCacheTypeV = KvCacheTypeV,
-            EnableKvOffload = EnableKvOffload,
-            EnableFlashAttention = EnableFlashAttention,
-            SamplingTemperature = SamplingTemperature,
-            TopP = TopP,
-            TopK = TopK,
-            MinP = MinP,
-            RepeatPenalty = RepeatPenalty,
-            RepeatLastNTokens = RepeatLastNTokens,
-            PresencePenalty = PresencePenalty,
-            FrequencyPenalty = FrequencyPenalty,
-            Seed = Seed,
-            ThreadCount = ThreadCount,
-            HttpThreadCount = HttpThreadCount,
-            ChatTemplate = ChatTemplate,
-            EnableJinja = EnableJinja,
-            ReasoningFormat = ReasoningFormat,
-            ModelAlias = ModelAlias,
-            LogVerbosity = LogVerbosity,
-            EnableMlock = EnableMlock,
-            EnableMmap = EnableMmap,
-            ServerTimeoutSeconds = ServerTimeoutSeconds
+            ContextWindowTokens = _editedFields.Contains(nameof(ContextWindowTokens)) ? ContextWindowTokens : null,
+            BatchSizeTokens = _editedFields.Contains(nameof(BatchSizeTokens)) ? BatchSizeTokens : null,
+            UbatchSizeTokens = _editedFields.Contains(nameof(UbatchSizeTokens)) ? UbatchSizeTokens : null,
+            ParallelSlotCount = _editedFields.Contains(nameof(ParallelSlotCount)) ? ParallelSlotCount : null,
+            EnableContinuousBatching = _editedFields.Contains(nameof(EnableContinuousBatching)) ? EnableContinuousBatching : null,
+            EnableCachePrompt = _editedFields.Contains(nameof(EnableCachePrompt)) ? EnableCachePrompt : null,
+            EnableContextShift = _editedFields.Contains(nameof(EnableContextShift)) ? EnableContextShift : null,
+            GpuLayerCount = _editedFields.Contains(nameof(GpuLayerCount)) ? GpuLayerCount : null,
+            SplitMode = _editedFields.Contains(nameof(SplitMode)) ? SplitMode : null,
+            KvCacheTypeK = _editedFields.Contains(nameof(KvCacheTypeK)) ? KvCacheTypeK : null,
+            KvCacheTypeV = _editedFields.Contains(nameof(KvCacheTypeV)) ? KvCacheTypeV : null,
+            EnableKvOffload = _editedFields.Contains(nameof(EnableKvOffload)) ? EnableKvOffload : null,
+            EnableFlashAttention = _editedFields.Contains(nameof(EnableFlashAttention)) ? EnableFlashAttention : null,
+            SamplingTemperature = _editedFields.Contains(nameof(SamplingTemperature)) ? SamplingTemperature : null,
+            TopP = _editedFields.Contains(nameof(TopP)) ? TopP : null,
+            TopK = _editedFields.Contains(nameof(TopK)) ? TopK : null,
+            MinP = _editedFields.Contains(nameof(MinP)) ? MinP : null,
+            RepeatPenalty = _editedFields.Contains(nameof(RepeatPenalty)) ? RepeatPenalty : null,
+            RepeatLastNTokens = _editedFields.Contains(nameof(RepeatLastNTokens)) ? RepeatLastNTokens : null,
+            PresencePenalty = _editedFields.Contains(nameof(PresencePenalty)) ? PresencePenalty : null,
+            FrequencyPenalty = _editedFields.Contains(nameof(FrequencyPenalty)) ? FrequencyPenalty : null,
+            Seed = _editedFields.Contains(nameof(Seed)) ? Seed : null,
+            ThreadCount = _editedFields.Contains(nameof(ThreadCount)) ? ThreadCount : null,
+            HttpThreadCount = _editedFields.Contains(nameof(HttpThreadCount)) ? HttpThreadCount : null,
+            ChatTemplate = _editedFields.Contains(nameof(ChatTemplate)) ? ChatTemplate : null,
+            EnableJinja = _editedFields.Contains(nameof(EnableJinja)) ? EnableJinja : null,
+            ReasoningFormat = _editedFields.Contains(nameof(ReasoningFormat)) ? ReasoningFormat : null,
+            ModelAlias = _editedFields.Contains(nameof(ModelAlias)) ? ModelAlias : null,
+            LogVerbosity = _editedFields.Contains(nameof(LogVerbosity)) ? LogVerbosity : null,
+            EnableMlock = _editedFields.Contains(nameof(EnableMlock)) ? EnableMlock : null,
+            EnableMmap = _editedFields.Contains(nameof(EnableMmap)) ? EnableMmap : null,
+            ServerTimeoutSeconds = _editedFields.Contains(nameof(ServerTimeoutSeconds)) ? ServerTimeoutSeconds : null
         };
     }
 
     private PartialJudgeConfig? BuildJudgeConfig()
     {
-        var judgeModel = JudgeManageServer
-            ? (JudgeUseLocalFile && !string.IsNullOrEmpty(JudgeLocalModelPath)
-                ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = JudgeLocalModelPath }
-                : !string.IsNullOrEmpty(JudgeHfRepo)
-                    ? new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = JudgeHfRepo, HfToken = JudgeHfToken }
-                    : null)
+        var judgeModel = _editedFields.Contains(nameof(JudgeManageServer)) || _editedFields.Contains(nameof(JudgeUseLocalFile)) ||
+                         _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo))
+            ? (JudgeManageServer
+                ? (JudgeUseLocalFile && !string.IsNullOrEmpty(JudgeLocalModelPath)
+                    ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = JudgeLocalModelPath }
+                    : !string.IsNullOrEmpty(JudgeHfRepo)
+                        ? new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = JudgeHfRepo, HfToken = JudgeHfToken }
+                        : null)
+                : null)
             : null;
 
         // Build judge-specific llama-server settings with full feature parity
         var judgeServerSettings = BuildJudgeLlamaServerSettings();
 
         // Default judge executable path to primary server's executable path if not specified
-        var judgeExecutablePath = _judgeExecutablePath ?? _llamaServerExecutablePath;
+        var judgeExecutablePath = _editedFields.Contains(nameof(JudgeExecutablePath)) ? _judgeExecutablePath : _llamaServerExecutablePath;
 
         return new PartialJudgeConfig
         {
-            Manage = JudgeManageServer,
+            Enable = true,
             ServerConfig = new PartialServerConfig
             {
-                Manage = JudgeManageServer,
+                Manage = _editedFields.Contains(nameof(JudgeManageServer)) ? JudgeManageServer : null,
                 Model = judgeModel,
-                Host = JudgeManageServer ? "127.0.0.1" : null,
-                Port = JudgeManageServer ? 8081 : null,
-                ApiKey = null,
+                Host = _editedFields.Contains(nameof(JudgeManageServer)) && JudgeManageServer ? "127.0.0.1" : null,
+                Port = _editedFields.Contains(nameof(JudgeManageServer)) && JudgeManageServer ? 8081 : null,
+                ApiKey = _editedFields.Contains(nameof(JudgeApiKey)) ? JudgeApiKey : null,
                 ExecutablePath = judgeExecutablePath,
-                BaseUrl = JudgeManageServer ? null : JudgeServerUrl
+                BaseUrl = _editedFields.Contains(nameof(JudgeManageServer)) && !JudgeManageServer ? JudgeServerUrl : null
             },
             ServerSettings = judgeServerSettings,
-            BaseUrl = JudgeManageServer ? null : JudgeServerUrl,
-            JudgePromptTemplate = JudgeTemplate,
-            ScoreMinValue = JudgeScoreMin,
-            ScoreMaxValue = JudgeScoreMax
+            BaseUrl = _editedFields.Contains(nameof(JudgeServerUrl)) && !JudgeManageServer ? JudgeServerUrl : null,
+            JudgePromptTemplate = _editedFields.Contains(nameof(JudgeTemplate)) ? JudgeTemplate : null,
+            ScoreMinValue = _editedFields.Contains(nameof(JudgeScoreMin)) ? JudgeScoreMin : 0,
+            ScoreMaxValue = _editedFields.Contains(nameof(JudgeScoreMax)) ? JudgeScoreMax : 10
         };
     }
 
     private PartialLlamaServerSettings? BuildJudgeLlamaServerSettings()
     {
-        var hasAnyValue = JudgeContextWindowTokens != null || JudgeBatchSizeTokens != null ||
-            JudgeParallelSlotCount != null || JudgeSplitMode != null ||
-            !string.IsNullOrEmpty(JudgeKvCacheTypeK) || !string.IsNullOrEmpty(JudgeKvCacheTypeV) ||
-            JudgeEnableFlashAttention != null || JudgeSamplingTemperature != null ||
-            JudgeTopP != null || JudgeTopK != null || JudgeMinP != null ||
-            JudgeRepeatPenalty != null || JudgeSeed != null ||
-            JudgeThreadCount != null || JudgeHttpThreadCount != null ||
-            !string.IsNullOrEmpty(JudgeChatTemplate) || JudgeEnableJinja != null ||
-            JudgeLogVerbosity != null || JudgeEnableMlock != null ||
-            JudgeEnableMmap != null || JudgeServerTimeoutSeconds != null;
+        // Only include fields that were explicitly edited
+        var hasAnyValue = _editedFields.Contains(nameof(JudgeContextWindowTokens)) || _editedFields.Contains(nameof(JudgeBatchSizeTokens)) ||
+            _editedFields.Contains(nameof(JudgeParallelSlotCount)) || _editedFields.Contains(nameof(JudgeSplitMode)) ||
+            _editedFields.Contains(nameof(JudgeKvCacheTypeK)) || _editedFields.Contains(nameof(JudgeKvCacheTypeV)) ||
+            _editedFields.Contains(nameof(JudgeEnableFlashAttention)) || _editedFields.Contains(nameof(JudgeSamplingTemperature)) ||
+            _editedFields.Contains(nameof(JudgeTopP)) || _editedFields.Contains(nameof(JudgeTopK)) ||
+            _editedFields.Contains(nameof(JudgeMinP)) || _editedFields.Contains(nameof(JudgeRepeatPenalty)) ||
+            _editedFields.Contains(nameof(JudgeSeed)) || _editedFields.Contains(nameof(JudgeThreadCount)) ||
+            _editedFields.Contains(nameof(JudgeHttpThreadCount)) || _editedFields.Contains(nameof(JudgeChatTemplate)) ||
+            _editedFields.Contains(nameof(JudgeEnableJinja)) || _editedFields.Contains(nameof(JudgeLogVerbosity)) ||
+            _editedFields.Contains(nameof(JudgeEnableMlock)) || _editedFields.Contains(nameof(JudgeEnableMmap)) ||
+            _editedFields.Contains(nameof(JudgeServerTimeoutSeconds));
 
         if (!hasAnyValue) return null;
 
         return new PartialLlamaServerSettings
         {
-            ContextWindowTokens = JudgeContextWindowTokens,
-            BatchSizeTokens = JudgeBatchSizeTokens,
-            ParallelSlotCount = JudgeParallelSlotCount,
-            SplitMode = JudgeSplitMode,
-            KvCacheTypeK = JudgeKvCacheTypeK,
-            KvCacheTypeV = JudgeKvCacheTypeV,
-            EnableFlashAttention = JudgeEnableFlashAttention,
-            SamplingTemperature = JudgeSamplingTemperature,
-            TopP = JudgeTopP,
-            TopK = JudgeTopK,
-            MinP = JudgeMinP,
-            RepeatPenalty = JudgeRepeatPenalty,
-            Seed = JudgeSeed,
-            ThreadCount = JudgeThreadCount,
-            HttpThreadCount = JudgeHttpThreadCount,
-            ChatTemplate = JudgeChatTemplate,
-            EnableJinja = JudgeEnableJinja,
-            LogVerbosity = JudgeLogVerbosity,
-            EnableMlock = JudgeEnableMlock,
-            EnableMmap = JudgeEnableMmap,
-            ServerTimeoutSeconds = JudgeServerTimeoutSeconds
+            ContextWindowTokens = _editedFields.Contains(nameof(JudgeContextWindowTokens)) ? JudgeContextWindowTokens : null,
+            BatchSizeTokens = _editedFields.Contains(nameof(JudgeBatchSizeTokens)) ? JudgeBatchSizeTokens : null,
+            ParallelSlotCount = _editedFields.Contains(nameof(JudgeParallelSlotCount)) ? JudgeParallelSlotCount : null,
+            SplitMode = _editedFields.Contains(nameof(JudgeSplitMode)) ? JudgeSplitMode : null,
+            KvCacheTypeK = _editedFields.Contains(nameof(JudgeKvCacheTypeK)) ? JudgeKvCacheTypeK : null,
+            KvCacheTypeV = _editedFields.Contains(nameof(JudgeKvCacheTypeV)) ? JudgeKvCacheTypeV : null,
+            EnableFlashAttention = _editedFields.Contains(nameof(JudgeEnableFlashAttention)) ? JudgeEnableFlashAttention : null,
+            SamplingTemperature = _editedFields.Contains(nameof(JudgeSamplingTemperature)) ? JudgeSamplingTemperature : null,
+            TopP = _editedFields.Contains(nameof(JudgeTopP)) ? JudgeTopP : null,
+            TopK = _editedFields.Contains(nameof(JudgeTopK)) ? JudgeTopK : null,
+            MinP = _editedFields.Contains(nameof(JudgeMinP)) ? JudgeMinP : null,
+            RepeatPenalty = _editedFields.Contains(nameof(JudgeRepeatPenalty)) ? JudgeRepeatPenalty : null,
+            Seed = _editedFields.Contains(nameof(JudgeSeed)) ? JudgeSeed : null,
+            ThreadCount = _editedFields.Contains(nameof(JudgeThreadCount)) ? JudgeThreadCount : null,
+            HttpThreadCount = _editedFields.Contains(nameof(JudgeHttpThreadCount)) ? JudgeHttpThreadCount : null,
+            ChatTemplate = _editedFields.Contains(nameof(JudgeChatTemplate)) ? JudgeChatTemplate : null,
+            EnableJinja = _editedFields.Contains(nameof(JudgeEnableJinja)) ? JudgeEnableJinja : null,
+            LogVerbosity = _editedFields.Contains(nameof(JudgeLogVerbosity)) ? JudgeLogVerbosity : null,
+            EnableMlock = _editedFields.Contains(nameof(JudgeEnableMlock)) ? JudgeEnableMlock : null,
+            EnableMmap = _editedFields.Contains(nameof(JudgeEnableMmap)) ? JudgeEnableMmap : null,
+            ServerTimeoutSeconds = _editedFields.Contains(nameof(JudgeServerTimeoutSeconds)) ? JudgeServerTimeoutSeconds : null
         };
     }
 
@@ -787,7 +898,7 @@ public sealed class WizardViewModel : IWizardViewModel
             // Browse for llama-server executable
             var path = await _filePicker.ShowOpenFileDialogAsync(
                 "Select llama-server Executable",
-                "Executables|llama-server*;*.exe|All Files|*.*");
+                "Executable Files|llama-server;llama-server.exe|All Files|*.*");
             if (path != null)
             {
                 LlamaServerExecutablePath = path;
@@ -853,7 +964,7 @@ public sealed class WizardViewModel : IWizardViewModel
             // Browse for judge llama-server executable
             var path = await _filePicker.ShowOpenFileDialogAsync(
                 "Select Judge llama-server Executable",
-                "Executables|llama-server*;*.exe|All Files|*.*");
+                "Executable Files|llama-server;llama-server.exe|All Files|*.*");
             if (path != null)
             {
                 JudgeExecutablePath = path;
@@ -1043,14 +1154,26 @@ public sealed class WizardViewModel : IWizardViewModel
         _judgeScoreMin = 0;
         _judgeScoreMax = 10;
 
-        // Output
-        _outputDir = "./results";
+        // Output settings
+        _writePerEvalJson = false;
+        _writeSummaryJson = true;
+        _writeSummaryCsv = false;
+        _writeResultsParquet = false;
+        _includeRawLlmResponse = true;
+        _continueOnEvalFailure = true;
+        _maxConcurrentEvals = null;
+
+        // Run settings
         _runName = null;
-        // Reset shell target to OS default
-        _shellTarget = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            ? Core.Models.ShellTarget.PowerShell
-            : Core.Models.ShellTarget.Bash;
+        _outputDir = "./results";
+        _shellTarget = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? Core.Models.ShellTarget.PowerShell : Core.Models.ShellTarget.Bash;
         _continueFromCheckpoint = false;
+
+        // Clear the edited fields set after resetting
+        _editedFields.Clear();
+
+        // After reset, signal MainWindow to sync settings from loaded config files. Before OnPropertyChanged because the handler changes them without calling these events.
+        ResetToDefaultsCompleted?.Invoke(this, EventArgs.Empty);
 
         // Notify all properties changed
         OnPropertyChanged(nameof(CurrentStep));
@@ -1149,12 +1272,25 @@ public sealed class WizardViewModel : IWizardViewModel
         OnPropertyChanged(nameof(JudgeScoreMax));
 
         // Output properties
-        OnPropertyChanged(nameof(OutputDir));
+        OnPropertyChanged(nameof(WritePerEvalJson));
+        OnPropertyChanged(nameof(WriteSummaryJson));
+        OnPropertyChanged(nameof(WriteSummaryCsv));
+        OnPropertyChanged(nameof(WriteResultsParquet));
+        OnPropertyChanged(nameof(IncludeRawLlmResponse));
+        OnPropertyChanged(nameof(ContinueOnEvalFailure));
+        OnPropertyChanged(nameof(MaxConcurrentEvals));
         OnPropertyChanged(nameof(RunName));
+        OnPropertyChanged(nameof(OutputDir));
         OnPropertyChanged(nameof(ShellTarget));
         OnPropertyChanged(nameof(CheckpointDatabasePath));
         OnPropertyChanged(nameof(ContinueFromCheckpoint));
     }
+
+    /// <summary>
+    /// Event raised after ResetToDefaults completes.
+    /// MainWindow listens to this to sync settings from loaded config files.
+    /// </summary>
+    public event EventHandler? ResetToDefaultsCompleted;
 
     // ─── INotifyPropertyChanged ───────────────────────────────────────────────
 
@@ -1166,6 +1302,12 @@ public sealed class WizardViewModel : IWizardViewModel
         if (EqualityComparer<T>.Default.Equals(f, v)) return false;
         f = v; OnPropertyChanged(n);
 
+        // Track this field as edited by the user
+        if (n != null)
+        {
+            _editedFields.Add(n);
+        }
+
         // Navigation validity depends on multiple properties (current step and some fields).
         // Ensure CanGoBack/CanGoForward are re-evaluated and commands get updated whenever any bound property changes.
         OnPropertyChanged(nameof(CanGoBack));
@@ -1176,4 +1318,248 @@ public sealed class WizardViewModel : IWizardViewModel
 
         return true;
     }
+
+    // ─── Sync from loaded settings ────────────────────────────────────────────
+
+    /// <summary>
+    /// Syncs default values from resolved config (which includes Settings view fields) without marking fields as edited.
+    /// </summary>
+    public void SyncDefaultsFromSettings(ResolvedConfig config, SettingsViewModel? settingsVM = null)
+    {
+        // Server settings
+        if (config.Server != null)
+        {
+            if (!_editedFields.Contains(nameof(ManageServer)))
+                _manageServer = config.Server.Manage ?? true;
+            if (!_editedFields.Contains(nameof(LlamaServerExecutablePath)))
+                _llamaServerExecutablePath = config.Server.ExecutablePath;
+            if (!_editedFields.Contains(nameof(Host)))
+                _host = config.Server.Host ?? "127.0.0.1";
+            if (!_editedFields.Contains(nameof(Port)))
+                _port = config.Server.Port ?? 8080;
+            if (!_editedFields.Contains(nameof(ApiKey)))
+                _apiKey = config.Server.ApiKey;
+        }
+
+        // Llama server settings
+        if (config.LlamaServer != null)
+        {
+            var llama = config.LlamaServer;
+            if (!_editedFields.Contains(nameof(ContextWindowTokens)))
+                _contextWindowTokens = llama.ContextWindowTokens;
+            if (!_editedFields.Contains(nameof(BatchSizeTokens)))
+                _batchSizeTokens = llama.BatchSizeTokens;
+            if (!_editedFields.Contains(nameof(UbatchSizeTokens)))
+                _ubatchSizeTokens = llama.UbatchSizeTokens;
+            if (!_editedFields.Contains(nameof(ParallelSlotCount)))
+                _parallelSlotCount = llama.ParallelSlotCount;
+            if (!_editedFields.Contains(nameof(EnableContinuousBatching)))
+                _enableContinuousBatching = llama.EnableContinuousBatching;
+            if (!_editedFields.Contains(nameof(EnableCachePrompt)))
+                _enableCachePrompt = llama.EnableCachePrompt;
+            if (!_editedFields.Contains(nameof(EnableContextShift)))
+                _enableContextShift = llama.EnableContextShift;
+            if (!_editedFields.Contains(nameof(GpuLayerCount)))
+                _gpuLayerCount = llama.GpuLayerCount;
+            if (!_editedFields.Contains(nameof(SplitMode)))
+                _splitMode = llama.SplitMode;
+            if (!_editedFields.Contains(nameof(KvCacheTypeK)))
+                _kvCacheTypeK = llama.KvCacheTypeK;
+            if (!_editedFields.Contains(nameof(KvCacheTypeV)))
+                _kvCacheTypeV = llama.KvCacheTypeV;
+            if (!_editedFields.Contains(nameof(EnableKvOffload)))
+                _enableKvOffload = llama.EnableKvOffload;
+            if (!_editedFields.Contains(nameof(EnableFlashAttention)))
+                _enableFlashAttention = llama.EnableFlashAttention;
+            if (!_editedFields.Contains(nameof(SamplingTemperature)))
+                _samplingTemperature = llama.SamplingTemperature;
+            if (!_editedFields.Contains(nameof(TopP)))
+                _topP = llama.TopP;
+            if (!_editedFields.Contains(nameof(TopK)))
+                _topK = llama.TopK;
+            if (!_editedFields.Contains(nameof(MinP)))
+                _minP = llama.MinP;
+            if (!_editedFields.Contains(nameof(RepeatPenalty)))
+                _repeatPenalty = llama.RepeatPenalty;
+            if (!_editedFields.Contains(nameof(RepeatLastNTokens)))
+                _repeatLastNTokens = llama.RepeatLastNTokens;
+            if (!_editedFields.Contains(nameof(PresencePenalty)))
+                _presencePenalty = llama.PresencePenalty;
+            if (!_editedFields.Contains(nameof(FrequencyPenalty)))
+                _frequencyPenalty = llama.FrequencyPenalty;
+            if (!_editedFields.Contains(nameof(Seed)))
+                _seed = llama.Seed;
+            if (!_editedFields.Contains(nameof(ThreadCount)))
+                _threadCount = llama.ThreadCount;
+            if (!_editedFields.Contains(nameof(HttpThreadCount)))
+                _httpThreadCount = llama.HttpThreadCount;
+            if (!_editedFields.Contains(nameof(ChatTemplate)))
+                _chatTemplate = llama.ChatTemplate;
+            if (!_editedFields.Contains(nameof(EnableJinja)))
+                _enableJinja = llama.EnableJinja;
+            if (!_editedFields.Contains(nameof(ReasoningFormat)))
+                _reasoningFormat = llama.ReasoningFormat;
+            if (!_editedFields.Contains(nameof(ModelAlias)))
+                _modelAlias = llama.ModelAlias;
+            if (!_editedFields.Contains(nameof(LogVerbosity)))
+                _logVerbosity = llama.LogVerbosity;
+            if (!_editedFields.Contains(nameof(EnableMlock)))
+                _enableMlock = llama.EnableMlock;
+            if (!_editedFields.Contains(nameof(EnableMmap)))
+                _enableMmap = llama.EnableMmap;
+            if (!_editedFields.Contains(nameof(ServerTimeoutSeconds)))
+                _serverTimeoutSeconds = llama.ServerTimeoutSeconds;
+        }
+
+        // Judge settings
+        if (config.Judge != null)
+        {
+            var judge = config.Judge;
+            if (!_editedFields.Contains(nameof(EnableJudge)))
+                _enableJudge = judge.Enable;
+            if (!_editedFields.Contains(nameof(JudgeManageServer)))
+                _judgeManageServer = judge.Manage;
+            if (!_editedFields.Contains(nameof(JudgeExecutablePath)))
+                _judgeExecutablePath = judge.ServerConfig.ExecutablePath;
+            if (!_editedFields.Contains(nameof(JudgeLocalModelPath)))
+                _judgeLocalModelPath = judge.ServerConfig?.Model?.FilePath;
+            if (!_editedFields.Contains(nameof(JudgeHfRepo)))
+                _judgeHfRepo = judge.ServerConfig?.Model?.HfRepo;
+            if (!_editedFields.Contains(nameof(JudgeHfToken)))
+                _judgeHfToken = judge.ServerConfig?.Model?.HfToken;
+            if (!_editedFields.Contains(nameof(JudgeApiKey)))
+                _judgeApiKey = judge.ServerConfig?.ApiKey;
+            if (!_editedFields.Contains(nameof(JudgeServerUrl)))
+                _judgeServerUrl = judge.BaseUrl;
+            if (!_editedFields.Contains(nameof(SelectedJudgeTemplateIndex)))
+                _judgeTemplate = judge.JudgePromptTemplate ?? "standard";
+            if (!_editedFields.Contains(nameof(JudgeScoreMin)))
+                _judgeScoreMin = (int)judge.ScoreMinValue;
+            if (!_editedFields.Contains(nameof(JudgeScoreMax)))
+                _judgeScoreMax = (int)judge.ScoreMaxValue;
+
+            // Judge llama-server settings
+            if (judge.ServerSettings != null)
+            {
+                var js = judge.ServerSettings;
+                if (!_editedFields.Contains(nameof(JudgeContextWindowTokens)))
+                    _judgeContextWindowTokens = js.ContextWindowTokens;
+                if (!_editedFields.Contains(nameof(JudgeBatchSizeTokens)))
+                    _judgeBatchSizeTokens = js.BatchSizeTokens;
+                if (!_editedFields.Contains(nameof(JudgeParallelSlotCount)))
+                    _judgeParallelSlotCount = js.ParallelSlotCount;
+                if (!_editedFields.Contains(nameof(JudgeGpuLayerCount)))
+                    _judgeGpuLayerCount = js.GpuLayerCount;
+                if (!_editedFields.Contains(nameof(JudgeSplitMode)))
+                    _judgeSplitMode = js.SplitMode;
+                if (!_editedFields.Contains(nameof(JudgeKvCacheTypeK)))
+                    _judgeKvCacheTypeK = js.KvCacheTypeK;
+                if (!_editedFields.Contains(nameof(JudgeKvCacheTypeV)))
+                    _judgeKvCacheTypeV = js.KvCacheTypeV;
+                if (!_editedFields.Contains(nameof(JudgeEnableFlashAttention)))
+                    _judgeEnableFlashAttention = js.EnableFlashAttention;
+                if (!_editedFields.Contains(nameof(JudgeSamplingTemperature)))
+                    _judgeSamplingTemperature = js.SamplingTemperature;
+                if (!_editedFields.Contains(nameof(JudgeTopP)))
+                    _judgeTopP = js.TopP;
+                if (!_editedFields.Contains(nameof(JudgeTopK)))
+                    _judgeTopK = js.TopK;
+                if (!_editedFields.Contains(nameof(JudgeMinP)))
+                    _judgeMinP = js.MinP;
+                if (!_editedFields.Contains(nameof(JudgeRepeatPenalty)))
+                    _judgeRepeatPenalty = js.RepeatPenalty;
+                if (!_editedFields.Contains(nameof(JudgeSeed)))
+                    _judgeSeed = js.Seed;
+                if (!_editedFields.Contains(nameof(JudgeThreadCount)))
+                    _judgeThreadCount = js.ThreadCount;
+                if (!_editedFields.Contains(nameof(JudgeHttpThreadCount)))
+                    _judgeHttpThreadCount = js.HttpThreadCount;
+                if (!_editedFields.Contains(nameof(JudgeChatTemplate)))
+                    _judgeChatTemplate = js.ChatTemplate;
+                if (!_editedFields.Contains(nameof(JudgeEnableJinja)))
+                    _judgeEnableJinja = js.EnableJinja;
+                if (!_editedFields.Contains(nameof(JudgeLogVerbosity)))
+                    _judgeLogVerbosity = js.LogVerbosity;
+                if (!_editedFields.Contains(nameof(JudgeEnableMlock)))
+                    _judgeEnableMlock = js.EnableMlock;
+                if (!_editedFields.Contains(nameof(JudgeEnableMmap)))
+                    _judgeEnableMmap = js.EnableMmap;
+                if (!_editedFields.Contains(nameof(JudgeServerTimeoutSeconds)))
+                    _judgeServerTimeoutSeconds = js.ServerTimeoutSeconds;
+            }
+        }
+
+        // Run settings
+        if (config.Run != null)
+        {
+            var run = config.Run;
+            if (!_editedFields.Contains(nameof(RunName)))
+                _runName = run.RunName;
+            if (!_editedFields.Contains(nameof(OutputDir)))
+                _outputDir = run.OutputDirectoryPath ?? "./results";
+            if (!_editedFields.Contains(nameof(ShellTarget)))
+                _shellTarget = run.ExportShellTarget;
+            if (!_editedFields.Contains(nameof(ContinueOnEvalFailure)))
+                _continueOnEvalFailure = run.ContinueOnEvalFailure ?? true;
+            if (!_editedFields.Contains(nameof(MaxConcurrentEvals)))
+                _maxConcurrentEvals = run.MaxConcurrentEvals;
+        }
+
+        // Data source settings - read from top-level DataSource config
+        if (config.DataSource != null)
+        {
+            var ds = config.DataSource;
+            if (!_editedFields.Contains(nameof(DataFilePath)))
+                _dataFilePath = ds.FilePath;
+            if (!_editedFields.Contains(nameof(PromptDir)))
+                _promptDir = ds.PromptDirectoryPath;
+            if (!_editedFields.Contains(nameof(ExpectedDir)))
+                _expectedDir = ds.ExpectedOutputDirectoryPath;
+
+            // Data source mode
+            var newUseSingleFileDataSource = ds.Kind == DataSourceKind.SingleFile ||
+                                             ds.Kind == DataSourceKind.JsonFile ||
+                                             ds.Kind == DataSourceKind.JsonlFile ||
+                                             ds.Kind == DataSourceKind.YamlFile ||
+                                             ds.Kind == DataSourceKind.CsvFile ||
+                                             ds.Kind == DataSourceKind.ParquetFile ||
+                                             ds.Kind == DataSourceKind.File;
+            if (!_editedFields.Contains(nameof(UseSingleFileDataSource)))
+            {
+                _useSingleFileDataSource = newUseSingleFileDataSource;
+            }
+        }
+        // Fallback to EvalSets[0].DataSource for backwards compatibility
+        else if (config.EvalSets.Count > 0)
+        {
+            var evalSet = config.EvalSets[0];
+            if (!_editedFields.Contains(nameof(PipelineName)))
+                _pipelineName = evalSet.PipelineName ?? "CasualQA";
+            if (!_editedFields.Contains(nameof(DataFilePath)))
+                _dataFilePath = evalSet.DataSource.FilePath;
+            if (!_editedFields.Contains(nameof(PromptDir)))
+                _promptDir = evalSet.DataSource.PromptDirectoryPath;
+            if (!_editedFields.Contains(nameof(ExpectedDir)))
+                _expectedDir = evalSet.DataSource.ExpectedOutputDirectoryPath;
+
+            // Data source mode
+            var newUseSingleFileDataSource = evalSet.DataSource.Kind == DataSourceKind.SingleFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.JsonFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.JsonlFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.YamlFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.CsvFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.ParquetFile ||
+                                             evalSet.DataSource.Kind == DataSourceKind.File;
+            if (!_editedFields.Contains(nameof(UseSingleFileDataSource)))
+            {
+                _useSingleFileDataSource = newUseSingleFileDataSource;
+            }
+        }
+
+        // Notify the Avalonia UI to repaint the bound variables that were just updated in the background
+        //TODO: OnPropertyChanged(string.Empty); but that doesn't work for every field
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex("(?<!^)([A-Z])")]
+    private static partial System.Text.RegularExpressions.Regex CapitalLetterSplitRegex();
 }

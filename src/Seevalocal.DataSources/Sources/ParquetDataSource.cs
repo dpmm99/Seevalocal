@@ -49,14 +49,19 @@ internal sealed class ParquetDataSource(string name, DataSourceConfig config, IL
             {
                 ct.ThrowIfCancellationRequested();
 
-                var id = GetValue(columns, mapping.IdField, row)
+                var idField = mapping.IdField ?? "id";
+                var userPromptField = mapping.UserPromptField ?? "prompt";
+                var expectedOutputField = mapping.ExpectedOutputField ?? "expected";
+                var systemPromptField = mapping.SystemPromptField;
+
+                var id = GetValue(columns, idField, row)
                          ?? IdGenerator.Generate(Name, globalIndex);
-                var userPrompt = GetValue(columns, mapping.UserPromptField, row) ?? "";
-                var expectedOutput = mapping.ExpectedOutputField is not null
-                    ? GetValue(columns, mapping.ExpectedOutputField, row)
+                var userPrompt = GetValue(columns, userPromptField, row) ?? "";
+                var expectedOutput = expectedOutputField is not null
+                    ? GetValue(columns, expectedOutputField, row)
                     : null;
-                var systemPrompt = mapping.SystemPromptField is not null
-                    ? GetValue(columns, mapping.SystemPromptField, row)
+                var systemPrompt = systemPromptField is not null
+                    ? GetValue(columns, systemPromptField, row)
                     : _config.DefaultSystemPrompt;
 
                 Dictionary<string, string> metadata = [];

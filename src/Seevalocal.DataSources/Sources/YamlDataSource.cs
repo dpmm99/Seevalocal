@@ -44,13 +44,18 @@ internal sealed class YamlDataSource(string name, DataSourceConfig config, ILogg
 
     private EvalItem ParseNode(YamlMappingNode node, FieldMapping mapping, int index)
     {
-        var id = GetString(node, mapping.IdField) ?? IdGenerator.Generate(Name, index);
-        var userPrompt = GetString(node, mapping.UserPromptField) ?? "";
-        var expectedOutput = mapping.ExpectedOutputField is not null
-            ? GetString(node, mapping.ExpectedOutputField)
+        var idField = mapping.IdField ?? "id";
+        var userPromptField = mapping.UserPromptField ?? "prompt";
+        var expectedOutputField = mapping.ExpectedOutputField ?? "expected";
+        var systemPromptField = mapping.SystemPromptField;
+
+        var id = GetString(node, idField) ?? IdGenerator.Generate(Name, index);
+        var userPrompt = GetString(node, userPromptField) ?? "";
+        var expectedOutput = expectedOutputField is not null
+            ? GetString(node, expectedOutputField)
             : null;
-        var systemPrompt = mapping.SystemPromptField is not null
-            ? GetString(node, mapping.SystemPromptField)
+        var systemPrompt = systemPromptField is not null
+            ? GetString(node, systemPromptField)
             : _config.DefaultSystemPrompt;
 
         Dictionary<string, string> metadata = [];

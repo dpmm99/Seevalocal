@@ -1,3 +1,5 @@
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
@@ -26,6 +28,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly IShellScriptExporter _scriptExporter;
     private readonly ILogger<MainWindowViewModel> _logger;
     private readonly IFilePickerService _filePicker;
+    private readonly IToastService _toastService;
 
     private AppView _currentView = AppView.Wizard;
     private string _titleBarText = "Seevalocal";
@@ -66,6 +69,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>View model for the Settings view.</summary>
     public SettingsViewModel SettingsViewModel { get; }
 
+    /// <summary>
+    /// Gets the collection of active toast notifications for display in the UI.
+    /// </summary>
+    public ObservableCollection<ToastMessage> Toasts =>
+        (_toastService as ToastService)?.Toasts ?? [];
+
     // ─── Active run ───────────────────────────────────────────────────────────
 
     public IEvalRunViewModel? ActiveRun
@@ -87,6 +96,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ResetSettingsToDefaultsCommand { get; }
     public ICommand LoadSettingsFileCommand { get; }
     public ICommand SaveSettingsFileCommand { get; }
+    public ICommand SaveMaterializedSettingsFileCommand { get; }
 
     // ─── Results View Commands ────────────────────────────────────────────────
 
@@ -94,6 +104,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ExportResultsJsonCommand { get; }
     public ICommand ExportResultsShellScriptCommand { get; }
     public ICommand OpenResultsFolderCommand { get; }
+    public ICommand CopyTextCommand { get; }
 
     // ─── Constructor ─────────────────────────────────────────────────────────
 
@@ -103,13 +114,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         IShellScriptExporter scriptExporter,
         ILogger<MainWindowViewModel> logger,
         IFilePickerService filePicker,
-        IWizardViewModel wizardState)
+        IWizardViewModel wizardState,
+        IToastService toastService)
     {
         _configService = configService;
         _runnerService = runnerService;
         _scriptExporter = scriptExporter;
         _logger = logger;
         _filePicker = filePicker;
+        _toastService = toastService;
         WizardState = wizardState;
         SettingsViewModel = new SettingsViewModel();
 
@@ -129,7 +142,49 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         // Subscribe to browse requests from SettingsViewModel
         SettingsViewModel.BrowseRequested += async (_, args) => await HandleBrowseRequestAsync(args);
 
-        NavigateToWizardCommand = new RelayCommand(() => CurrentView = AppView.Wizard);
+        // Subscribe to settings field value changes to sync them immediately
+        foreach (var field in SettingsViewModel.SettingsFields)
+        {
+            field.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(SettingsFieldViewModel.Value) && s is SettingsFieldViewModel vm)
+                {
+                    UpdateWizardStateFromSettingsField(vm);
+                    IsModified = true;
+                }
+            };
+        }
+
+        // Subscribe to wizard step changes to sync settings to unedited fields
+        WizardState.StepChanged += (_, _) =>
+        {
+            var config = ResolveCurrentConfig();
+            if (config.IsSuccess)
+            {
+                WizardState.SyncDefaultsFromSettings(config.Value, SettingsViewModel);
+            }
+        };
+
+        // Subscribe to wizard reset completion to sync settings after reset
+        WizardState.ResetToDefaultsCompleted += (_, _) =>
+        {
+            var config = ResolveCurrentConfig();
+            if (config.IsSuccess)
+            {
+                WizardState.SyncDefaultsFromSettings(config.Value, SettingsViewModel);
+            }
+        };
+
+        NavigateToWizardCommand = new RelayCommand(() =>
+        {
+            // Sync defaults from loaded settings when navigating to wizard
+            var config = ResolveCurrentConfig();
+            if (config.IsSuccess)
+            {
+                WizardState.SyncDefaultsFromSettings(config.Value, SettingsViewModel);
+            }
+            CurrentView = AppView.Wizard;
+        });
         NavigateToDashboardCommand = new RelayCommand(() => CurrentView = AppView.RunDashboard);
         NavigateToResultsCommand = new RelayCommand(() => CurrentView = AppView.Results);
         NavigateToSettingsCommand = new RelayCommand(() => CurrentView = AppView.Settings);
@@ -139,12 +194,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ResetSettingsToDefaultsCommand = new RelayCommand(ResetSettingsToDefaults);
         LoadSettingsFileCommand = new RelayCommand(async () => await AddSettingsFileAsync());
         SaveSettingsFileCommand = new RelayCommand(async () => await SaveSettingsFileAsync());
+        SaveMaterializedSettingsFileCommand = new RelayCommand(async () => await SaveMaterializedSettingsFileAsync());
 
         // Results view commands
         LoadResultsFileCommand = new RelayCommand(async () => await LoadResultsFileAsync());
         ExportResultsJsonCommand = new RelayCommand(async () => await ExportResultsToJsonAsync());
         ExportResultsShellScriptCommand = new RelayCommand(async () => await ExportResultsToShellScriptAsync());
         OpenResultsFolderCommand = new RelayCommand(OpenResultsFolder);
+        CopyTextCommand = new RelayCommand<string>(CopyText);
 
         WizardState.PropertyChanged += (_, _) => IsModified = true;
 
@@ -175,6 +232,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         SettingsLayers.Add(new SettingsLayerViewModel(filePath, SettingsLayers.Count, result.Value));
         RecalculateSettingsViewModel();
         IsModified = true;
+
+        // Sync wizard defaults from the newly loaded settings
+        var config = ResolveCurrentConfig();
+        if (config.IsSuccess)
+        {
+            WizardState.SyncDefaultsFromSettings(config.Value);
+        }
+
         _logger.LogInformation("Loaded settings file {Path}", filePath);
     }
 
@@ -183,7 +248,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         SettingsViewModel.ClearConfigLayers();
 
-        // Add each enabled layer in order
+        // Add each enabled layer in order (ONLY settings files, NOT wizard state)
+        // The Settings view should be independent of the wizard
         foreach (var layer in SettingsLayers.OrderBy(l => l.LayerIndex))
         {
             if (layer.IsEnabled)
@@ -191,9 +257,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 SettingsViewModel.AddConfigLayer(layer.DisplayName, layer.Config);
             }
         }
-
-        // Add wizard state as the highest priority layer
-        SettingsViewModel.AddConfigLayer("UI (Wizard)", WizardState.BuildPartialConfig());
     }
 
     private async Task HandleBrowseRequestAsync(SettingsViewModel.BrowseEventArgs args)
@@ -216,8 +279,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (field != null)
             {
                 field.Value = path;
-                // Also update the wizard state
-                UpdateWizardStateFromSettingsField(field);
             }
         }
     }
@@ -225,14 +286,292 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private void UpdateWizardStateFromSettingsField(SettingsFieldViewModel field)
     {
         // Update the corresponding property in WizardState based on the field key
+        if (WizardState is not WizardViewModel state) return;
+
         switch (field.Key)
         {
+            // Server settings
+            case "server.manage":
+                state.ManageServer = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "server.executablePath":
+                state.LlamaServerExecutablePath = field.Value;
+                break;
+            case "server.host":
+                state.Host = field.Value ?? "127.0.0.1";
+                break;
+            case "server.port":
+                state.Port = int.TryParse(field.Value, out var port) ? port : 8080;
+                break;
+            case "server.apiKey":
+                state.ApiKey = field.Value;
+                break;
+            case "server.baseUrl":
+                state.ServerUrl = field.Value;
+                break;
+
+            // Llama server settings
+            case "llama.contextWindowTokens":
+                state.ContextWindowTokens = int.TryParse(field.Value, out var context) ? context : null;
+                break;
+            case "llama.batchSizeTokens":
+                state.BatchSizeTokens = int.TryParse(field.Value, out var batch) ? batch : null;
+                break;
+            case "llama.ubatchSizeTokens":
+                state.UbatchSizeTokens = int.TryParse(field.Value, out var ubatch) ? ubatch : null;
+                break;
+            case "llama.parallelSlotCount":
+                state.ParallelSlotCount = int.TryParse(field.Value, out var parallel) ? parallel : null;
+                break;
+            case "llama.enableContinuousBatching":
+                state.EnableContinuousBatching = ParseBool(field.Value);
+                break;
+            case "llama.enableCachePrompt":
+                state.EnableCachePrompt = ParseBool(field.Value);
+                break;
+            case "llama.enableContextShift":
+                state.EnableContextShift = ParseBool(field.Value);
+                break;
+            case "llama.gpuLayerCount":
+                state.GpuLayerCount = int.TryParse(field.Value, out var gpuLayers) ? gpuLayers : null;
+                break;
+            case "llama.splitMode":
+                state.SplitMode = field.Value == "Unspecified" ? null : field.Value;
+                break;
+            case "llama.kvCacheTypeK":
+                state.KvCacheTypeK = field.Value;
+                break;
+            case "llama.kvCacheTypeV":
+                state.KvCacheTypeV = field.Value;
+                break;
+            case "llama.enableKvOffload":
+                state.EnableKvOffload = ParseBool(field.Value);
+                break;
+            case "llama.enableFlashAttention":
+                state.EnableFlashAttention = ParseBool(field.Value);
+                break;
+            case "llama.samplingTemperature":
+                state.SamplingTemperature = double.TryParse(field.Value, out var temp) ? temp : null;
+                break;
+            case "llama.topP":
+                state.TopP = double.TryParse(field.Value, out var topP) ? topP : null;
+                break;
+            case "llama.topK":
+                state.TopK = int.TryParse(field.Value, out var topK) ? topK : null;
+                break;
+            case "llama.minP":
+                state.MinP = double.TryParse(field.Value, out var minP) ? minP : null;
+                break;
+            case "llama.repeatPenalty":
+                state.RepeatPenalty = double.TryParse(field.Value, out var penalty) ? penalty : null;
+                break;
+            case "llama.repeatLastNTokens":
+                state.RepeatLastNTokens = int.TryParse(field.Value, out var repeatN) ? repeatN : null;
+                break;
+            case "llama.presencePenalty":
+                state.PresencePenalty = double.TryParse(field.Value, out var presence) ? presence : null;
+                break;
+            case "llama.frequencyPenalty":
+                state.FrequencyPenalty = double.TryParse(field.Value, out var frequency) ? frequency : null;
+                break;
+            case "llama.seed":
+                state.Seed = int.TryParse(field.Value, out var seed) ? seed : null;
+                break;
+            case "llama.threadCount":
+                state.ThreadCount = int.TryParse(field.Value, out var threads) ? threads : null;
+                break;
+            case "llama.httpThreadCount":
+                state.HttpThreadCount = int.TryParse(field.Value, out var httpThreads) ? httpThreads : null;
+                break;
+            case "llama.chatTemplate":
+                state.ChatTemplate = field.Value;
+                break;
+            case "llama.enableJinja":
+                state.EnableJinja = ParseBool(field.Value);
+                break;
+            case "llama.reasoningFormat":
+                state.ReasoningFormat = field.Value == "Unspecified" ? null : field.Value;
+                break;
+            case "llama.modelAlias":
+                state.ModelAlias = field.Value;
+                break;
+            case "llama.logVerbosity":
+                state.LogVerbosity = int.TryParse(field.Value, out var verbosity) ? verbosity : null;
+                break;
+            case "llama.enableMlock":
+                state.EnableMlock = ParseBool(field.Value);
+                break;
+            case "llama.enableMmap":
+                state.EnableMmap = ParseBool(field.Value);
+                break;
+            case "llama.serverTimeoutSeconds":
+                state.ServerTimeoutSeconds = double.TryParse(field.Value, out var timeout) ? timeout : null;
+                break;
+
+            // Judge settings
+            case "judge.manage":
+                state.JudgeManageServer = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "judge.executablePath":
+                state.JudgeExecutablePath = field.Value;
+                break;
+            case "judge.baseUrl":
+                state.JudgeServerUrl = field.Value;
+                break;
             case "judge.modelFile":
-                typeof(IWizardViewModel).GetProperty("JudgeLocalModelPath")?.SetValue(WizardState, field.Value);
+                state.JudgeLocalModelPath = field.Value;
+                break;
+            case "judge.hfRepo":
+                state.JudgeHfRepo = field.Value;
+                break;
+            case "judge.apiKey":
+                state.JudgeApiKey = field.Value;
+                break;
+            case "judge.template":
+                state.JudgeTemplate = field.Value == "Unspecified" ? "standard" : (field.Value ?? "standard");
+                break;
+            case "judge.scoreMin":
+                state.JudgeScoreMin = double.TryParse(field.Value, out var min) ? min : 0;
+                break;
+            case "judge.scoreMax":
+                state.JudgeScoreMax = double.TryParse(field.Value, out var max) ? max : 10;
+                break;
+
+            // Judge llama-server settings
+            case "judge.contextWindowTokens":
+                state.JudgeContextWindowTokens = int.TryParse(field.Value, out var jContext) ? jContext : null;
+                break;
+            case "judge.batchSizeTokens":
+                state.JudgeBatchSizeTokens = int.TryParse(field.Value, out var jBatch) ? jBatch : null;
+                break;
+            case "judge.parallelSlotCount":
+                state.JudgeParallelSlotCount = int.TryParse(field.Value, out var jParallel) ? jParallel : null;
+                break;
+            case "judge.gpuLayerCount":
+                state.JudgeGpuLayerCount = int.TryParse(field.Value, out var jGpuLayers) ? jGpuLayers : null;
+                break;
+            case "judge.splitMode":
+                state.JudgeSplitMode = field.Value == "Unspecified" ? null : field.Value;
+                break;
+            case "judge.kvCacheTypeK":
+                state.JudgeKvCacheTypeK = field.Value;
+                break;
+            case "judge.kvCacheTypeV":
+                state.JudgeKvCacheTypeV = field.Value;
+                break;
+            case "judge.enableFlashAttention":
+                state.JudgeEnableFlashAttention = ParseBool(field.Value);
+                break;
+            case "judge.samplingTemperature":
+                state.JudgeSamplingTemperature = double.TryParse(field.Value, out var jTemp) ? jTemp : null;
+                break;
+            case "judge.topP":
+                state.JudgeTopP = double.TryParse(field.Value, out var jTopP) ? jTopP : null;
+                break;
+            case "judge.topK":
+                state.JudgeTopK = int.TryParse(field.Value, out var jTopK) ? jTopK : null;
+                break;
+            case "judge.minP":
+                state.JudgeMinP = double.TryParse(field.Value, out var jMinP) ? jMinP : null;
+                break;
+            case "judge.repeatPenalty":
+                state.JudgeRepeatPenalty = double.TryParse(field.Value, out var jPenalty) ? jPenalty : null;
+                break;
+            case "judge.seed":
+                state.JudgeSeed = int.TryParse(field.Value, out var jSeed) ? jSeed : null;
+                break;
+            case "judge.threadCount":
+                state.JudgeThreadCount = int.TryParse(field.Value, out var jThreads) ? jThreads : null;
+                break;
+            case "judge.httpThreadCount":
+                state.JudgeHttpThreadCount = int.TryParse(field.Value, out var jHttpThreads) ? jHttpThreads : null;
+                break;
+            case "judge.chatTemplate":
+                state.JudgeChatTemplate = field.Value;
+                break;
+            case "judge.enableJinja":
+                state.JudgeEnableJinja = ParseBool(field.Value);
+                break;
+            case "judge.logVerbosity":
+                state.JudgeLogVerbosity = int.TryParse(field.Value, out var jLog) ? jLog : null;
+                break;
+            case "judge.enableMlock":
+                state.JudgeEnableMlock = ParseBool(field.Value);
+                break;
+            case "judge.enableMmap":
+                state.JudgeEnableMmap = ParseBool(field.Value);
+                break;
+            case "judge.serverTimeoutSeconds":
+                state.JudgeServerTimeoutSeconds = double.TryParse(field.Value, out var jTimeout) ? jTimeout : null;
+                break;
+
+            // Output settings
+            case "output.writePerEvalJson":
+                state.WritePerEvalJson = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "output.writeSummaryJson":
+                state.WriteSummaryJson = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "output.writeSummaryCsv":
+                state.WriteSummaryCsv = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "output.writeParquet":
+                state.WriteResultsParquet = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "output.includeRawResponse":
+                state.IncludeRawLlmResponse = field.Value?.ToLowerInvariant() == "true";
+                break;
+
+            // Run settings
+            case "run.name":
+                state.RunName = field.Value;
                 break;
             case "run.outputDirectoryPath":
-                typeof(IWizardViewModel).GetProperty("OutputDirectoryPath")?.SetValue(WizardState, field.Value);
+                state.OutputDir = field.Value ?? "";
                 break;
+            case "run.exportShellTarget":
+                state.ShellTarget = field.Value == "Unspecified" ? null : ParseShellTarget(field.Value);
+                break;
+            case "run.continueOnEvalFailure":
+                state.ContinueOnEvalFailure = field.Value?.ToLowerInvariant() == "true";
+                break;
+            case "run.maxConcurrentEvals":
+                state.MaxConcurrentEvals = int.TryParse(field.Value, out var maxConcurrent) ? maxConcurrent : null;
+                break;
+            case "run.dataFilePath":
+                state.DataFilePath = field.Value;
+                break;
+            case "run.promptDirectoryPath":
+                state.PromptDir = field.Value;
+                break;
+            case "run.expectedDirectoryPath":
+                state.ExpectedDir = field.Value;
+                break;
+        }
+
+        static bool? ParseBool(string? value) => value?.ToLowerInvariant() switch
+        {
+            "true" => true,
+            "false" => false,
+            _ => null
+        };
+
+        static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
+        {
+            "bash" => ShellTarget.Bash,
+            "powershell" => ShellTarget.PowerShell,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Syncs all SettingsViewModel field values to WizardViewModel.
+    /// </summary>
+    private void SyncAllSettingsFieldsToWizard()
+    {
+        foreach (var field in SettingsViewModel.SettingsFields)
+        {
+            UpdateWizardStateFromSettingsField(field);
         }
     }
 
@@ -251,12 +590,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             .Select(static l => l.Config)
             .ToList();
 
+        // Add Settings view field values as session overrides (higher priority than loaded files)
+        partials.Add(SettingsViewModel.BuildPartialConfigFromFields());
+
+        // Add wizard state as highest priority
         partials.Add(WizardState.BuildPartialConfig());
         return _configService.Resolve(partials);
     }
 
     public async Task SaveCurrentConfigAsync(string path)
     {
+        // Sync all settings fields from SettingsViewModel to WizardViewModel
+        SyncAllSettingsFieldsToWizard();
+
         var resolveResult = ResolveCurrentConfig();
         if (resolveResult.IsFailed) return;
 
@@ -273,6 +619,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var resolveResult = ResolveCurrentConfig();
         if (resolveResult.IsFailed)
         {
+            _toastService.ShowError($"Configuration error: {resolveResult.Errors[0].Message}");
             _logger.LogError("Cannot start run: config resolution failed");
             return;
         }
@@ -281,6 +628,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var errors = _configService.Validate(config);
         if (errors.Count > 0)
         {
+            // Show all validation errors in a toast
+            var errorMessage = errors.Count == 1
+                ? errors[0].MessageText
+                : $"{errors.Count} configuration errors:\n• " + string.Join("\n• ", errors.Select(e => e.MessageText));
+            _toastService.ShowError(errorMessage, 8000);
             _logger.LogWarning("Validation errors: {Count}", errors.Count);
             return;
         }
@@ -309,6 +661,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
         catch (Exception ex)
         {
+            _toastService.ShowError($"Error during run: {ex.Message}", 8000);
             _logger.LogError(ex, "Error during run");
         }
     }
@@ -317,6 +670,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public string ExportScript(ShellTarget target)
     {
+        // Sync all settings fields from SettingsViewModel to WizardViewModel
+        SyncAllSettingsFieldsToWizard();
+
         var result = ResolveCurrentConfig();
         return result.IsFailed ? $"# Error: {result.Errors[0].Message}" : _scriptExporter.Export(result.Value, target);
     }
@@ -339,20 +695,386 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (string.IsNullOrEmpty(path)) return;
 
-        var resolveResult = ResolveCurrentConfig();
-        if (resolveResult.IsFailed)
-        {
-            _logger.LogError("Failed to resolve settings: {Error}", resolveResult.Errors[0].Message);
-            return;
-        }
+        // Build PartialConfig from SettingsViewModel fields ONLY (not wizard state)
+        var partialConfig = BuildPartialConfigFromSettingsFields();
 
-        await File.WriteAllTextAsync(path, SerializeToYaml(WizardState.BuildPartialConfig()));
+        await File.WriteAllTextAsync(path, SerializeToYaml(partialConfig));
         IsModified = false;
         UpdateTitle();
         _logger.LogInformation("Settings saved to {Path}", path);
     }
 
+    private async Task SaveMaterializedSettingsFileAsync()
+    {
+        var path = await _filePicker.ShowSaveFileDialogAsync(
+            "Save Materialized Settings File",
+            "YAML Files|*.yml;*.yaml|JSON Files|*.json|All Files|*.*");
+
+        if (string.IsNullOrEmpty(path)) return;
+
+        // Build PartialConfig from materialized values (merged config layers)
+        var partialConfig = BuildPartialConfigFromMaterializedValues();
+
+        await File.WriteAllTextAsync(path, SerializeToYaml(partialConfig));
+        _logger.LogInformation("Materialized settings saved to {Path}", path);
+    }
+
+    /// <summary>
+    /// Builds a PartialConfig from the materialized values shown in the Settings UI.
+    /// This includes values from all loaded config layers, not just user edits.
+    /// </summary>
+    private PartialConfig BuildPartialConfigFromMaterializedValues()
+    {
+        // Helper to get materialized field value - empty strings are treated as null
+        string? F(string key)
+        {
+            var val = SettingsViewModel.SettingsFields.FirstOrDefault(f => f.Key == key)?.MaterializedValue;
+            return string.IsNullOrEmpty(val) ? null : val;
+        }
+        bool? Fb(string key) => bool.TryParse(F(key), out var v) ? v : null;
+        int? Fi(string key) => int.TryParse(F(key), out var v) ? v : null;
+        double? Fd(string key) => double.TryParse(F(key), out var v) ? v : null;
+
+        var llamaServerSettings = new PartialLlamaServerSettings
+        {
+            ContextWindowTokens = Fi("llama.contextWindowTokens"),
+            BatchSizeTokens = Fi("llama.batchSizeTokens"),
+            UbatchSizeTokens = Fi("llama.ubatchSizeTokens"),
+            ParallelSlotCount = Fi("llama.parallelSlotCount"),
+            EnableContinuousBatching = Fb("llama.enableContinuousBatching"),
+            EnableCachePrompt = Fb("llama.enableCachePrompt"),
+            EnableContextShift = Fb("llama.enableContextShift"),
+            GpuLayerCount = Fi("llama.gpuLayerCount"),
+            SplitMode = F("llama.splitMode") is var sm && sm != "Unspecified" ? sm : null,
+            KvCacheTypeK = F("llama.kvCacheTypeK"),
+            KvCacheTypeV = F("llama.kvCacheTypeV"),
+            EnableKvOffload = Fb("llama.enableKvOffload"),
+            EnableFlashAttention = Fb("llama.enableFlashAttention"),
+            SamplingTemperature = Fd("llama.samplingTemperature"),
+            TopP = Fd("llama.topP"),
+            TopK = Fi("llama.topK"),
+            MinP = Fd("llama.minP"),
+            RepeatPenalty = Fd("llama.repeatPenalty"),
+            RepeatLastNTokens = Fi("llama.repeatLastNTokens"),
+            PresencePenalty = Fd("llama.presencePenalty"),
+            FrequencyPenalty = Fd("llama.frequencyPenalty"),
+            Seed = Fi("llama.seed"),
+            ThreadCount = Fi("llama.threadCount"),
+            HttpThreadCount = Fi("llama.httpThreadCount"),
+            ChatTemplate = F("llama.chatTemplate"),
+            EnableJinja = Fb("llama.enableJinja"),
+            ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
+            ModelAlias = F("llama.modelAlias"),
+            LogVerbosity = Fi("llama.logVerbosity"),
+            EnableMlock = Fb("llama.enableMlock"),
+            EnableMmap = Fb("llama.enableMmap"),
+            ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
+        };
+
+        var judgeServerSettings = new PartialLlamaServerSettings
+        {
+            ContextWindowTokens = Fi("judge.contextWindowTokens"),
+            BatchSizeTokens = Fi("judge.batchSizeTokens"),
+            UbatchSizeTokens = Fi("judge.ubatchSizeTokens"),
+            ParallelSlotCount = Fi("judge.parallelSlotCount"),
+            EnableContinuousBatching = Fb("judge.enableContinuousBatching"),
+            EnableCachePrompt = Fb("judge.enableCachePrompt"),
+            EnableContextShift = Fb("judge.enableContextShift"),
+            GpuLayerCount = Fi("judge.gpuLayerCount"),
+            SplitMode = F("judge.splitMode") is var jsm && jsm != "Unspecified" ? jsm : null,
+            KvCacheTypeK = F("judge.kvCacheTypeK"),
+            KvCacheTypeV = F("judge.kvCacheTypeV"),
+            EnableKvOffload = Fb("judge.enableKvOffload"),
+            EnableFlashAttention = Fb("judge.enableFlashAttention"),
+            SamplingTemperature = Fd("judge.samplingTemperature"),
+            TopP = Fd("judge.topP"),
+            TopK = Fi("judge.topK"),
+            MinP = Fd("judge.minP"),
+            RepeatPenalty = Fd("judge.repeatPenalty"),
+            RepeatLastNTokens = Fi("judge.repeatLastNTokens"),
+            PresencePenalty = Fd("judge.presencePenalty"),
+            FrequencyPenalty = Fd("judge.frequencyPenalty"),
+            Seed = Fi("judge.seed"),
+            ThreadCount = Fi("judge.threadCount"),
+            HttpThreadCount = Fi("judge.httpThreadCount"),
+            ChatTemplate = F("judge.chatTemplate"),
+            EnableJinja = Fb("judge.enableJinja"),
+            ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
+            ModelAlias = F("judge.modelAlias"),
+            LogVerbosity = Fi("judge.logVerbosity"),
+            EnableMlock = Fb("judge.enableMlock"),
+            EnableMmap = Fb("judge.enableMmap"),
+            ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
+        };
+
+        // Build Judge config - always include, even if not enabled
+        var judge = new PartialJudgeConfig
+        {
+            Enable = Fb("judge.enable"),
+            ServerConfig = new PartialServerConfig
+            {
+                Manage = Fb("judge.manage"),
+                ExecutablePath = F("judge.executablePath"),
+                Host = F("judge.host"),
+                Port = Fi("judge.port"),
+                ApiKey = F("judge.apiKey"),
+                BaseUrl = F("judge.baseUrl"),
+                Model = new ModelSource
+                {
+                    FilePath = F("judge.modelFile"),
+                    HfRepo = F("judge.hfRepo")
+                }
+            },
+            ServerSettings = judgeServerSettings,
+            JudgePromptTemplate = F("judge.template"),
+            ScoreMinValue = Fd("judge.scoreMin") ?? 0,
+            ScoreMaxValue = Fd("judge.scoreMax") ?? 10,
+        };
+
+        // Build DataSource config
+        var dataSourceKindStr = F("dataSource.kind");
+        DataSourceKind? dataSourceKind = dataSourceKindStr?.ToLowerInvariant() switch
+        {
+            "singlefile" => DataSourceKind.SingleFile,
+            "jsonlfile" => DataSourceKind.JsonlFile,
+            "splitdirectories" => DataSourceKind.SplitDirectories,
+            "directory" => DataSourceKind.Directory,
+            _ => null
+        };
+
+        var dataSource = new PartialDataSourceConfig
+        {
+            Kind = dataSourceKind,
+            FilePath = F("dataSource.filePath"),
+            PromptDirectoryPath = F("dataSource.promptDirectory"),
+            ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+        };
+
+        return new PartialConfig
+        {
+            Server = new PartialServerConfig
+            {
+                Manage = Fb("server.manage"),
+                ExecutablePath = F("server.executablePath"),
+                Host = F("server.host"),
+                Port = Fi("server.port"),
+                ApiKey = F("server.apiKey"),
+                BaseUrl = F("server.baseUrl"),
+            },
+            LlamaServer = llamaServerSettings,
+            Judge = judge,
+            Run = new PartialRunMeta
+            {
+                RunName = F("run.name"),
+                OutputDirectoryPath = F("run.outputDirectoryPath"),
+                ExportShellTarget = F("run.exportShellTarget") is var st && st != "Unspecified" ? ParseShellTarget(st) : null,
+                ContinueOnEvalFailure = Fb("run.continueOnEvalFailure"),
+                MaxConcurrentEvals = Fi("run.maxConcurrentEvals"),
+            },
+            Output = new OutputConfig
+            {
+                WritePerEvalJson = Fb("output.writePerEvalJson") ?? false,
+                WriteSummaryJson = Fb("output.writeSummaryJson") ?? true,
+                WriteSummaryCsv = Fb("output.writeSummaryCsv") ?? false,
+                WriteResultsParquet = Fb("output.writeParquet") ?? false,
+                IncludeRawLlmResponse = Fb("output.includeRawResponse") ?? true,
+            },
+            EvalSets = [],
+            DataSource = dataSource,
+        };
+    }
+
+    /// <summary>
+    /// Builds a PartialConfig from SettingsViewModel field values only.
+    /// Does NOT include wizard state - the Settings view is independent.
+    /// Note: Empty strings are treated as null throughout settings. If you need
+    /// to allow an explicit empty string for any setting, add a "use empty string"
+    /// checkbox at that time.
+    /// </summary>
+    private PartialConfig BuildPartialConfigFromSettingsFields()
+    {
+        // Helper to get field value - empty strings are treated as null
+        string? F(string key)
+        {
+            var val = SettingsViewModel.SettingsFields.FirstOrDefault(f => f.Key == key)?.Value;
+            return string.IsNullOrEmpty(val) ? null : val;
+        }
+        bool? Fb(string key) => bool.TryParse(F(key), out var v) ? v : null;
+        int? Fi(string key) => int.TryParse(F(key), out var v) ? v : null;
+        double? Fd(string key) => double.TryParse(F(key), out var v) ? v : null;
+
+        var llamaServerSettings = new PartialLlamaServerSettings
+        {
+            ContextWindowTokens = Fi("llama.contextWindowTokens"),
+            BatchSizeTokens = Fi("llama.batchSizeTokens"),
+            UbatchSizeTokens = Fi("llama.ubatchSizeTokens"),
+            ParallelSlotCount = Fi("llama.parallelSlotCount"),
+            EnableContinuousBatching = Fb("llama.enableContinuousBatching"),
+            EnableCachePrompt = Fb("llama.enableCachePrompt"),
+            EnableContextShift = Fb("llama.enableContextShift"),
+            GpuLayerCount = Fi("llama.gpuLayerCount"),
+            SplitMode = F("llama.splitMode") is var sm && sm != "Unspecified" ? sm : null,
+            KvCacheTypeK = F("llama.kvCacheTypeK"),
+            KvCacheTypeV = F("llama.kvCacheTypeV"),
+            EnableKvOffload = Fb("llama.enableKvOffload"),
+            EnableFlashAttention = Fb("llama.enableFlashAttention"),
+            SamplingTemperature = Fd("llama.samplingTemperature"),
+            TopP = Fd("llama.topP"),
+            TopK = Fi("llama.topK"),
+            MinP = Fd("llama.minP"),
+            RepeatPenalty = Fd("llama.repeatPenalty"),
+            RepeatLastNTokens = Fi("llama.repeatLastNTokens"),
+            PresencePenalty = Fd("llama.presencePenalty"),
+            FrequencyPenalty = Fd("llama.frequencyPenalty"),
+            Seed = Fi("llama.seed"),
+            ThreadCount = Fi("llama.threadCount"),
+            HttpThreadCount = Fi("llama.httpThreadCount"),
+            ChatTemplate = F("llama.chatTemplate"),
+            EnableJinja = Fb("llama.enableJinja"),
+            ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
+            ModelAlias = F("llama.modelAlias"),
+            LogVerbosity = Fi("llama.logVerbosity"),
+            EnableMlock = Fb("llama.enableMlock"),
+            EnableMmap = Fb("llama.enableMmap"),
+            ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
+        };
+
+        var judgeServerSettings = new PartialLlamaServerSettings
+        {
+            ContextWindowTokens = Fi("judge.contextWindowTokens"),
+            BatchSizeTokens = Fi("judge.batchSizeTokens"),
+            UbatchSizeTokens = Fi("judge.ubatchSizeTokens"),
+            ParallelSlotCount = Fi("judge.parallelSlotCount"),
+            EnableContinuousBatching = Fb("judge.enableContinuousBatching"),
+            EnableCachePrompt = Fb("judge.enableCachePrompt"),
+            EnableContextShift = Fb("judge.enableContextShift"),
+            GpuLayerCount = Fi("judge.gpuLayerCount"),
+            SplitMode = F("judge.splitMode") is var jsm && jsm != "Unspecified" ? jsm : null,
+            KvCacheTypeK = F("judge.kvCacheTypeK"),
+            KvCacheTypeV = F("judge.kvCacheTypeV"),
+            EnableKvOffload = Fb("judge.enableKvOffload"),
+            EnableFlashAttention = Fb("judge.enableFlashAttention"),
+            SamplingTemperature = Fd("judge.samplingTemperature"),
+            TopP = Fd("judge.topP"),
+            TopK = Fi("judge.topK"),
+            MinP = Fd("judge.minP"),
+            RepeatPenalty = Fd("judge.repeatPenalty"),
+            RepeatLastNTokens = Fi("judge.repeatLastNTokens"),
+            PresencePenalty = Fd("judge.presencePenalty"),
+            FrequencyPenalty = Fd("judge.frequencyPenalty"),
+            Seed = Fi("judge.seed"),
+            ThreadCount = Fi("judge.threadCount"),
+            HttpThreadCount = Fi("judge.httpThreadCount"),
+            ChatTemplate = F("judge.chatTemplate"),
+            EnableJinja = Fb("judge.enableJinja"),
+            ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
+            ModelAlias = F("judge.modelAlias"),
+            LogVerbosity = Fi("judge.logVerbosity"),
+            EnableMlock = Fb("judge.enableMlock"),
+            EnableMmap = Fb("judge.enableMmap"),
+            ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
+        };
+
+        // Build Judge config - always include, even if not enabled
+        var judge = new PartialJudgeConfig
+        {
+            Enable = Fb("judge.enable"),
+            ServerConfig = new PartialServerConfig
+            {
+                Manage = Fb("judge.manage"),
+                ExecutablePath = F("judge.executablePath"),
+                Host = F("judge.host"),
+                Port = Fi("judge.port"),
+                ApiKey = F("judge.apiKey"),
+                BaseUrl = F("judge.baseUrl"),
+                Model = new ModelSource
+                {
+                    FilePath = F("judge.modelFile"),
+                    HfRepo = F("judge.hfRepo")
+                }
+            },
+            ServerSettings = judgeServerSettings,
+            JudgePromptTemplate = F("judge.template"),
+            ScoreMinValue = Fd("judge.scoreMin") ?? 0,
+            ScoreMaxValue = Fd("judge.scoreMax") ?? 10,
+        };
+
+        // Build DataSource config
+        var dataSourceKindStr = F("dataSource.kind");
+        DataSourceKind? dataSourceKind = dataSourceKindStr?.ToLowerInvariant() switch
+        {
+            "singlefile" => DataSourceKind.SingleFile,
+            "jsonlfile" => DataSourceKind.JsonlFile,
+            "splitdirectories" => DataSourceKind.SplitDirectories,
+            "directory" => DataSourceKind.Directory,
+            _ => null
+        };
+
+        var dataSource = new PartialDataSourceConfig
+        {
+            Kind = dataSourceKind,
+            FilePath = F("dataSource.filePath"),
+            PromptDirectoryPath = F("dataSource.promptDirectory"),
+            ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+        };
+
+        return new PartialConfig
+        {
+            Server = new PartialServerConfig
+            {
+                Manage = Fb("server.manage"),
+                ExecutablePath = F("server.executablePath"),
+                Host = F("server.host"),
+                Port = Fi("server.port"),
+                ApiKey = F("server.apiKey"),
+                BaseUrl = F("server.baseUrl"),
+            },
+            LlamaServer = llamaServerSettings,
+            Judge = judge,
+            Run = new PartialRunMeta
+            {
+                RunName = F("run.name"),
+                OutputDirectoryPath = F("run.outputDirectoryPath"),
+                ExportShellTarget = F("run.exportShellTarget") is var st && st != "Unspecified" ? ParseShellTarget(st) : null,
+                ContinueOnEvalFailure = Fb("run.continueOnEvalFailure"),
+                MaxConcurrentEvals = Fi("run.maxConcurrentEvals"),
+            },
+            Output = new OutputConfig
+            {
+                WritePerEvalJson = Fb("output.writePerEvalJson") ?? false,
+                WriteSummaryJson = Fb("output.writeSummaryJson") ?? true,
+                WriteSummaryCsv = Fb("output.writeSummaryCsv") ?? false,
+                WriteResultsParquet = Fb("output.writeParquet") ?? false,
+                IncludeRawLlmResponse = Fb("output.includeRawResponse") ?? true,
+            },
+            EvalSets = [],
+            DataSource = dataSource,
+        };
+    }
+
+    private static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
+    {
+        "bash" => ShellTarget.Bash,
+        "powershell" => ShellTarget.PowerShell,
+        _ => null
+    };
+
     // ─── Results View Methods ─────────────────────────────────────────────────
+
+    private void CopyText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        try
+        {
+            TopLevel.GetTopLevel(Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null)?
+                .Clipboard?.SetTextAsync(text);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to copy text to clipboard");
+        }
+    }
 
     private async Task LoadResultsFileAsync()
     {

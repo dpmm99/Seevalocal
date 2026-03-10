@@ -5,6 +5,16 @@
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="Seevalocal.UI.Views.ResultsView">
 
+  <UserControl.Styles>
+    <Style Selector="TextBlock.copyable">
+      <Setter Property="ContextMenu">
+        <ContextMenu>
+          <MenuItem Header="Copy" Click="CopyTextToClipboard"/>
+        </ContextMenu>
+      </Setter>
+    </Style>
+  </UserControl.Styles>
+
   <Grid RowDefinitions="Auto,*,Auto">
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="16">
       <TextBlock Text="Results Viewer" Classes="pageTitle"/>
@@ -37,7 +47,7 @@
           <Border Classes="reviewCard" Padding="16" Grid.Column="3">
             <StackPanel>
               <TextBlock Text="Status" Classes="metricLabel"/>
-              <TextBlock Text="{Binding ActiveRun.StatusLine}" Classes="metricValue"/>
+              <TextBlock Text="{Binding ActiveRun.StatusLine}" Classes="metricValue copyable"/>
             </StackPanel>
           </Border>
         </Grid>

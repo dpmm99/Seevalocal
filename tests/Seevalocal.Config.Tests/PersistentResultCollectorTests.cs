@@ -18,7 +18,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
     {
         // Use a unique temp file for each test
         _dbPath = Path.Combine(Path.GetTempPath(), $"test_checkpoint_{Guid.NewGuid()}.db");
-        
+
         _testConfig = new ResolvedConfig
         {
             Run = new RunMeta
@@ -50,8 +50,8 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Act & Assert - should complete within 2 seconds (deadlock would timeout)
         var saveTask = collector.SaveStartupParametersAsync(_testConfig, cts.Token);
         var completedTask = await Task.WhenAny(saveTask, Task.Delay(TimeSpan.FromSeconds(2)));
-        
-        completedTask.Should().Be(saveTask, 
+
+        completedTask.Should().Be(saveTask,
             "SaveStartupParametersAsync should not deadlock when calling nested SaveMetadataAsync");
     }
 
@@ -207,7 +207,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Arrange
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        
+
         // First collect primary result
         var primaryResult = new EvalResult
         {
@@ -256,10 +256,10 @@ public sealed class PersistentResultCollectorTests : IDisposable
             tasks.Add(Task.Run(async () =>
             {
                 await collector.SaveStageOutputAsync(
-                    $"item-{index}", 
-                    $"Stage-{index}", 
-                    "key", 
-                    $"value-{index}", 
+                    $"item-{index}",
+                    $"Stage-{index}",
+                    "key",
+                    $"value-{index}",
                     cts.Token);
             }));
         }
@@ -267,8 +267,8 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Assert - should all complete without deadlock
         var timeoutTask = Task.WhenAll(tasks);
         var completedTask = await Task.WhenAny(timeoutTask, Task.Delay(TimeSpan.FromSeconds(5)));
-        
-        completedTask.Should().Be(timeoutTask, 
+
+        completedTask.Should().Be(timeoutTask,
             "Concurrent writes should not cause deadlock and should complete within 5 seconds");
     }
 
@@ -335,14 +335,14 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var loadedResult = results[0];
         loadedResult.EvalItemId.Should().Be(evalItemId);
         loadedResult.RawLlmResponse.Should().Be("test response");
-        
+
         // Stage outputs should be loaded from the relational table
         loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.userPrompt");
         loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.response");
         loadedResult.AllStageOutputs.Should().ContainKey("PromptStage.expectedOutput");
         loadedResult.AllStageOutputs.Should().ContainKey("JudgeStage.score");
         loadedResult.AllStageOutputs.Should().ContainKey("JudgeStage.rationale");
-        
+
         loadedResult.AllStageOutputs["PromptStage.userPrompt"].Should().Be("What is 2+2?");
         loadedResult.AllStageOutputs["PromptStage.response"].Should().Be("2+2=4");
         loadedResult.AllStageOutputs["PromptStage.expectedOutput"].Should().Be(4);  // Deserialized as int
@@ -383,7 +383,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
 
         // Assert
         results.Should().HaveCount(3);
-        
+
         for (int i = 1; i <= 3; i++)
         {
             var loadedResult = results.First(r => r.EvalItemId == $"item-{i}");
@@ -427,7 +427,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Assert
         var loadedPrimaryPath = await collector.LoadServerBinaryPathAsync("primary", cts.Token);
         var loadedJudgePath = await collector.LoadServerBinaryPathAsync("judge", cts.Token);
-        
+
         loadedPrimaryPath.Should().Be(primaryPath);
         loadedJudgePath.Should().Be(judgePath);
         loadedPrimaryPath.Should().NotBe(loadedJudgePath);
@@ -492,7 +492,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Assert
         var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
         outputs.Should().ContainKey("TestStage.complexKey");
-        
+
         // The value should be deserialized as JSON
         var loadedValue = outputs["TestStage.complexKey"];
         loadedValue.Should().NotBeNull();

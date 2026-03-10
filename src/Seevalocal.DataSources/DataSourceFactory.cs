@@ -1,6 +1,7 @@
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core;
+using Seevalocal.Core.Models;
 using Seevalocal.DataSources.Internal;
 using Seevalocal.DataSources.Sources;
 
@@ -28,26 +29,34 @@ public sealed class DataSourceFactory(ILoggerFactory loggerFactory)
             return Result.Fail<IDataSource>(validation.Errors);
 
         var logger = _loggerFactory.CreateLogger<DataSourceFactory>();
-        IDataSource inner = config.Kind switch
+
+        // Apply default field mapping for JSONL files if not specified
+        var configToUse = config;
+        if (config.Kind == DataSourceKind.JsonlFile && config.FieldMapping == null)
         {
-            DataSourceKind.Directory or DataSourceKind.SplitDirectories
-                => new DirectoryDataSource(name, config, logger),
-            DataSourceKind.JsonFile
-                => new JsonDataSource(name, config, isJsonl: false, logger),
+            configToUse = config with { FieldMapping = FieldMapping.ForJsonl() };
+        }
+
+        IDataSource inner = configToUse.Kind switch
+        {
+            DataSourceKind.Directory or DataSourceKind.SplitDirectories or DataSourceKind.DirectoryPair
+                => new DirectoryDataSource(name, configToUse, logger),
+            DataSourceKind.SingleFile or DataSourceKind.File or DataSourceKind.JsonFile
+                => new JsonDataSource(name, configToUse, isJsonl: false, logger),
             DataSourceKind.JsonlFile
-                => new JsonDataSource(name, config, isJsonl: true, logger),
+                => new JsonDataSource(name, configToUse, isJsonl: true, logger),
             DataSourceKind.YamlFile
-                => new YamlDataSource(name, config, logger),
+                => new YamlDataSource(name, configToUse, logger),
             DataSourceKind.CsvFile
-                => new CsvDataSource(name, config, logger),
+                => new CsvDataSource(name, configToUse, logger),
             DataSourceKind.ParquetFile
-                => new ParquetDataSource(name, config, logger),
+                => new ParquetDataSource(name, configToUse, logger),
             DataSourceKind.InlineList
-                => new InlineDataSource(name, config),
+                => new InlineDataSource(name, configToUse),
             _ => throw new ArgumentOutOfRangeException(nameof(config.Kind), config.Kind, "Unknown DataSourceKind")
         };
 
-        var wrapped = new WrappedDataSource(inner, config, _templateEngine);
+        var wrapped = new WrappedDataSource(inner, configToUse, _templateEngine);
         return Result.Ok<IDataSource>(wrapped);
     }
 }

@@ -9,11 +9,14 @@
              x:Class="Seevalocal.UI.Views.RunDashboardView"
              x:DataType="vm:MainWindowViewModel">
 
+  <UserControl.Styles>
+  </UserControl.Styles>
+
   <Grid RowDefinitions="Auto,*,Auto">
     <TextBlock Text="Run Dashboard" Classes="pageTitle" Grid.Row="0"/>
 
-    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16" Margin="0,16">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16,16,8,16" Margin="0,16">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <Grid>
           <StackPanel Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center"
                       IsVisible="{Binding ActiveRun, Converter={x:Static converters:IsNullConverter.Instance}}">
@@ -28,7 +31,13 @@
                       IsVisible="{Binding ActiveRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
             
             <!-- Status Header -->
-            <TextBlock Text="{Binding ActiveRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock Text="{Binding ActiveRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center">
+              <TextBlock.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding ActiveRun.StatusLine}"/>
+                </ContextMenu>
+              </TextBlock.ContextMenu>
+            </TextBlock>
 
             <!-- Progress Bar -->
             <ProgressBar Value="{Binding ActiveRun.ProgressPercent}" Maximum="100" Height="24" Margin="0,8"/>
@@ -65,7 +74,7 @@
 
             <!-- Early Completions (First N with full details) -->
             <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8">
-              <Grid RowDefinitions="Auto,Auto,*">
+              <Grid RowDefinitions="Auto,Auto,*" MinHeight="300">
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                   <TextBlock Text="Early Completions" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
                   <TextBlock Text="(" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
@@ -82,7 +91,7 @@
                         IsVisible="{Binding ActiveRun.HasMoreEarlyCompletions}"
                         Command="{Binding ActiveRun.LoadMoreEarlyCompletionsCommand}"/>
 
-                <ScrollViewer Grid.Row="1" Height="400" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer Grid.Row="2" MinHeight="250" HorizontalScrollBarVisibility="Disabled">
                   <StackPanel Spacing="8">
                     <ItemsControl ItemsSource="{Binding ActiveRun.EarlyCompletions}">
                       <ItemsControl.ItemTemplate>
@@ -111,8 +120,14 @@
                               <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
                                 <StackPanel Spacing="4">
                                   <TextBlock Text="Prompt:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding UserPrompt}" TextWrapping="Wrap" FontSize="12" 
-                                             Foreground="#CDD6F4"/>
+                                  <TextBlock Text="{Binding UserPrompt}" TextWrapping="Wrap" FontSize="12"
+                                             Foreground="#CDD6F4">
+                                    <TextBlock.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding UserPrompt}"/>
+                                      </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                  </TextBlock>
                                 </StackPanel>
                               </Border>
 
@@ -120,8 +135,14 @@
                               <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
                                 <StackPanel Spacing="4">
                                   <TextBlock Text="Response:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding RawResponse}" TextWrapping="Wrap" FontSize="12" 
-                                             Foreground="#A6E3A1"/>
+                                  <TextBlock Text="{Binding RawResponse}" TextWrapping="Wrap" FontSize="12"
+                                             Foreground="#A6E3A1">
+                                    <TextBlock.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding RawResponse}"/>
+                                      </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                  </TextBlock>
                                 </StackPanel>
                               </Border>
 
@@ -130,8 +151,14 @@
                                       IsVisible="{Binding ExpectedOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                 <StackPanel Spacing="4">
                                   <TextBlock Text="Expected:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding ExpectedOutput}" TextWrapping="Wrap" FontSize="12" 
-                                             Foreground="#F9E2AF"/>
+                                  <TextBlock Text="{Binding ExpectedOutput}" TextWrapping="Wrap" FontSize="12"
+                                             Foreground="#F9E2AF">
+                                    <TextBlock.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding ExpectedOutput}"/>
+                                      </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                  </TextBlock>
                                 </StackPanel>
                               </Border>
 
@@ -152,8 +179,14 @@
                                       IsVisible="{Binding JudgeRationale, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                 <StackPanel Spacing="4">
                                   <TextBlock Text="Judge Rationale:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding JudgeRationale}" TextWrapping="Wrap" FontSize="12" 
-                                             Foreground="#F5C2E7"/>
+                                  <TextBlock Text="{Binding JudgeRationale}" TextWrapping="Wrap" FontSize="12"
+                                             Foreground="#F5C2E7">
+                                    <TextBlock.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding JudgeRationale}"/>
+                                      </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                  </TextBlock>
                                 </StackPanel>
                               </Border>
 

@@ -13,29 +13,25 @@ public static class DefaultTemplates
     public const string Standard = """
         You are an expert evaluator. You will be given a task prompt, an expected output, and an actual output produced by an AI model.
 
-        Task Prompt:
+        <TaskPrompt>
         {prompt}
+        </TaskPrompt>
 
-        Expected Output:
+        <ExpectedOutput>
         {expectedOutput}
+        </ExpectedOutput>
 
-        Actual Output:
+        <ActualOutput>
         {actualOutput}
+        </ActualOutput>
 
         Evaluate the quality of the Actual Output. Consider:
-        - Accuracy: Does it match the expected output in meaning and content?
-        - Completeness: Does it address the full scope of the prompt?
-        - Quality: Is it well-formed, clear, and free of errors?
-
-        Scoring rubric:
-        0  — Completely wrong, off-topic, or harmful
-        1–3 — Major errors or omissions; only superficially relevant
-        4–6 — Partially correct; captures some intent but with significant gaps
-        7–9 — Mostly correct; minor issues only
-        10 — Perfect match in meaning, completeness, and quality
+        - Accuracy, 50 points: Does it match the expected output in meaning and content?
+        - Completeness, 30 points: Does it address the full scope of the prompt?
+        - Quality, 20 points: Is it well-formed, clear, and free of errors?
 
         Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence explaining your score>", "score": <0-10>, "passed": <true if score >= 7, else false>}
+        {"rationale": "<one sentence explaining your score>", "score": <0-10>}
         """;
 
     /// <summary>

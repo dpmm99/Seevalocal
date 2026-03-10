@@ -13,10 +13,12 @@ namespace Seevalocal.UI.Tests;
 public sealed class WizardViewModelTests
 {
     private readonly IFilePickerService _filePicker;
+    private readonly IToastService _toastService;
 
     public WizardViewModelTests()
     {
         _filePicker = Substitute.For<IFilePickerService>();
+        _toastService = Substitute.For<IToastService>();
     }
 
     #region Initialization
@@ -25,7 +27,7 @@ public sealed class WizardViewModelTests
     public void Constructor_Sets_Default_Values()
     {
         // Arrange & Act
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Assert
         _ = vm.CurrentStep.Should().Be(WizardStepKind.ContinueRun);
@@ -52,7 +54,7 @@ public sealed class WizardViewModelTests
     public void Constructor_Initializes_Commands()
     {
         // Arrange & Act
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Assert
         _ = vm.GoBackCommand.Should().NotBeNull();
@@ -76,7 +78,7 @@ public sealed class WizardViewModelTests
     public void CanGoBack_Is_False_At_First_Step()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Act & Assert
         _ = vm.CanGoBack.Should().BeFalse();
@@ -86,7 +88,7 @@ public sealed class WizardViewModelTests
     public void CanGoForward_Is_True_When_Step_Is_Valid()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Act & Assert
         _ = vm.CanGoForward.Should().BeTrue();
@@ -96,7 +98,7 @@ public sealed class WizardViewModelTests
     public async Task GoBack_Moves_To_Previous_StepAsync()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
         await vm.GoForwardAsync(); // Move to ModelAndServer (valid with default settings)
 
         // Act
@@ -112,7 +114,7 @@ public sealed class WizardViewModelTests
     public async Task GoForward_Moves_To_Next_StepAsync()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Act
         await vm.GoForwardAsync();
@@ -126,7 +128,7 @@ public sealed class WizardViewModelTests
     public void GoBack_Does_Nothing_At_First_Step()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
 
         // Act
         vm.GoBack();
@@ -139,7 +141,7 @@ public sealed class WizardViewModelTests
     public async Task GoForward_AutoSelects_ShellTarget_On_Output_StepAsync()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
         // Set up valid state for each step
         vm.ManageServer = true;
         vm.UseLocalFile = true;
@@ -163,7 +165,7 @@ public sealed class WizardViewModelTests
     public async Task CanGoForward_Is_False_When_Validation_FailsAsync()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
         await vm.GoForwardAsync(); // Move to ModelAndServer
         vm.ManageServer = true;
         vm.UseLocalFile = true;
@@ -181,10 +183,12 @@ public sealed class WizardViewModelTests
     public void ValidateServerStep_No_Errors_When_Managed_With_Local_File()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.ManageServer = true;
-        vm.UseLocalFile = true;
-        vm.LocalModelPath = "/path/to/model.gguf";
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            ManageServer = true,
+            UseLocalFile = true,
+            LocalModelPath = "/path/to/model.gguf"
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -197,11 +201,13 @@ public sealed class WizardViewModelTests
     public void ValidateServerStep_Error_When_Managed_With_No_Local_File()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.ModelAndServer;
-        vm.ManageServer = true;
-        vm.UseLocalFile = true;
-        vm.LocalModelPath = null;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.ModelAndServer,
+            ManageServer = true,
+            UseLocalFile = true,
+            LocalModelPath = null
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -215,11 +221,13 @@ public sealed class WizardViewModelTests
     public void ValidateServerStep_Error_When_Managed_With_No_HfRepo()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.ModelAndServer;
-        vm.ManageServer = true;
-        vm.UseLocalFile = false;
-        vm.HfRepo = null;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.ModelAndServer,
+            ManageServer = true,
+            UseLocalFile = false,
+            HfRepo = null
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -233,10 +241,12 @@ public sealed class WizardViewModelTests
     public void ValidateServerStep_Error_When_Unmanaged_With_No_ServerUrl()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.ModelAndServer;
-        vm.ManageServer = false;
-        vm.ServerUrl = null;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.ModelAndServer,
+            ManageServer = false,
+            ServerUrl = null
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -250,10 +260,12 @@ public sealed class WizardViewModelTests
     public void ValidateDatasetStep_No_Errors_With_Valid_File()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.EvaluationDataset;
-        vm.UseSingleFileDataSource = true;
-        vm.DataFilePath = Path.GetTempFileName();
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.EvaluationDataset,
+            UseSingleFileDataSource = true,
+            DataFilePath = Path.GetTempFileName()
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -266,10 +278,12 @@ public sealed class WizardViewModelTests
     public void ValidateDatasetStep_Error_When_File_Does_Not_Exist()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.EvaluationDataset;
-        vm.UseSingleFileDataSource = true;
-        vm.DataFilePath = "/nonexistent/file.json";
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.EvaluationDataset,
+            UseSingleFileDataSource = true,
+            DataFilePath = "/nonexistent/file.json"
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -283,10 +297,12 @@ public sealed class WizardViewModelTests
     public void ValidateDatasetStep_No_Errors_With_Valid_Directory()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.EvaluationDataset;
-        vm.UseSingleFileDataSource = false;
-        vm.PromptDir = Path.GetTempPath();
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.EvaluationDataset,
+            UseSingleFileDataSource = false,
+            PromptDir = Path.GetTempPath()
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -299,12 +315,14 @@ public sealed class WizardViewModelTests
     public void ValidateScoringStep_Error_When_Judge_Enabled_With_No_Model()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.CurrentStep = WizardStepKind.Scoring;
-        vm.EnableJudge = true;
-        vm.JudgeManageServer = true;
-        vm.JudgeUseLocalFile = true;
-        vm.JudgeLocalModelPath = null;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            CurrentStep = WizardStepKind.Scoring,
+            EnableJudge = true,
+            JudgeManageServer = true,
+            JudgeUseLocalFile = true,
+            JudgeLocalModelPath = null
+        };
 
         // Act
         var errors = vm.ValidateCurrentStep();
@@ -322,8 +340,10 @@ public sealed class WizardViewModelTests
     public void BuildPartialConfig_Managed_Local_File_Creates_Correct_Config()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.ManageServer = true;
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited (change from defaults first)
+        vm.ManageServer = false;
+        vm.ManageServer = true;  // Now set to true to mark as edited
         vm.UseLocalFile = true;
         vm.LocalModelPath = "/path/to/model.gguf";
         vm.GpuLayerCount = 35;
@@ -345,8 +365,10 @@ public sealed class WizardViewModelTests
     public void BuildPartialConfig_Managed_HuggingFace_Creates_Correct_Config()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.ManageServer = true;
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited (change from defaults first)
+        vm.ManageServer = false;
+        vm.ManageServer = true;  // Now set to true to mark as edited
         vm.UseLocalFile = false;
         vm.HfRepo = "TheBloke/Mistral-7B-GGUF:Q4_K_M";
         vm.HfToken = "test-token";
@@ -364,7 +386,8 @@ public sealed class WizardViewModelTests
     public void BuildPartialConfig_Unmanaged_Creates_Correct_Config()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited
         vm.ManageServer = false;
         vm.ServerUrl = "http://localhost:8080";
         vm.ApiKey = "test-api-key";
@@ -382,7 +405,8 @@ public sealed class WizardViewModelTests
     public void BuildPartialConfig_Directory_DataSource_Creates_Correct_Config()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited
         vm.UseSingleFileDataSource = false;
         vm.PromptDir = "/path/to/prompts";
         vm.ExpectedDir = "/path/to/expected";
@@ -397,10 +421,28 @@ public sealed class WizardViewModelTests
     }
 
     [Fact]
+    public void BuildPartialConfig_Jsonl_DataSource_Creates_Correct_Config()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited
+        vm.UseSingleFileDataSource = true;
+        vm.DataFilePath = "/path/to/data.jsonl";
+
+        // Act
+        var config = vm.BuildPartialConfig();
+
+        // Assert
+        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = config.EvalSets[0].DataSource.FilePath.Should().Be("/path/to/data.jsonl");
+    }
+
+    [Fact]
     public void BuildPartialConfig_Judge_Enabled_Creates_Correct_Config()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited
         vm.EnableJudge = true;
         vm.JudgeManageServer = true;
         vm.JudgeUseLocalFile = true;
@@ -414,7 +456,7 @@ public sealed class WizardViewModelTests
 
         // Assert
         _ = config.Judge.Should().NotBeNull();
-        _ = config.Judge!.Manage.Should().BeTrue();
+        _ = config.Judge!.Enable.Should().BeTrue();
         _ = config.Judge.ServerConfig!.Model!.Kind.Should().Be(ModelSourceKind.LocalFile);
         _ = config.Judge.ServerConfig.Model.FilePath.Should().Be("/path/to/judge.gguf");
         _ = config.Judge.JudgePromptTemplate.Should().Be("pass-fail");
@@ -426,7 +468,8 @@ public sealed class WizardViewModelTests
     public void BuildPartialConfig_All_LlamaSettings_Are_Included()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Set properties to mark them as edited
         vm.ContextWindowTokens = 8192;
         vm.BatchSizeTokens = 512;
         vm.ParallelSlotCount = 4;
@@ -453,6 +496,46 @@ public sealed class WizardViewModelTests
         _ = config.LlamaSettings.ThreadCount.Should().Be(8);
     }
 
+    [Fact]
+    public void BuildPartialConfig_Unedited_Fields_Are_Null()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Don't set any properties - leave them all unedited
+
+        // Act
+        var config = vm.BuildPartialConfig();
+
+        // Assert - unedited fields should be null/not included
+        _ = config.Server.Should().BeNull();
+        _ = config.LlamaSettings.Should().BeNull();
+        _ = config.Judge.Should().BeNull();
+        // DataSource should still be created with defaults
+        _ = config.EvalSets.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void BuildPartialConfig_Only_Edited_Fields_Are_Included()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        // Only edit a subset of properties
+        vm.GpuLayerCount = 40;
+        vm.EnableFlashAttention = true;
+
+        // Act
+        var config = vm.BuildPartialConfig();
+
+        // Assert - only edited fields should have values
+        _ = config.LlamaSettings.Should().NotBeNull();
+        _ = config.LlamaSettings!.GpuLayerCount.Should().Be(40);
+        _ = config.LlamaSettings.EnableFlashAttention.Should().BeTrue();
+        // Unedited fields should be null
+        _ = config.LlamaSettings.ContextWindowTokens.Should().BeNull();
+        _ = config.LlamaSettings.BatchSizeTokens.Should().BeNull();
+        _ = config.LlamaSettings.ThreadCount.Should().BeNull();
+    }
+
     #endregion
 
     #region SelectedPipelineIndex
@@ -464,10 +547,11 @@ public sealed class WizardViewModelTests
     public void SelectedPipelineIndex_Maps_Correctly(int index, string expectedName)
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-
-        // Act
-        vm.SelectedPipelineIndex = index;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            // Act
+            SelectedPipelineIndex = index
+        };
 
         // Assert
         _ = vm.PipelineName.Should().Be(expectedName);
@@ -481,8 +565,10 @@ public sealed class WizardViewModelTests
     public void SelectedPipelineIndex_Getter_Maps_Correctly(string name, int expectedIndex)
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.PipelineName = name;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            PipelineName = name
+        };
 
         // Act & Assert
         _ = vm.SelectedPipelineIndex.Should().Be(expectedIndex);
@@ -493,16 +579,20 @@ public sealed class WizardViewModelTests
     #region SelectedJudgeTemplateIndex
 
     [Theory]
-    [InlineData(0, "standard")]
-    [InlineData(1, "pass-fail")]
-    [InlineData(2, "json")]
+    [InlineData(0, "casual-q-a-judge-template")]
+    [InlineData(1, "code-quality-judge-template")]
+    [InlineData(2, "pass-fail")]
+    [InlineData(3, "standard")]
+    [InlineData(4, "structured-json")]
+    [InlineData(5, "translation-judge-template")]
     public void SelectedJudgeTemplateIndex_Maps_Correctly(int index, string expectedTemplate)
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-
-        // Act
-        vm.SelectedJudgeTemplateIndex = index;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            // Act
+            SelectedJudgeTemplateIndex = index
+        };
 
         // Assert
         _ = vm.JudgeTemplate.Should().Be(expectedTemplate);
@@ -510,14 +600,19 @@ public sealed class WizardViewModelTests
     }
 
     [Theory]
-    [InlineData("standard", 0)]
-    [InlineData("pass-fail", 1)]
-    [InlineData("json", 2)]
+    [InlineData("casual-q-a-judge-template", 0)]
+    [InlineData("code-quality-judge-template", 1)]
+    [InlineData("pass-fail", 2)]
+    [InlineData("standard", 3)]
+    [InlineData("structured-json", 4)]
+    [InlineData("translation-judge-template", 5)]
     public void SelectedJudgeTemplateIndex_Getter_Maps_Correctly(string template, int expectedIndex)
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.JudgeTemplate = template;
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            JudgeTemplate = template
+        };
 
         // Act & Assert
         _ = vm.SelectedJudgeTemplateIndex.Should().Be(expectedIndex);
@@ -528,36 +623,42 @@ public sealed class WizardViewModelTests
     #region UseSingleFileDataSource / UseDirectoryDataSource
 
     [Fact]
-    public void UseSingleFileDataSource_Switch_To_Directory_Clears_FilePath()
+    public void UseSingleFileDataSource_Switch_To_Directory_Does_Not_Clear_FilePath()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.DataFilePath = "/path/to/file.json";
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            DataFilePath = "/path/to/file.json",
 
-        // Act
-        vm.UseSingleFileDataSource = false;
+            // Act
+            UseSingleFileDataSource = false
+        };
 
         // Assert
         _ = vm.UseDirectoryDataSource.Should().BeTrue();
-        _ = vm.DataFilePath.Should().BeNull();
+        // Path fields are preserved when switching modes
+        _ = vm.DataFilePath.Should().Be("/path/to/file.json");
     }
 
     [Fact]
-    public void UseDirectoryDataSource_Switch_To_File_Clears_Directories()
+    public void UseDirectoryDataSource_Switch_To_File_Does_Not_Clear_Directories()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.UseSingleFileDataSource = false;
-        vm.PromptDir = "/path/to/prompts";
-        vm.ExpectedDir = "/path/to/expected";
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            UseSingleFileDataSource = false,
+            PromptDir = "/path/to/prompts",
+            ExpectedDir = "/path/to/expected"
+        };
 
         // Act
         vm.UseSingleFileDataSource = true;
 
         // Assert
         _ = vm.UseDirectoryDataSource.Should().BeFalse();
-        _ = vm.PromptDir.Should().BeNull();
-        _ = vm.ExpectedDir.Should().BeNull();
+        // Path fields are preserved when switching modes
+        _ = vm.PromptDir.Should().Be("/path/to/prompts");
+        _ = vm.ExpectedDir.Should().Be("/path/to/expected");
     }
 
     #endregion
@@ -568,13 +669,15 @@ public sealed class WizardViewModelTests
     public void ResetToDefaults_Resets_All_Properties()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
-        vm.ManageServer = false;
-        vm.ServerUrl = "http://example.com";
-        vm.GpuLayerCount = 50;
-        vm.PipelineName = "Translation";
-        vm.EnableJudge = true;
-        vm.JudgeTemplate = "json";
+        var vm = new WizardViewModel(_filePicker, _toastService)
+        {
+            ManageServer = false,
+            ServerUrl = "http://example.com",
+            GpuLayerCount = 50,
+            PipelineName = "Translation",
+            EnableJudge = true,
+            JudgeTemplate = "json"
+        };
 
         // Act
         vm.ResetToDefaults();
@@ -597,7 +700,7 @@ public sealed class WizardViewModelTests
     public void Property_Change_Notifies_CanGoForward()
     {
         // Arrange
-        var vm = new WizardViewModel(_filePicker);
+        var vm = new WizardViewModel(_filePicker, _toastService);
         var propertyChanged = new List<string>();
         vm.PropertyChanged += (_, e) => propertyChanged.Add(e.PropertyName!);
 

@@ -9,7 +9,7 @@ namespace Seevalocal.Judge;
 /// <summary>
 /// <para>
 /// Pipeline stage that sends the item's prompt, expected output, and primary LLM response
-/// to a judge LLM for scoring. Produces <c>judgeScoreRatio</c> and <c>judgePassedBool</c>
+/// to a judge LLM for scoring. Produces <c>judgeScore</c> (raw score from judge) and <c>judgePassedBool</c>
 /// metrics.
 /// </para>
 /// <para>Thread-safe; a single instance is shared across all concurrently running eval items.</para>
@@ -46,14 +46,14 @@ public sealed partial class JudgeStage(
     /// Creates a JudgeConfig from the provided parameters.
     /// </summary>
     /// <param name="logger">Logger for the stage</param>
-    /// <param name="promptTemplate">Jinja-style template for judge prompt</param>
+    /// <param name="promptTemplate">Jinja-style template for judge prompt. Can be a template name ("standard", "pass-fail", "structured-json") or the full template content.</param>
     /// <param name="minScore">Minimum score value (default 0)</param>
     /// <param name="maxScore">Maximum score value (default 10)</param>
     public JudgeStage(
         ILogger<JudgeStage> logger,
         string promptTemplate,
-        int minScore = 0,
-        int maxScore = 10)
+        double minScore = 0,
+        double maxScore = 10)
         : this(
             new JudgeConfig
             {
@@ -68,6 +68,33 @@ public sealed partial class JudgeStage(
             logger)
     { }
 
+    /// <summary>
+    /// Resolves a template name to its full content.
+    /// If the input looks like a template name (short, lowercase, no newlines), looks it up in DefaultTemplates.
+    /// Otherwise returns the input as-is (assumed to be full template content).
+    /// </summary>
+    private static string ResolveTemplate(string templateNameOrContent)
+    {
+        if (string.IsNullOrEmpty(templateNameOrContent))
+            return DefaultTemplates.Standard;
+
+        // If it contains newlines or is long, assume it's already the full template
+        if (templateNameOrContent.Contains('\n') || templateNameOrContent.Length > 100)
+            return templateNameOrContent;
+
+        // Otherwise, look it up by name (case-insensitive)
+        return templateNameOrContent.ToLowerInvariant() switch
+        {
+            "standard" => DefaultTemplates.Standard,
+            "pass-fail" => DefaultTemplates.PassFail,
+            "structured-json" => DefaultTemplates.StructuredJson,
+            "translation" => DefaultTemplates.TranslationJudgeTemplate,
+            "casualqa" => DefaultTemplates.CasualQAJudgeTemplate,
+            "codequality" => DefaultTemplates.CodeQualityJudgeTemplate,
+            _ => DefaultTemplates.Standard, // Fallback
+        };
+    }
+
     /// <inheritdoc />
     public async Task<StageResult> ExecuteAsync(EvalStageContext context)
     {
@@ -78,25 +105,6 @@ public sealed partial class JudgeStage(
             ?? throw new InvalidOperationException(
                 $"[{StageName}] JudgeStage requires a judge client but EvalStageContext.JudgeClient is null. " +
                 "Ensure the pipeline orchestrator initialises a judge endpoint.");
-
-        /*GPT-5-mini thought this would be smart instead of the above:
-        // If judge client is null, skip this stage (happens during two-phase primary execution)
-        var judgeClient = context.JudgeClient;
-        if (judgeClient == null)
-        {
-            _logger.LogDebug(
-                "[{Stage}] EvalItem {ItemId}: Skipping JudgeStage because JudgeClient is null " +
-                "(likely running in two-phase primary mode where judge runs in separate phase)",
-                StageName, context.Item.Id);
-            
-            // Return success with empty outputs - this stage will run again in judge phase
-            return StageResult.Success(
-                new Dictionary<string, object?>(),
-                new List<MetricValue>());
-        }
-        ...but the problem is that WE NEED THE JUDGE CLIENT when running without phase 2, yet we're not receiving it.
-        */
-
 
         // ── 2. Retrieve the primary LLM's actual output ────────────────────
         var actualOutput = context.StageOutputs.GetValueOrDefault("PromptStage.response") as string ?? string.Empty;
@@ -110,8 +118,9 @@ public sealed partial class JudgeStage(
         }
 
         // ── 3. Render judge prompt ─────────────────────────────────────────
+        var templateContent = ResolveTemplate(_config.JudgePromptTemplate);
         var judgePrompt = _renderer.Render(
-            _config.JudgePromptTemplate,
+            templateContent,
             context.Item.UserPrompt,
             context.Item.ExpectedOutput ?? string.Empty,
             actualOutput,
@@ -190,8 +199,8 @@ public sealed partial class JudgeStage(
         }
 
         _logger.LogDebug(
-            "[{Stage}] EvalItem {ItemId}: judgeScoreRatio={Score:F4} passed={Passed}",
-            StageName, context.Item.Id, parsed.NormalizedScore, parsed.Passed);
+            "[{Stage}] EvalItem {ItemId}: judgeScore={Score:F2} passed={Passed}",
+            StageName, context.Item.Id, parsed.RawScore, parsed.Passed);
 
         return new StageResult
         {
@@ -211,7 +220,7 @@ public sealed partial class JudgeStage(
         new()
         {
             ["JudgeStage.rawResponse"] = judgeText,
-            ["JudgeStage.score"] = parsed.NormalizedScore,
+            ["JudgeStage.score"] = parsed.RawScore,
             ["JudgeStage.passed"] = parsed.Passed,
             ["JudgeStage.rationale"] = parsed.Rationale,
         };
@@ -220,8 +229,8 @@ public sealed partial class JudgeStage(
     [
         new MetricValue
         {
-            Name        = "judgeScoreRatio",
-            Value       = new MetricScalar.DoubleMetric(parsed.NormalizedScore ?? 0.0),
+            Name        = "judgeScore",
+            Value       = new MetricScalar.DoubleMetric(parsed.RawScore ?? 0.0),
             SourceStage = "JudgeStage",
         },
         new MetricValue

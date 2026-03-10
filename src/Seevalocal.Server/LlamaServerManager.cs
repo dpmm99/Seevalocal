@@ -11,7 +11,6 @@ namespace Seevalocal.Server;
 /// Manages the full lifecycle of a llama-server process.
 /// If <see cref="ServerConfig.Manage"/> is false, simply validates connectivity.
 /// Thread-safe after <see cref="StartAsync"/> completes.
-/// 
 /// Process cleanup strategy:
 /// - Windows: Uses Job Objects to automatically kill llama-server when this process dies
 /// - Unix: Spawns a monitor process that watches for parent death and kills llama-server
@@ -38,7 +37,7 @@ public sealed partial class LlamaServerManager(
     private bool _disposed;
     private int _loadingDotCount;
     private bool _loadingComplete;
-    
+
     // Process cleanup helpers
     private WindowsJobObject? _jobObject;  // Windows only
     private System.Diagnostics.Process? _monitorProcess;  // Unix only
@@ -48,6 +47,9 @@ public sealed partial class LlamaServerManager(
 
     /// <summary>Fires during llama-server startup with loading progress (0-100%).</summary>
     public event EventHandler<ServerLoadingProgressEventArgs>? LoadingProgressChanged;
+
+    /// <summary>Fires when error output is received from llama-server.</summary>
+    public event EventHandler<ServerErrorEventArgs>? ServerErrorReceived;
 
     /// <summary>
     /// Starts (or connects to) a llama-server instance.
@@ -65,7 +67,7 @@ public sealed partial class LlamaServerManager(
         _loadingDotCount = 0;
         _loadingComplete = false;
 
-        return config.Manage
+        return config.Manage != false
             ? await StartManagedAsync(config, settings, cancellationToken)
             : await ConnectExistingAsync(config, cancellationToken);
     }
@@ -160,9 +162,18 @@ public sealed partial class LlamaServerManager(
             }
         };
 
+        var errors = new List<string>() { "error", "failed", "unable", "insufficient", "lost device", "device lost", "out of memory", "fatal", "violation" };
         _process.ErrorDataReceived += (_, e) =>
         {
-            if (e.Data is not null) _logger.LogDebug("[llama-server stderr] {Line}", e.Data);
+            if (e.Data is not null)
+            {
+                // Filter to known error messages, because llama-server spits a bunch of non-error logs to stderr.
+                if (errors.Any(err => e.Data.Contains(err, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogDebug("[llama-server stderr] {Line}", e.Data);
+                    ServerErrorReceived?.Invoke(this, new ServerErrorEventArgs(e.Data));
+                }
+            }
         };
         _process.Exited += OnProcessExited;
 
@@ -200,7 +211,7 @@ public sealed partial class LlamaServerManager(
                 _monitorProcess = ProcessCleanupMonitor.StartMonitor(parentPid, childPid);
                 if (_monitorProcess != null)
                 {
-                    _logger.LogDebug("Started monitor process (PID={MonitorPid}) for llama-server (PID={ChildPid})", 
+                    _logger.LogDebug("Started monitor process (PID={MonitorPid}) for llama-server (PID={ChildPid})",
                         _monitorProcess.Id, childPid);
                 }
             }
@@ -222,7 +233,7 @@ public sealed partial class LlamaServerManager(
         });
 
         // 4. Wait for health (25-90%)
-        var baseUrl = $"http://{config.Host}:{config.Port}";
+        var baseUrl = $"http://{config.Host ?? "127.0.0.1"}:{config.Port ?? 8080}";
         var healthy = await WaitForHealthAsync(baseUrl, DefaultHealthTimeoutSeconds, ct);
         if (!healthy)
         {
@@ -435,9 +446,9 @@ public sealed partial class LlamaServerManager(
         {
             _process.Dispose();
             _jobObject?.Dispose();
-            
+
             // Clean up monitor process (Unix only)
-            if (_monitorProcess != null && !_monitorProcess.HasExited)
+            if (_monitorProcess?.HasExited == false)
             {
                 try
                 {
@@ -471,4 +482,18 @@ public sealed class ServerLoadingProgressEventArgs : EventArgs
 
     /// <summary>Optional status message.</summary>
     public string? Message { get; init; }
+}
+
+/// <summary>
+/// Event args for llama-server error output.
+/// </summary>
+public sealed class ServerErrorEventArgs : EventArgs
+{
+    /// <summary>The error message line.</summary>
+    public string ErrorMessage { get; }
+
+    public ServerErrorEventArgs(string errorMessage)
+    {
+        ErrorMessage = errorMessage;
+    }
 }

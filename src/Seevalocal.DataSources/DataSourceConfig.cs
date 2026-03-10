@@ -1,3 +1,5 @@
+using Seevalocal.Core.Models;
+
 namespace Seevalocal.DataSources;
 
 public record DataSourceConfig
@@ -27,25 +29,24 @@ public record DataSourceConfig
     public int? ShuffleRandomSeed { get; init; }    // null = no shuffle
 }
 
-public enum DataSourceKind
-{
-    Directory,
-    SplitDirectories,
-    JsonFile,
-    JsonlFile,
-    YamlFile,
-    CsvFile,
-    ParquetFile,
-    InlineList,
-}
-
 public record FieldMapping
 {
-    public string IdField { get; init; } = "id";
-    public string UserPromptField { get; init; } = "prompt";
-    public string? ExpectedOutputField { get; init; } = "expected";
+    public string? IdField { get; init; }
+    public string? UserPromptField { get; init; }
+    public string? ExpectedOutputField { get; init; }
     public string? SystemPromptField { get; init; }
     public IReadOnlyList<string> MetadataFields { get; init; } = [];
+
+    /// <summary>
+    /// Creates a FieldMapping with default values for JSONL files.
+    /// Uses 'question' for user prompt and 'answer' for expected output.
+    /// </summary>
+    public static FieldMapping ForJsonl() => new()
+    {
+        IdField = "id",
+        UserPromptField = "question",
+        ExpectedOutputField = "answer",
+    };
 }
 
 /// <summary>DTO for inline items defined directly in settings.</summary>

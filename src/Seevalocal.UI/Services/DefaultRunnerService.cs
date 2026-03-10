@@ -111,7 +111,7 @@ public sealed class DefaultRunnerService(
 
         // Create external server client if not managing server
         LlamaServerClient? primaryClient = null;
-        if (!config.Server.Manage)
+        if (config.Server.Manage == false)
         {
             var primaryServerInfo = new ServerInfo
             {
@@ -122,7 +122,7 @@ public sealed class DefaultRunnerService(
             };
             var primaryHttpClient = CreateHttpClient(primaryServerInfo);
             var primaryClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-            var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
+            var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 4;
             primaryClient = new LlamaServerClient(primaryServerInfo, primaryHttpClient, primaryClientLogger, maxConcurrent);
 
             // Initialize semaphore based on actual server slot count
@@ -149,7 +149,7 @@ public sealed class DefaultRunnerService(
                 };
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
                 var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
-                var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 10;
+                var maxConcurrent = config.Run?.MaxConcurrentEvals ?? 4;
                 judgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
 
                 // Initialize semaphore based on actual server slot count
@@ -199,7 +199,7 @@ public sealed class DefaultRunnerService(
         {
             // SINGLE-PHASE EXECUTION (zero or one locally managed llama-server instance)
             // ViewModel will create orchestrator after starting managed servers
-            var serverLifecycle = config.Server.Manage || config.Judge?.Manage == true ? _serverLifecycleService : null;
+            var serverLifecycle = config.Server.Manage != false || config.Judge?.Manage == true ? _serverLifecycleService : null;
 
             return new EvalRunViewModel(
                 config,
@@ -210,11 +210,11 @@ public sealed class DefaultRunnerService(
                 _loggerFactory,
                 runLogger,
                 serverLifecycle,
-                config.Server.Manage ? config.Server : null,
-                config.Server.Manage ? config.LlamaServer : null,
+                config.Server.Manage != false ? config.Server : null,
+                config.Server.Manage != false ? config.LlamaServer : null,
                 config.Judge is { Manage: true } ? config.Judge.ServerConfig : null,
                 config.Judge is { Manage: true } ? config.Judge.ServerSettings : null,
-                !config.Server.Manage ? primaryClient : null,
+                config.Server.Manage == false ? primaryClient : null,
                 config.Judge is { Manage: false } ? judgeClient : null);
         }
     }
@@ -276,21 +276,59 @@ public sealed class DefaultRunnerService(
 
     /// <summary>
     /// Converts from Seevalocal.Core.Models.DataSourceConfig to Seevalocal.DataSources.DataSourceConfig.
+    /// File-based kinds (SingleFile/File) are detected from the file extension.
+    /// JSONL files get default field mapping (question/answer) if not specified.
     /// </summary>
     private static DataSources.DataSourceConfig ConvertDataSourceConfig(DataSourceConfig coreConfig)
     {
+        // Detect actual file type from extension if Kind is generic (SingleFile/File)
+        var effectiveKind = coreConfig.Kind;
+        if (coreConfig.Kind is DataSourceKind.SingleFile or DataSourceKind.File)
+        {
+            effectiveKind = DetectFileKindFromExtension(coreConfig.FilePath);
+        }
+
+        // Apply JSONL defaults for field mapping if not specified
+        var fieldMapping = coreConfig.FieldMapping;
+        if (effectiveKind == DataSourceKind.JsonlFile)
+        {
+            if (fieldMapping.IdField == null) fieldMapping = fieldMapping with { IdField = "id" };
+            if (fieldMapping.UserPromptField == null) fieldMapping = fieldMapping with { UserPromptField = "question" };
+            if (fieldMapping.ExpectedOutputField == null) fieldMapping = fieldMapping with { ExpectedOutputField = "answer" };
+        }
+
         return new DataSources.DataSourceConfig
         {
-            Kind = (DataSources.DataSourceKind)coreConfig.Kind,
+            Kind = effectiveKind,  // Now the same enum, no cast needed
             PromptDirectoryPath = coreConfig.PromptDirectoryPath,
             ExpectedOutputDirectoryPath = coreConfig.ExpectedOutputDirectoryPath,
             SystemPromptFilePath = coreConfig.DefaultSystemPromptFilePath,
             FileExtensionFilter = coreConfig.FileExtensionFilter ?? "*",
             DataFilePath = coreConfig.FilePath,
-            FieldMapping = coreConfig.FieldMapping != null ? ConvertFieldMapping(coreConfig.FieldMapping) : null,
+            FieldMapping = fieldMapping != null ? ConvertFieldMapping(fieldMapping) : null,
             DefaultSystemPrompt = coreConfig.DefaultSystemPrompt,
             MaxItemCount = null,  // Not used in UI mode
             ShuffleRandomSeed = null  // Not used in UI mode
+        };
+    }
+
+    /// <summary>
+    /// Detects the DataSourceKind from a file extension.
+    /// </summary>
+    private static DataSourceKind DetectFileKindFromExtension(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+            return DataSourceKind.SingleFile;
+
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return ext switch
+        {
+            ".json" => DataSourceKind.JsonFile,
+            ".jsonl" => DataSourceKind.JsonlFile,
+            ".yaml" or ".yml" => DataSourceKind.YamlFile,
+            ".csv" => DataSourceKind.CsvFile,
+            ".parquet" => DataSourceKind.ParquetFile,
+            _ => DataSourceKind.SingleFile,
         };
     }
 

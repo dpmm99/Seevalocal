@@ -76,7 +76,7 @@ public sealed class RunCommand(
             // 3. Start server(s) if managing
             ServerInfo? serverInfo = null;
 
-            if (resolvedConfig.Server.Manage)
+            if (resolvedConfig.Server.Manage != false)
             {
                 _console.MarkupLine("[bold]Starting llama-server...[/]");
                 var result = await _serverManager.StartAsync(

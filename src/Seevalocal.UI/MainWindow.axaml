@@ -121,5 +121,41 @@
             IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"/>
       </Grid>
     </Border>
+
+    <!-- Toast Notification Overlay -->
+    <Border Grid.Column="0" Grid.ColumnSpan="2" 
+            HorizontalAlignment="Right" VerticalAlignment="Top" 
+            Margin="0,20,20,0" MaxWidth="400">
+      <ItemsControl ItemsSource="{Binding Toasts}" HorizontalAlignment="Right">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Vertical" Spacing="8" HorizontalAlignment="Right"/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Background="#313244" CornerRadius="8" Padding="16" 
+                    BorderThickness="1" BorderBrush="#45475A"
+                    BoxShadow="0 4 12 2 #00000040">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <!-- Icon based on toast kind -->
+                <TextBlock FontSize="18">
+                  <TextBlock.Text>
+                    <Binding Path="Kind" Converter="{x:Static converters:ToastKindIconConverter.Instance}"/>
+                  </TextBlock.Text>
+                </TextBlock>
+                <!-- Message -->
+                <TextBlock Text="{Binding Message}" 
+                           Foreground="#CDD6F4" 
+                           FontSize="13"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="320"/>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Border>
   </Grid>
 </Window>

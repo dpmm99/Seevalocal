@@ -11,12 +11,13 @@ Various pipeline setups:
 	For judgment, another eval's input-output would be the input and that eval's judge output (or a human's judgment) would be the expected output--you can use statistical approaches, like R^2 score, to determine how well the judge matches your own opinion or another model's evaluation.
 	And, of course, I need to fine-tune any built-in prompts to try to maximize their effectiveness.
 	Also ought to include some simple examples of data that you can run evals on (but real ones, not the minimalist garbage I got from a single Qwen3.5-122B-A10B prompt), with the disclaimer that the more widely posted a problem is, the less you can trust that evaluating an LLM on that problem will generalize to real-world use.
+Add a "copy from wizard" button to the settings screen...if there wasn't already one. Copy only settings the user changed in the wizard.
+Make sure the wizard's reset-to-defaults button actually re-inherits but leaves anything they changed directly in the wizard alone.
 
 To-fix list:
-There are some pieces of code trying to show toasts, but no toasts ever appear in the UI.
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
-The browse buttons in the settings view don't populate the backing fields or the textboxes.
-Normalizing the judge score is inappropriate and leads to things like the UI saying "1.0/10" when the judge gave 10/10.
+Make it clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
+Pause doesn't work
 
 To-test list:
 Continuation of an interrupted run

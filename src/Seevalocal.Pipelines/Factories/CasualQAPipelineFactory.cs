@@ -59,6 +59,9 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         var judgeMinScore = ParseInt(opts, "judgeMinScore", 0);
         var judgeMaxScore = ParseInt(opts, "judgeMaxScore", 10);
 
+        // Use judge template from config if set, otherwise use pipeline-specific default
+        var judgeTemplate = resolvedConfig.Judge?.JudgePromptTemplate ?? "casualqa";
+
         List<IEvalStage> stages =
         [
             new PromptStage(_loggerFactory.CreateLogger<PromptStage>()),
@@ -69,7 +72,7 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
 
         stages.Add(new JudgeStage(
             _loggerFactory.CreateLogger<JudgeStage>(),
-            promptTemplate: DefaultTemplates.CasualQAJudgeTemplate,
+            promptTemplate: judgeTemplate,
             minScore: judgeMinScore, maxScore: judgeMaxScore));
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())

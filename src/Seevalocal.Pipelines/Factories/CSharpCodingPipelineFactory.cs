@@ -78,10 +78,13 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
 
         if (scoreWithJudge)
         {
+            // Use judge template from config if set, otherwise use pipeline-specific default
+            var judgeTemplate = resolvedConfig.Judge?.JudgePromptTemplate ?? "codequality";
+
             stages.Add(new JudgeStage(
                 _loggerFactory.CreateLogger<JudgeStage>(),
-                promptTemplate: DefaultTemplates.CodeQualityJudgeTemplate,
-                minScore: 0, maxScore: 10));
+                promptTemplate: judgeTemplate,
+                minScore: resolvedConfig.Judge?.ScoreMin ?? 0, maxScore: resolvedConfig.Judge?.ScoreMax ?? 10));
         }
 
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())

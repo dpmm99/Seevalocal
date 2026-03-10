@@ -26,6 +26,9 @@ public sealed class DefaultServerLifecycleService(
     /// <summary>Exposes the llama-server loading progress event from the most recently started server.</summary>
     public event EventHandler<ServerLoadingProgressEventArgs>? LoadingProgressChanged;
 
+    /// <summary>Exposes the llama-server error output event from the most recently started server.</summary>
+    public event EventHandler<ServerErrorEventArgs>? ServerErrorReceived;
+
     private LlamaServerManager? _activeManager;
     private ServerLoadingProgressEventArgs? _lastLoadingProgress;
 
@@ -35,12 +38,18 @@ public sealed class DefaultServerLifecycleService(
         set
         {
             if (_activeManager != null)
+            {
                 _activeManager.LoadingProgressChanged -= OnLoadingProgressChanged;
+                _activeManager.ServerErrorReceived -= OnServerErrorReceived;
+            }
 
             _activeManager = value;
 
             if (_activeManager != null)
+            {
                 _activeManager.LoadingProgressChanged += OnLoadingProgressChanged;
+                _activeManager.ServerErrorReceived += OnServerErrorReceived;
+            }
         }
     }
 
@@ -48,6 +57,11 @@ public sealed class DefaultServerLifecycleService(
     {
         _lastLoadingProgress = e;
         LoadingProgressChanged?.Invoke(sender, e);
+    }
+
+    private void OnServerErrorReceived(object? sender, ServerErrorEventArgs e)
+    {
+        ServerErrorReceived?.Invoke(sender, e);
     }
 
     /// <summary>Gets the last reported loading progress (for late subscribers).</summary>

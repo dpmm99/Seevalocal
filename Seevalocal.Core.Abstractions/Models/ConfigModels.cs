@@ -85,9 +85,11 @@ public enum DataSourceKind
     SplitDirectories,
     SingleFile,
     JsonFile,
+    JsonlFile,
     YamlFile,
     CsvFile,
     ParquetFile,
+    InlineList,
     File,        // Alias for SingleFile
     DirectoryPair,  // Alias for SplitDirectories
 }
@@ -95,10 +97,9 @@ public enum DataSourceKind
 public record FieldMapping
 {
     public string? IdField { get; init; }
-    public string? SystemPromptField { get; init; }
     public string? UserPromptField { get; init; }
     public string? ExpectedOutputField { get; init; }
-    public string? ArtifactFilePathField { get; init; }
+    public string? SystemPromptField { get; init; }
 }
 
 public record DataSourceConfig
@@ -187,8 +188,7 @@ public record EvalSetConfig
     /// Pipeline-specific options forwarded to IBuiltinPipelineFactory.Create().
     /// Keys/values are pipeline-defined.
     /// </summary>
-    public IReadOnlyDictionary<string, object?> PipelineOptions { get; init; }
-        = new Dictionary<string, object?>();
+    public IReadOnlyDictionary<string, object?>? PipelineOptions { get; init; }
 
     /// <summary>Optional endpoint name override. Null = use primary server.</summary>
     public string? EndpointName { get; init; }
@@ -204,11 +204,11 @@ public record EvalSetConfig
 public record RunMeta
 {
     public string Id { get; init; } = "";
-    public string RunName { get; init; } = "";
-    public string OutputDirectoryPath { get; init; } = "./results";
-    public ShellTarget ExportShellTarget { get; init; } = ShellTarget.Bash;
-    public bool ContinueOnEvalFailure { get; init; } = true;
-    public bool ContinueFromCheckpoint { get; init; } = false;
+    public string? RunName { get; init; }
+    public string? OutputDirectoryPath { get; init; }
+    public ShellTarget? ExportShellTarget { get; init; }
+    public bool? ContinueOnEvalFailure { get; init; }
+    public bool ContinueFromCheckpoint { get; init; }
 
     /// <summary>null = use total_slots from server /props response.</summary>
     public int? MaxConcurrentEvals { get; init; }
@@ -225,9 +225,17 @@ public record RunMeta
 public record JudgeConfig
 {
     /// <summary>
+    /// Whether to enable LLM-as-judge scoring.
+    /// When false, judge scoring is completely disabled.
+    /// When true, uses either managed or external judge endpoint.
+    /// </summary>
+    public bool Enable { get; init; }
+
+    /// <summary>
     /// Whether to manage a local llama-server instance for the judge.
     /// When true, a second llama-server process is started with the configured settings.
     /// When false, connects to an existing judge endpoint via BaseUrl.
+    /// Only used when Enable = true.
     /// </summary>
     public bool Manage { get; init; }
 
@@ -243,15 +251,16 @@ public record JudgeConfig
     /// <summary>
     /// Jinja2-style template for the judge prompt.
     /// Available variables: {prompt}, {expectedOutput}, {actualOutput}, {metadata.*}
+    /// Can be a template name ("standard", "pass-fail", "structured-json") or full template content.
     /// </summary>
-    public string JudgePromptTemplate { get; init; } = DefaultTemplates.Standard;
+    public string JudgePromptTemplate { get; init; } = "standard";
 
     /// <summary>How to parse the judge's response.</summary>
     public JudgeResponseFormat ResponseFormat { get; init; } = JudgeResponseFormat.StructuredJson;
 
     /// <summary>
     /// For NumericScore/StructuredJson format: the score range expected from the judge.
-    /// The score is normalized to [0, 1] for the judgeScoreRatio metric.
+    /// The raw score is used directly for the judgeScore metric (e.g., 7/10 displays as 7.0).
     /// </summary>
     public double ScoreMinValue { get; init; } = 0.0;
     public double ScoreMaxValue { get; init; } = 10.0;
@@ -312,11 +321,11 @@ public record ModelSource
 
 public record ServerConfig
 {
-    public bool Manage { get; init; }
+    public bool? Manage { get; init; }
     public string? ExecutablePath { get; init; }
     public ModelSource? Model { get; init; }
-    public string Host { get; init; } = "127.0.0.1";
-    public int Port { get; init; } = 8080;
+    public string? Host { get; init; }
+    public int? Port { get; init; }
     public string? ApiKey { get; init; }
     public IReadOnlyList<string> ExtraArgs { get; init; } = [];
     public string? BaseUrl { get; init; }
@@ -333,6 +342,7 @@ public record ResolvedConfig
     public LlamaServerSettings LlamaServer { get; init; } = new();
     public IReadOnlyList<EvalSetConfig> EvalSets { get; init; } = [];
     public JudgeConfig? Judge { get; init; }
+    public DataSourceConfig DataSource { get; init; } = new();
 }
 
 // ---------------------------------------------------------------------------
@@ -408,6 +418,7 @@ public record PartialConfig
     public List<EvalSetConfig>? EvalSets { get; init; }
     public PartialJudgeConfig? Judge { get; init; }
     public OutputConfig? Output { get; init; }
+    public PartialDataSourceConfig? DataSource { get; init; }
 
     /// <summary>Alias for LlamaServer (for CLI compatibility).</summary>
     public PartialLlamaServerSettings? LlamaSettings
@@ -417,13 +428,38 @@ public record PartialConfig
     }
 }
 
+/// <summary>
+/// Partial data source configuration — mirrors DataSourceConfig but all fields nullable.
+/// </summary>
+public record PartialDataSourceConfig
+{
+    public DataSourceKind? Kind { get; init; }
+    public string? FilePath { get; init; }
+    public string? PromptDirectoryPath { get; init; }
+    public string? ExpectedOutputDirectoryPath { get; init; }
+
+    /// <summary>Alias for PromptDirectoryPath (for CLI compatibility).</summary>
+    public string? PromptDirectory
+    {
+        get => PromptDirectoryPath;
+        init => PromptDirectoryPath = value;
+    }
+
+    /// <summary>Alias for ExpectedOutputDirectoryPath (for CLI compatibility).</summary>
+    public string? ExpectedDirectory
+    {
+        get => ExpectedOutputDirectoryPath;
+        init => ExpectedOutputDirectoryPath = value;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // PartialJudgeConfig — mirrors JudgeConfig but all fields nullable
 // ---------------------------------------------------------------------------
 
 public record PartialJudgeConfig
 {
-    public bool? Manage { get; init; }
+    public bool? Enable { get; init; }
     public PartialServerConfig? ServerConfig { get; init; }
     public PartialLlamaServerSettings? ServerSettings { get; init; }
     public string? JudgePromptTemplate { get; init; }

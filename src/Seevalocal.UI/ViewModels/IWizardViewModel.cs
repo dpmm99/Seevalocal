@@ -29,6 +29,13 @@ public interface IWizardViewModel : INotifyPropertyChanged
     // Reset to defaults
     public void ResetToDefaults();
 
+    // Sync defaults from loaded settings (called when navigating to wizard or loading settings)
+    public void SyncDefaultsFromSettings(ResolvedConfig config, SettingsViewModel? settingsVM = null);
+
+    // Events for wizard state changes
+    public event EventHandler? StepChanged;
+    public event EventHandler? ResetToDefaultsCompleted;
+
     // Callbacks set by MainWindow/App
     public Action? OnExportScript { get; set; }
     public Func<Task>? OnStartRun { get; set; }

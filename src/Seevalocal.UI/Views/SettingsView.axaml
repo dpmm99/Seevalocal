@@ -71,46 +71,49 @@
                             <!-- Input field -->
                             <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
                               <!-- Text input for regular fields -->
-                              <TextBox Grid.Column="0" 
-                                       Text="{Binding Value}" 
+                              <TextBox Grid.Column="0"
+                                       Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                        Classes="settingsInput"
                                        Watermark="{Binding Watermark}"
                                        IsVisible="{Binding IsTextField}"/>
                               
                               <!-- ComboBox for boolean fields -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsBooleanField}">
                                 <ComboBoxItem Content="Unspecified"/>
                                 <ComboBoxItem Content="true"/>
                                 <ComboBoxItem Content="false"/>
                               </ComboBox>
-                              
+
                               <!-- ComboBox for judge template enum -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsJudgeTemplateField}">
                                 <ComboBoxItem Content="Unspecified"/>
-                                <ComboBoxItem Content="standard"/>
+                                <ComboBoxItem Content="casual-q-a-judge-template"/>
+                                <ComboBoxItem Content="code-quality-judge-template"/>
                                 <ComboBoxItem Content="pass-fail"/>
-                                <ComboBoxItem Content="json"/>
+                                <ComboBoxItem Content="standard"/>
+                                <ComboBoxItem Content="structured-json"/>
+                                <ComboBoxItem Content="translation-judge-template"/>
                               </ComboBox>
-                              
+
                               <!-- ComboBox for shell target enum -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsShellTargetField}">
                                 <ComboBoxItem Content="Unspecified"/>
                                 <ComboBoxItem Content="bash"/>
                                 <ComboBoxItem Content="powershell"/>
                               </ComboBox>
-                              
+
                               <!-- ComboBox for split mode enum -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsSplitModeField}">
                                 <ComboBoxItem Content="Unspecified"/>
@@ -118,10 +121,10 @@
                                 <ComboBoxItem Content="layer"/>
                                 <ComboBoxItem Content="row"/>
                               </ComboBox>
-                              
+
                               <!-- ComboBox for reasoning format enum -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsReasoningFormatField}">
                                 <ComboBoxItem Content="Unspecified"/>
@@ -129,10 +132,10 @@
                                 <ComboBoxItem Content="r1"/>
                                 <ComboBoxItem Content="none"/>
                               </ComboBox>
-                              
+
                               <!-- ComboBox for log verbosity enum -->
-                              <ComboBox Grid.Column="0" 
-                                        SelectedItem="{Binding Value}" 
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                         Classes="settingsInput"
                                         IsVisible="{Binding IsLogVerbosityField}">
                                 <ComboBoxItem Content="Unspecified"/>
@@ -141,7 +144,19 @@
                                 <ComboBoxItem Content="2"/>
                                 <ComboBoxItem Content="3"/>
                               </ComboBox>
-                              
+
+                              <!-- ComboBox for data source kind enum -->
+                              <ComboBox Grid.Column="0"
+                                        Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Classes="settingsInput"
+                                        IsVisible="{Binding IsDataSourceKindField}">
+                                <ComboBoxItem Content="Unspecified"/>
+                                <ComboBoxItem Content="SingleFile"/>
+                                <ComboBoxItem Content="JsonlFile"/>
+                                <ComboBoxItem Content="SplitDirectories"/>
+                                <ComboBoxItem Content="Directory"/>
+                              </ComboBox>
+
                               <!-- Browse button for file paths -->
                               <Button Grid.Column="1" 
                                       Content="Browse..." 
@@ -160,23 +175,45 @@
                             </Grid>
                             
                             <!-- Materialized value and origin (Chrome DevTools style) -->
-                            <StackPanel Grid.Column="2" 
-                                        Orientation="Horizontal" 
+                            <StackPanel Grid.Column="2"
+                                        Orientation="Horizontal"
                                         HorizontalAlignment="Right"
                                         VerticalAlignment="Center"
                                         Spacing="6">
                               <!-- Materialized value -->
-                              <TextBlock Text="{Binding MaterializedValue}" 
+                              <TextBlock Text="{Binding MaterializedValue}"
                                          Classes="valueIndicator"
-                                         IsVisible="{Binding MaterializedValue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                         IsVisible="{Binding MaterializedValue, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <TextBlock.ContextMenu>
+                                  <ContextMenu>
+                                    <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding MaterializedValue}"/>
+                                  </ContextMenu>
+                                </TextBlock.ContextMenu>
+                              </TextBlock>
                               <!-- llama.cpp default indicator -->
-                              <TextBlock Text="[llama.cpp default]" 
+                              <TextBlock Text="[llama.cpp default]"
                                          Classes="llamaCppDefault"
-                                         IsVisible="{Binding IsLlamaCppDefault}"/>
+                                         IsVisible="{Binding IsLlamaCppDefault}">
+                                <TextBlock.ContextMenu>
+                                  <ContextMenu>
+                                    <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="[llama.cpp default]"/>
+                                  </ContextMenu>
+                                </TextBlock.ContextMenu>
+                              </TextBlock>
                               <!-- Origin badge -->
-                              <Border Classes="originBadge" 
+                              <Border Classes="originBadge"
                                       Tag="{Binding Origin}"
-                                      IsVisible="{Binding Origin, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                      IsVisible="{Binding Origin, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <Border.Child>
+                                  <TextBlock Text="{Binding $parent[Border].Tag}" Foreground="#A6ADC8" FontSize="10" VerticalAlignment="Center">
+                                    <TextBlock.ContextMenu>
+                                      <ContextMenu>
+                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding $parent[Border].Tag}"/>
+                                      </ContextMenu>
+                                    </TextBlock.ContextMenu>
+                                  </TextBlock>
+                                </Border.Child>
+                              </Border>
                             </StackPanel>
                           </Grid>
                         </StackPanel>
@@ -198,6 +235,8 @@
               Command="{Binding $parent[Window].DataContext.LoadSettingsFileCommand}"/>
       <Button Content="Save Settings File" Classes="primary" Padding="20,8"
               Command="{Binding $parent[Window].DataContext.SaveSettingsFileCommand}"/>
+      <Button Content="Save Materialized" Classes="primary" Padding="20,8"
+              Command="{Binding $parent[Window].DataContext.SaveMaterializedSettingsFileCommand}"/>
     </StackPanel>
   </Grid>
 </UserControl>

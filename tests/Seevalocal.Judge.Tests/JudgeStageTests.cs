@@ -77,8 +77,8 @@ public class JudgeStageTests
 
         _ = result.Succeeded.Should().BeTrue();
 
-        var scoreMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judgeScoreRatio").Subject;
-        _ = ((MetricScalar.DoubleMetric)scoreMetric.Value).Value.Should().BeApproximately(0.9, 1e-9);
+        var scoreMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judgeScore").Subject;
+        _ = ((MetricScalar.DoubleMetric)scoreMetric.Value).Value.Should().BeApproximately(9.0, 1e-9);
 
         var passedMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judgePassedBool").Subject;
         _ = ((MetricScalar.BoolMetric)passedMetric.Value).Value.Should().BeTrue();

@@ -425,7 +425,6 @@ public sealed class CliSettingsAdapterTests
         // Assert
         _ = config.Judge.Should().NotBeNull();
         _ = config.Judge!.BaseUrl.Should().Be("http://localhost:8081");
-        _ = config.Judge.Manage.Should().BeFalse();
     }
 
     [Fact]

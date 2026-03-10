@@ -32,13 +32,13 @@ public class MetricValueNamingTests
         "testFailCount",
         "testTotalCount",
         "codeLineCount",
-        "judgeScoreRatio",
+        "judgeScore",
         "processDurationSeconds",
         "processExitCode",
     ];
 
     // Names that intentionally do NOT follow the suffix rule (special cases)
-    private static readonly HashSet<string> KnownExceptions = ["exactMatch"];
+    private static readonly HashSet<string> KnownExceptions = ["exactMatch", "judgeScore"];
 
     [Theory]
     [MemberData(nameof(GetBuiltInMetricNames))]

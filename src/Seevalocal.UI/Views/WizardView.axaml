@@ -101,6 +101,16 @@
                            Foreground="#7F849C" FontSize="12" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
+
+            <Border Background="#181825" CornerRadius="6" Padding="16">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Reset Wizard" Classes="sectionHeader"/>
+                <TextBlock Text="Reset all wizard fields to their default values. This will not affect settings loaded from files."
+                           Foreground="#7F849C" FontSize="12" TextWrapping="Wrap"/>
+                <Button Content="Reset Wizard to Defaults" HorizontalAlignment="Left" Padding="16,6"
+                        Command="{Binding ResetToDefaultsCommand}"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
 
           <!-- Step 1: Model & Server -->
@@ -347,7 +357,7 @@
               <StackPanel Spacing="12">
                 <TextBlock Text="Data Source" Classes="sectionHeader"/>
                 <StackPanel Spacing="8">
-                  <RadioButton Content="Single data file (JSON/YAML/CSV/Parquet)"
+                  <RadioButton Content="Single data file (JSON/JSONL/YAML/CSV/Parquet)"
                                IsChecked="{Binding UseSingleFileDataSource}"
                                GroupName="dataSource"/>
                   <StackPanel IsVisible="{Binding UseSingleFileDataSource}" Margin="20,4,0,0" Spacing="8">
@@ -357,9 +367,9 @@
                   </StackPanel>
 
                   <RadioButton Content="Prompt/Expected directories"
-                               IsChecked="{Binding UseDirectoryDataSource}"
+                               IsChecked="{Binding UseSingleFileDataSource, Converter={x:Static convert:BoolNegationConverter.Instance}}"
                                GroupName="dataSource" Margin="0,8,0,0"/>
-                  <StackPanel IsVisible="{Binding UseDirectoryDataSource}" Margin="20,4,0,0" Spacing="8">
+                  <StackPanel IsVisible="{Binding UseSingleFileDataSource, Converter={x:Static convert:BoolNegationConverter.Instance}}" Margin="20,4,0,0" Spacing="8">
                     <TextBox Text="{Binding PromptDir}" Watermark="Prompt directory path..."/>
                     <Button Content="Browse..." HorizontalAlignment="Left" Padding="16,6"
                             Command="{Binding BrowsePromptDirCommand}"/>
@@ -578,9 +588,12 @@
                 <TextBlock Text="Scoring Settings" Classes="sectionHeader"/>
                 <TextBlock Text="Judge Template" Classes="label" Margin="0,8,0,0"/>
                 <ComboBox SelectedIndex="{Binding SelectedJudgeTemplateIndex}" HorizontalAlignment="Left" MinWidth="200">
-                  <ComboBoxItem Content="standard"/>
+                  <ComboBoxItem Content="casual-q-a-judge-template"/>
+                  <ComboBoxItem Content="code-quality-judge-template"/>
                   <ComboBoxItem Content="pass-fail"/>
-                  <ComboBoxItem Content="json"/>
+                  <ComboBoxItem Content="standard"/>
+                  <ComboBoxItem Content="structured-json"/>
+                  <ComboBoxItem Content="translation-judge-template"/>
                 </ComboBox>
 
                 <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">

@@ -39,6 +39,7 @@ public sealed class ConfigurationMerger
             LlamaServer = MergeLlamaServerSettings(all),
             EvalSets = MergeEvalSets(all),
             Judge = MergeJudgeConfig(all),
+            DataSource = MergeDataSource(all),
         };
     }
 
@@ -50,10 +51,10 @@ public sealed class ConfigurationMerger
     {
         return new RunMeta
         {
-            RunName = LastRun(all, static r => r.RunName) ?? "",
-            OutputDirectoryPath = LastRun(all, static r => r.OutputDirectoryPath) ?? "./results",
-            ExportShellTarget = LastRunValue(all, static r => r.ExportShellTarget) ?? ShellTarget.Bash,
-            ContinueOnEvalFailure = LastRunValue(all, static r => r.ContinueOnEvalFailure) ?? true,
+            RunName = LastRun(all, static r => r.RunName),
+            OutputDirectoryPath = LastRun(all, static r => r.OutputDirectoryPath),
+            ExportShellTarget = LastRunValue(all, static r => r.ExportShellTarget),
+            ContinueOnEvalFailure = LastRunValue(all, static r => r.ContinueOnEvalFailure),
             MaxConcurrentEvals = LastRunValue(all, static r => r.MaxConcurrentEvals),
         };
 
@@ -87,11 +88,11 @@ public sealed class ConfigurationMerger
     {
         return new ServerConfig
         {
-            Manage = LastSrv(all, static s => s.Manage) ?? false,
+            Manage = LastSrv(all, static s => s.Manage),
             ExecutablePath = LastSrvStr(all, static s => s.ExecutablePath),
             Model = LastSrvRef(all, static s => s.Model),
-            Host = LastSrvStr(all, static s => s.Host) ?? "127.0.0.1",
-            Port = LastSrv(all, static s => s.Port) ?? 8080,
+            Host = LastSrvStr(all, static s => s.Host),
+            Port = LastSrv(all, static s => s.Port),
             ApiKey = LastSrvStr(all, static s => s.ApiKey),
             ExtraArgs = LastSrvRef(all, static s => s.ExtraArgs) ?? [],
             BaseUrl = LastSrvStr(all, static s => s.BaseUrl),
@@ -241,10 +242,11 @@ public sealed class ConfigurationMerger
         // Get other judge properties from last to first
         return new JudgeConfig
         {
-            Manage = LastJudgeBool(all, j => j.Manage) ?? false,
+            Enable = LastJudgeBool(all, j => j.Enable) ?? false,
+            Manage = LastJudgeBool(all, j => j.ServerConfig?.Manage) ?? false,
             ServerConfig = serverConfig,
             ServerSettings = serverSettings,
-            JudgePromptTemplate = LastJudgeStr(all, j => j.JudgePromptTemplate) ?? DefaultTemplates.Standard,
+            JudgePromptTemplate = LastJudgeStr(all, j => j.JudgePromptTemplate) ?? "standard",
             ResponseFormat = LastJudgeEnum(all, j => j.ResponseFormat) ?? JudgeResponseFormat.StructuredJson,
             ScoreMinValue = LastJudgeDouble(all, j => j.ScoreMinValue) ?? 0.0,
             ScoreMaxValue = LastJudgeDouble(all, j => j.ScoreMaxValue) ?? 10.0,
@@ -256,6 +258,42 @@ public sealed class ConfigurationMerger
         };
     }
 
+    private static DataSourceConfig MergeDataSource(IReadOnlyList<PartialConfig> all)
+    {
+        return new DataSourceConfig
+        {
+            Kind = LastDsEnum(all, d => d.Kind) ?? DataSourceKind.SingleFile,
+            FilePath = LastDsStr(all, d => d.FilePath),
+            PromptDirectoryPath = LastDsStr(all, d => d.PromptDirectoryPath),
+            ExpectedOutputDirectoryPath = LastDsStr(all, d => d.ExpectedOutputDirectoryPath),
+        };
+
+        static T? LastDsEnum<T>(IReadOnlyList<PartialConfig> all, Func<PartialDataSourceConfig, T?> sel)
+            where T : struct
+        {
+            for (var i = all.Count - 1; i >= 0; i--)
+            {
+                var ds = all[i].DataSource;
+                if (ds is null) continue;
+                var v = sel(ds);
+                if (v.HasValue) return v;
+            }
+            return null;
+        }
+
+        static string? LastDsStr(IReadOnlyList<PartialConfig> all, Func<PartialDataSourceConfig, string?> sel)
+        {
+            for (var i = all.Count - 1; i >= 0; i--)
+            {
+                var ds = all[i].DataSource;
+                if (ds is null) continue;
+                var v = sel(ds);
+                if (v is not null) return v;
+            }
+            return null;
+        }
+    }
+
     private static ServerConfig MergeJudgeServerConfig(IReadOnlyList<PartialConfig> all)
     {
         return new ServerConfig
@@ -263,8 +301,8 @@ public sealed class ConfigurationMerger
             Manage = LastJudgeBool(all, j => j.ServerConfig?.Manage) ?? false,
             ExecutablePath = LastJudgeStr(all, j => j.ServerConfig?.ExecutablePath),
             Model = LastJudgeModelSource(all, j => j.ServerConfig?.Model),
-            Host = LastJudgeStr(all, j => j.ServerConfig?.Host) ?? "127.0.0.1",
-            Port = LastJudgeInt(all, j => j.ServerConfig?.Port) ?? 8080,
+            Host = LastJudgeStr(all, j => j.ServerConfig?.Host),
+            Port = LastJudgeInt(all, j => j.ServerConfig?.Port),
             ApiKey = LastJudgeStr(all, j => j.ServerConfig?.ApiKey),
             ExtraArgs = LastJudgeList(all, j => j.ServerConfig?.ExtraArgs) ?? [],
             BaseUrl = LastJudgeStr(all, j => j.ServerConfig?.BaseUrl)

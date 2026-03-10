@@ -105,7 +105,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
         {
             foreach (var error in result.Errors)
             {
-                System.Console.WriteLine($"Error: {error}");
+                Console.WriteLine($"Error: {error}");
             }
         }
 
