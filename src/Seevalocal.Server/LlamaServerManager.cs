@@ -22,7 +22,7 @@ public sealed partial class LlamaServerManager(
     HttpClient httpClient,
     ILogger<LlamaServerManager> logger) : IAsyncDisposable
 {
-    private const double DefaultHealthTimeoutSeconds = 120.0;
+    private const double DefaultHealthTimeoutSeconds = 300.0;
     private const int ExpectedLoadingDots = 80;  // llama-server typically outputs ~80 dots during model load
 
     private readonly LlamaServerArgBuilder _argBuilder = argBuilder;
@@ -37,6 +37,7 @@ public sealed partial class LlamaServerManager(
     private bool _disposed;
     private int _loadingDotCount;
     private bool _loadingComplete;
+    private readonly Regex _dotPattern = LoadingDotsPattern();
 
     // Process cleanup helpers
     private WindowsJobObject? _jobObject;  // Windows only
@@ -93,26 +94,21 @@ public sealed partial class LlamaServerManager(
         LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
         {
             ProgressPercent = 5,
-            Message = "Resolving llama-server binary..."
+            Message = "Resolving and/or downloading llama-server binary..." //TODO: should show download progress (using the full progress bar range) if downloading
         });
         var binaryResult = await ResolveBinaryPathAsync(config, ct);
         if (binaryResult.IsFailed) return binaryResult.ToResult<ServerInfo>();
         var binaryPath = binaryResult.Value;
         _binaryPath = binaryPath;  // Store for later use in ServerInfo
 
-        // 2. Build args (10-15%)
-        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-        {
-            ProgressPercent = 10,
-            Message = "Building server arguments..."
-        });
+        // 2. Build args (instantaneous)
         var args = LlamaServerArgBuilder.Build(settings, config);
         _logger.LogDebug("llama-server args: {Args}", string.Join(" ", args));
 
-        // 3. Start process (15-25%)
+        // 3. Start process (10-25%)
         LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
         {
-            ProgressPercent = 15,
+            ProgressPercent = 10,
             Message = "Starting llama-server process..."
         });
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -128,37 +124,12 @@ public sealed partial class LlamaServerManager(
 
         _process = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
 
-        // Regex to match loading dots (llama-server outputs "." during model load)
-        var dotPattern = LoadingDotsPattern();
-
         _process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is not null)
             {
                 _logger.LogDebug("[llama-server] {Line}", e.Data);
-
-                // Track loading progress from dots
-                if (!_loadingComplete && dotPattern.IsMatch(e.Data))
-                {
-                    _loadingDotCount += e.Data.Length;
-                    // Map dots to 25-90% range
-                    var progressPercent = 25 + Math.Min(65, (_loadingDotCount * 65) / ExpectedLoadingDots);
-                    LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-                    {
-                        ProgressPercent = progressPercent,
-                        Message = $"Loading model... {progressPercent}%"
-                    });
-                }
-                // Detect when loading is complete (llama-server outputs "http://..." or "llama-server listening")
-                else if (!_loadingComplete && (e.Data.Contains("http://") || e.Data.Contains("listening")))
-                {
-                    _loadingComplete = true;
-                    LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-                    {
-                        ProgressPercent = 90,
-                        Message = "Server started, running health check..."
-                    });
-                }
+                TrackModelLoadingProgress(e.Data);
             }
         };
 
@@ -172,6 +143,7 @@ public sealed partial class LlamaServerManager(
                 {
                     _logger.LogDebug("[llama-server stderr] {Line}", e.Data);
                     ServerErrorReceived?.Invoke(this, new ServerErrorEventArgs(e.Data));
+                    TrackModelLoadingProgress(e.Data);
                 }
             }
         };
@@ -226,13 +198,7 @@ public sealed partial class LlamaServerManager(
 
         _logger.LogInformation("llama-server process started (PID={Pid})", _process.Id);
 
-        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-        {
-            ProgressPercent = 25,
-            Message = $"llama-server started (PID={_process.Id}), waiting for health check..."
-        });
-
-        // 4. Wait for health (25-90%)
+        // 4. Wait for health (80-95%)
         var baseUrl = $"http://{config.Host ?? "127.0.0.1"}:{config.Port ?? 8080}";
         var healthy = await WaitForHealthAsync(baseUrl, DefaultHealthTimeoutSeconds, ct);
         if (!healthy)
@@ -242,7 +208,7 @@ public sealed partial class LlamaServerManager(
                 "process may have crashed");
         }
 
-        // 5. Fetch props (90-100%)
+        // 5. Fetch props (95-100%)
         LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
         {
             ProgressPercent = 95,
@@ -275,6 +241,32 @@ public sealed partial class LlamaServerManager(
         });
 
         return Result.Ok(_serverInfo);
+    }
+
+    private void TrackModelLoadingProgress(string data)
+    {
+        // Track loading progress from dots
+        if (!_loadingComplete && _dotPattern.IsMatch(data))
+        {
+            _loadingDotCount += data.Length;
+            // Map dots to 15-80% range
+            var progressPercent = 15 + Math.Min(65, _loadingDotCount * 65 / ExpectedLoadingDots);
+            LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+            {
+                ProgressPercent = progressPercent,
+                Message = $"Loading model... {progressPercent}%"
+            });
+        }
+        // Detect when loading is complete (llama-server outputs "http://..." or "llama-server listening")
+        else if (!_loadingComplete && (data.Contains("http://") || data.Contains("listening")))
+        {
+            _loadingComplete = true;
+            LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+            {
+                ProgressPercent = 80,
+                Message = "Server started, running health check..."
+            });
+        }
     }
 
     // ── Connect Existing ──────────────────────────────────────────────────────

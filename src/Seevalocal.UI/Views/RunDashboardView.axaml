@@ -92,9 +92,13 @@
                         Command="{Binding ActiveRun.LoadMoreEarlyCompletionsCommand}"/>
 
                 <ScrollViewer Grid.Row="2" MinHeight="250" HorizontalScrollBarVisibility="Disabled">
-                  <StackPanel Spacing="8">
-                    <ItemsControl ItemsSource="{Binding ActiveRun.EarlyCompletions}">
-                      <ItemsControl.ItemTemplate>
+                  <ItemsControl ItemsSource="{Binding ActiveRun.EarlyCompletions}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" Spacing="8"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
                         <DataTemplate>
                           <Border Background="#1E1E2E" CornerRadius="4" Padding="12" Margin="0,2">
                             <StackPanel Spacing="8">
@@ -216,7 +220,6 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                  </StackPanel>
                 </ScrollViewer>
               </Grid>
             </Border>

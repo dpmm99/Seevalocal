@@ -502,16 +502,22 @@ public sealed class WizardViewModelTests
         // Arrange
         var vm = new WizardViewModel(_filePicker, _toastService);
         // Don't set any properties - leave them all unedited
+        // Note: Host defaults to "127.0.0.1" and Port to 8080, so Server will have those default values
 
         // Act
         var config = vm.BuildPartialConfig();
 
-        // Assert - unedited fields should be null/not included
-        _ = config.Server.Should().BeNull();
+        // Assert - unedited llama settings and judge should be null
+        // Server will have default Host/Port values
         _ = config.LlamaSettings.Should().BeNull();
         _ = config.Judge.Should().BeNull();
         // DataSource should still be created with defaults
         _ = config.EvalSets.Should().NotBeNull();
+        
+        // Server config exists but has null Manage and Model (not configured)
+        _ = config.Server.Should().NotBeNull();
+        _ = config.Server.Manage.Should().BeNull();
+        _ = config.Server.Model.Should().BeNull();
     }
 
     [Fact]

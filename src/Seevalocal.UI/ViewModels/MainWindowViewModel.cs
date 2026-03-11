@@ -288,264 +288,267 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         // Update the corresponding property in WizardState based on the field key
         if (WizardState is not WizardViewModel state) return;
 
+        // Use MaterializedValue (which includes values from all layers) instead of Value (user edits only)
+        var materializedValue = field.MaterializedValue;
+
         switch (field.Key)
         {
             // Server settings
             case "server.manage":
-                state.ManageServer = field.Value?.ToLowerInvariant() == "true";
+                state.ManageServer = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "server.executablePath":
-                state.LlamaServerExecutablePath = field.Value;
+                state.LlamaServerExecutablePath = materializedValue;
                 break;
             case "server.host":
-                state.Host = field.Value ?? "127.0.0.1";
+                state.Host = materializedValue ?? "127.0.0.1";
                 break;
             case "server.port":
-                state.Port = int.TryParse(field.Value, out var port) ? port : 8080;
+                state.Port = int.TryParse(materializedValue, out var port) ? port : 8080;
                 break;
             case "server.apiKey":
-                state.ApiKey = field.Value;
+                state.ApiKey = materializedValue;
                 break;
             case "server.baseUrl":
-                state.ServerUrl = field.Value;
+                state.ServerUrl = materializedValue;
                 break;
 
             // Llama server settings
             case "llama.contextWindowTokens":
-                state.ContextWindowTokens = int.TryParse(field.Value, out var context) ? context : null;
+                state.ContextWindowTokens = int.TryParse(materializedValue, out var context) ? context : null;
                 break;
             case "llama.batchSizeTokens":
-                state.BatchSizeTokens = int.TryParse(field.Value, out var batch) ? batch : null;
+                state.BatchSizeTokens = int.TryParse(materializedValue, out var batch) ? batch : null;
                 break;
             case "llama.ubatchSizeTokens":
-                state.UbatchSizeTokens = int.TryParse(field.Value, out var ubatch) ? ubatch : null;
+                state.UbatchSizeTokens = int.TryParse(materializedValue, out var ubatch) ? ubatch : null;
                 break;
             case "llama.parallelSlotCount":
-                state.ParallelSlotCount = int.TryParse(field.Value, out var parallel) ? parallel : null;
+                state.ParallelSlotCount = int.TryParse(materializedValue, out var parallel) ? parallel : null;
                 break;
             case "llama.enableContinuousBatching":
-                state.EnableContinuousBatching = ParseBool(field.Value);
+                state.EnableContinuousBatching = ParseBool(materializedValue);
                 break;
             case "llama.enableCachePrompt":
-                state.EnableCachePrompt = ParseBool(field.Value);
+                state.EnableCachePrompt = ParseBool(materializedValue);
                 break;
             case "llama.enableContextShift":
-                state.EnableContextShift = ParseBool(field.Value);
+                state.EnableContextShift = ParseBool(materializedValue);
                 break;
             case "llama.gpuLayerCount":
-                state.GpuLayerCount = int.TryParse(field.Value, out var gpuLayers) ? gpuLayers : null;
+                state.GpuLayerCount = int.TryParse(materializedValue, out var gpuLayers) ? gpuLayers : null;
                 break;
             case "llama.splitMode":
-                state.SplitMode = field.Value == "Unspecified" ? null : field.Value;
+                state.SplitMode = materializedValue == "Unspecified" ? null : materializedValue;
                 break;
             case "llama.kvCacheTypeK":
-                state.KvCacheTypeK = field.Value;
+                state.KvCacheTypeK = materializedValue;
                 break;
             case "llama.kvCacheTypeV":
-                state.KvCacheTypeV = field.Value;
+                state.KvCacheTypeV = materializedValue;
                 break;
             case "llama.enableKvOffload":
-                state.EnableKvOffload = ParseBool(field.Value);
+                state.EnableKvOffload = ParseBool(materializedValue);
                 break;
             case "llama.enableFlashAttention":
-                state.EnableFlashAttention = ParseBool(field.Value);
+                state.EnableFlashAttention = ParseBool(materializedValue);
                 break;
             case "llama.samplingTemperature":
-                state.SamplingTemperature = double.TryParse(field.Value, out var temp) ? temp : null;
+                state.SamplingTemperature = double.TryParse(materializedValue, out var temp) ? temp : null;
                 break;
             case "llama.topP":
-                state.TopP = double.TryParse(field.Value, out var topP) ? topP : null;
+                state.TopP = double.TryParse(materializedValue, out var topP) ? topP : null;
                 break;
             case "llama.topK":
-                state.TopK = int.TryParse(field.Value, out var topK) ? topK : null;
+                state.TopK = int.TryParse(materializedValue, out var topK) ? topK : null;
                 break;
             case "llama.minP":
-                state.MinP = double.TryParse(field.Value, out var minP) ? minP : null;
+                state.MinP = double.TryParse(materializedValue, out var minP) ? minP : null;
                 break;
             case "llama.repeatPenalty":
-                state.RepeatPenalty = double.TryParse(field.Value, out var penalty) ? penalty : null;
+                state.RepeatPenalty = double.TryParse(materializedValue, out var penalty) ? penalty : null;
                 break;
             case "llama.repeatLastNTokens":
-                state.RepeatLastNTokens = int.TryParse(field.Value, out var repeatN) ? repeatN : null;
+                state.RepeatLastNTokens = int.TryParse(materializedValue, out var repeatN) ? repeatN : null;
                 break;
             case "llama.presencePenalty":
-                state.PresencePenalty = double.TryParse(field.Value, out var presence) ? presence : null;
+                state.PresencePenalty = double.TryParse(materializedValue, out var presence) ? presence : null;
                 break;
             case "llama.frequencyPenalty":
-                state.FrequencyPenalty = double.TryParse(field.Value, out var frequency) ? frequency : null;
+                state.FrequencyPenalty = double.TryParse(materializedValue, out var frequency) ? frequency : null;
                 break;
             case "llama.seed":
-                state.Seed = int.TryParse(field.Value, out var seed) ? seed : null;
+                state.Seed = int.TryParse(materializedValue, out var seed) ? seed : null;
                 break;
             case "llama.threadCount":
-                state.ThreadCount = int.TryParse(field.Value, out var threads) ? threads : null;
+                state.ThreadCount = int.TryParse(materializedValue, out var threads) ? threads : null;
                 break;
             case "llama.httpThreadCount":
-                state.HttpThreadCount = int.TryParse(field.Value, out var httpThreads) ? httpThreads : null;
+                state.HttpThreadCount = int.TryParse(materializedValue, out var httpThreads) ? httpThreads : null;
                 break;
             case "llama.chatTemplate":
-                state.ChatTemplate = field.Value;
+                state.ChatTemplate = materializedValue;
                 break;
             case "llama.enableJinja":
-                state.EnableJinja = ParseBool(field.Value);
+                state.EnableJinja = ParseBool(materializedValue);
                 break;
             case "llama.reasoningFormat":
-                state.ReasoningFormat = field.Value == "Unspecified" ? null : field.Value;
+                state.ReasoningFormat = materializedValue == "Unspecified" ? null : materializedValue;
                 break;
             case "llama.modelAlias":
-                state.ModelAlias = field.Value;
+                state.ModelAlias = materializedValue;
                 break;
             case "llama.logVerbosity":
-                state.LogVerbosity = int.TryParse(field.Value, out var verbosity) ? verbosity : null;
+                state.LogVerbosity = int.TryParse(materializedValue, out var verbosity) ? verbosity : null;
                 break;
             case "llama.enableMlock":
-                state.EnableMlock = ParseBool(field.Value);
+                state.EnableMlock = ParseBool(materializedValue);
                 break;
             case "llama.enableMmap":
-                state.EnableMmap = ParseBool(field.Value);
+                state.EnableMmap = ParseBool(materializedValue);
                 break;
             case "llama.serverTimeoutSeconds":
-                state.ServerTimeoutSeconds = double.TryParse(field.Value, out var timeout) ? timeout : null;
+                state.ServerTimeoutSeconds = double.TryParse(materializedValue, out var timeout) ? timeout : null;
                 break;
 
             // Judge settings
             case "judge.manage":
-                state.JudgeManageServer = field.Value?.ToLowerInvariant() == "true";
+                state.JudgeManageServer = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "judge.executablePath":
-                state.JudgeExecutablePath = field.Value;
+                state.JudgeExecutablePath = materializedValue;
                 break;
             case "judge.baseUrl":
-                state.JudgeServerUrl = field.Value;
+                state.JudgeServerUrl = materializedValue;
                 break;
             case "judge.modelFile":
-                state.JudgeLocalModelPath = field.Value;
+                state.JudgeLocalModelPath = materializedValue;
                 break;
             case "judge.hfRepo":
-                state.JudgeHfRepo = field.Value;
+                state.JudgeHfRepo = materializedValue;
                 break;
             case "judge.apiKey":
-                state.JudgeApiKey = field.Value;
+                state.JudgeApiKey = materializedValue;
                 break;
             case "judge.template":
-                state.JudgeTemplate = field.Value == "Unspecified" ? "standard" : (field.Value ?? "standard");
+                state.JudgeTemplate = materializedValue == "Unspecified" ? "standard" : (materializedValue ?? "standard");
                 break;
             case "judge.scoreMin":
-                state.JudgeScoreMin = double.TryParse(field.Value, out var min) ? min : 0;
+                state.JudgeScoreMin = double.TryParse(materializedValue, out var min) ? min : 0;
                 break;
             case "judge.scoreMax":
-                state.JudgeScoreMax = double.TryParse(field.Value, out var max) ? max : 10;
+                state.JudgeScoreMax = double.TryParse(materializedValue, out var max) ? max : 10;
                 break;
 
             // Judge llama-server settings
             case "judge.contextWindowTokens":
-                state.JudgeContextWindowTokens = int.TryParse(field.Value, out var jContext) ? jContext : null;
+                state.JudgeContextWindowTokens = int.TryParse(materializedValue, out var jContext) ? jContext : null;
                 break;
             case "judge.batchSizeTokens":
-                state.JudgeBatchSizeTokens = int.TryParse(field.Value, out var jBatch) ? jBatch : null;
+                state.JudgeBatchSizeTokens = int.TryParse(materializedValue, out var jBatch) ? jBatch : null;
                 break;
             case "judge.parallelSlotCount":
-                state.JudgeParallelSlotCount = int.TryParse(field.Value, out var jParallel) ? jParallel : null;
+                state.JudgeParallelSlotCount = int.TryParse(materializedValue, out var jParallel) ? jParallel : null;
                 break;
             case "judge.gpuLayerCount":
-                state.JudgeGpuLayerCount = int.TryParse(field.Value, out var jGpuLayers) ? jGpuLayers : null;
+                state.JudgeGpuLayerCount = int.TryParse(materializedValue, out var jGpuLayers) ? jGpuLayers : null;
                 break;
             case "judge.splitMode":
-                state.JudgeSplitMode = field.Value == "Unspecified" ? null : field.Value;
+                state.JudgeSplitMode = materializedValue == "Unspecified" ? null : materializedValue;
                 break;
             case "judge.kvCacheTypeK":
-                state.JudgeKvCacheTypeK = field.Value;
+                state.JudgeKvCacheTypeK = materializedValue;
                 break;
             case "judge.kvCacheTypeV":
-                state.JudgeKvCacheTypeV = field.Value;
+                state.JudgeKvCacheTypeV = materializedValue;
                 break;
             case "judge.enableFlashAttention":
-                state.JudgeEnableFlashAttention = ParseBool(field.Value);
+                state.JudgeEnableFlashAttention = ParseBool(materializedValue);
                 break;
             case "judge.samplingTemperature":
-                state.JudgeSamplingTemperature = double.TryParse(field.Value, out var jTemp) ? jTemp : null;
+                state.JudgeSamplingTemperature = double.TryParse(materializedValue, out var jTemp) ? jTemp : null;
                 break;
             case "judge.topP":
-                state.JudgeTopP = double.TryParse(field.Value, out var jTopP) ? jTopP : null;
+                state.JudgeTopP = double.TryParse(materializedValue, out var jTopP) ? jTopP : null;
                 break;
             case "judge.topK":
-                state.JudgeTopK = int.TryParse(field.Value, out var jTopK) ? jTopK : null;
+                state.JudgeTopK = int.TryParse(materializedValue, out var jTopK) ? jTopK : null;
                 break;
             case "judge.minP":
-                state.JudgeMinP = double.TryParse(field.Value, out var jMinP) ? jMinP : null;
+                state.JudgeMinP = double.TryParse(materializedValue, out var jMinP) ? jMinP : null;
                 break;
             case "judge.repeatPenalty":
-                state.JudgeRepeatPenalty = double.TryParse(field.Value, out var jPenalty) ? jPenalty : null;
+                state.JudgeRepeatPenalty = double.TryParse(materializedValue, out var jPenalty) ? jPenalty : null;
                 break;
             case "judge.seed":
-                state.JudgeSeed = int.TryParse(field.Value, out var jSeed) ? jSeed : null;
+                state.JudgeSeed = int.TryParse(materializedValue, out var jSeed) ? jSeed : null;
                 break;
             case "judge.threadCount":
-                state.JudgeThreadCount = int.TryParse(field.Value, out var jThreads) ? jThreads : null;
+                state.JudgeThreadCount = int.TryParse(materializedValue, out var jThreads) ? jThreads : null;
                 break;
             case "judge.httpThreadCount":
-                state.JudgeHttpThreadCount = int.TryParse(field.Value, out var jHttpThreads) ? jHttpThreads : null;
+                state.JudgeHttpThreadCount = int.TryParse(materializedValue, out var jHttpThreads) ? jHttpThreads : null;
                 break;
             case "judge.chatTemplate":
-                state.JudgeChatTemplate = field.Value;
+                state.JudgeChatTemplate = materializedValue;
                 break;
             case "judge.enableJinja":
-                state.JudgeEnableJinja = ParseBool(field.Value);
+                state.JudgeEnableJinja = ParseBool(materializedValue);
                 break;
             case "judge.logVerbosity":
-                state.JudgeLogVerbosity = int.TryParse(field.Value, out var jLog) ? jLog : null;
+                state.JudgeLogVerbosity = int.TryParse(materializedValue, out var jLog) ? jLog : null;
                 break;
             case "judge.enableMlock":
-                state.JudgeEnableMlock = ParseBool(field.Value);
+                state.JudgeEnableMlock = ParseBool(materializedValue);
                 break;
             case "judge.enableMmap":
-                state.JudgeEnableMmap = ParseBool(field.Value);
+                state.JudgeEnableMmap = ParseBool(materializedValue);
                 break;
             case "judge.serverTimeoutSeconds":
-                state.JudgeServerTimeoutSeconds = double.TryParse(field.Value, out var jTimeout) ? jTimeout : null;
+                state.JudgeServerTimeoutSeconds = double.TryParse(materializedValue, out var jTimeout) ? jTimeout : null;
                 break;
 
             // Output settings
             case "output.writePerEvalJson":
-                state.WritePerEvalJson = field.Value?.ToLowerInvariant() == "true";
+                state.WritePerEvalJson = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "output.writeSummaryJson":
-                state.WriteSummaryJson = field.Value?.ToLowerInvariant() == "true";
+                state.WriteSummaryJson = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "output.writeSummaryCsv":
-                state.WriteSummaryCsv = field.Value?.ToLowerInvariant() == "true";
+                state.WriteSummaryCsv = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "output.writeParquet":
-                state.WriteResultsParquet = field.Value?.ToLowerInvariant() == "true";
+                state.WriteResultsParquet = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "output.includeRawResponse":
-                state.IncludeRawLlmResponse = field.Value?.ToLowerInvariant() == "true";
+                state.IncludeRawLlmResponse = materializedValue?.ToLowerInvariant() == "true";
                 break;
 
             // Run settings
             case "run.name":
-                state.RunName = field.Value;
+                state.RunName = materializedValue;
                 break;
             case "run.outputDirectoryPath":
-                state.OutputDir = field.Value ?? "";
+                state.OutputDir = materializedValue ?? "";
                 break;
             case "run.exportShellTarget":
-                state.ShellTarget = field.Value == "Unspecified" ? null : ParseShellTarget(field.Value);
+                state.ShellTarget = materializedValue == "Unspecified" ? null : ParseShellTarget(materializedValue);
                 break;
             case "run.continueOnEvalFailure":
-                state.ContinueOnEvalFailure = field.Value?.ToLowerInvariant() == "true";
+                state.ContinueOnEvalFailure = materializedValue?.ToLowerInvariant() == "true";
                 break;
             case "run.maxConcurrentEvals":
-                state.MaxConcurrentEvals = int.TryParse(field.Value, out var maxConcurrent) ? maxConcurrent : null;
+                state.MaxConcurrentEvals = int.TryParse(materializedValue, out var maxConcurrent) ? maxConcurrent : null;
                 break;
             case "run.dataFilePath":
-                state.DataFilePath = field.Value;
+                state.DataFilePath = materializedValue;
                 break;
             case "run.promptDirectoryPath":
-                state.PromptDir = field.Value;
+                state.PromptDir = materializedValue;
                 break;
             case "run.expectedDirectoryPath":
-                state.ExpectedDir = field.Value;
+                state.ExpectedDir = materializedValue;
                 break;
         }
 

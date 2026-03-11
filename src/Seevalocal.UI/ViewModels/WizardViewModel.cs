@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
@@ -28,6 +29,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
 {
     private readonly IFilePickerService? _filePicker;
     private readonly IToastService? _toastService;
+    private readonly ILogger<WizardViewModel>? _logger;
     private WizardStepKind _currentStep = WizardStepKind.ContinueRun;
     private string? _checkpointDatabasePath;
 
@@ -190,10 +192,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
     string? IWizardViewModel.RunName => _runName;
     ShellTarget? IWizardViewModel.ShellTarget => _shellTarget;
 
-    public WizardViewModel(IFilePickerService? filePicker = null, IToastService? toastService = null)
+    public WizardViewModel(IFilePickerService? filePicker = null, IToastService? toastService = null, ILogger<WizardViewModel>? logger = null)
     {
         _filePicker = filePicker;
         _toastService = toastService;
+        _logger = logger;
         GoBackCommand = new RelayCommand(GoBack, () => CanGoBack);
         GoForwardCommand = new RelayCommand(async () => await GoForwardAsync(), () => CanGoForward);
         ExportScriptCommand = new RelayCommand(() => OnExportScript?.Invoke());
@@ -640,9 +643,12 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
     public PartialConfig BuildPartialConfig()
     {
-        // Only include fields that the user has explicitly modified
-        var model = _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(UseLocalFile)) ||
-                    _editedFields.Contains(nameof(LocalModelPath)) || _editedFields.Contains(nameof(HfRepo))
+        // Build model source - check if any model-related field has a value (not just edited)
+        var hasModelField = !string.IsNullOrEmpty(LocalModelPath) || !string.IsNullOrEmpty(HfRepo) ||
+                            _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(UseLocalFile)) ||
+                            _editedFields.Contains(nameof(LocalModelPath)) || _editedFields.Contains(nameof(HfRepo)) ||
+                            _editedFields.Contains(nameof(HfToken));
+        var model = hasModelField
             ? (ManageServer
                 ? (UseLocalFile && LocalModelPath != null
                     ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = LocalModelPath }
@@ -652,11 +658,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 : null)
             : null;
 
-        var server = _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(Host)) ||
-                     _editedFields.Contains(nameof(Port)) || _editedFields.Contains(nameof(ApiKey)) ||
-                     _editedFields.Contains(nameof(ServerUrl)) || _editedFields.Contains(nameof(LlamaServerExecutablePath)) ||
-                     _editedFields.Contains(nameof(LocalModelPath)) || _editedFields.Contains(nameof(HfRepo)) ||
-                     _editedFields.Contains(nameof(HfToken))
+        // Build server config - check if any server-related field has a value (not just edited)
+        var hasServerField = !string.IsNullOrEmpty(Host) || Port != 8080 || !string.IsNullOrEmpty(ApiKey) ||
+                             !string.IsNullOrEmpty(ServerUrl) || !string.IsNullOrEmpty(LlamaServerExecutablePath) ||
+                             _editedFields.Contains(nameof(ManageServer)) || _editedFields.Contains(nameof(Host)) ||
+                             _editedFields.Contains(nameof(Port)) || _editedFields.Contains(nameof(ApiKey)) ||
+                             _editedFields.Contains(nameof(ServerUrl)) || _editedFields.Contains(nameof(LlamaServerExecutablePath));
+        var server = hasServerField || model != null
             ? new PartialServerConfig
             {
                 Manage = _editedFields.Contains(nameof(ManageServer)) ? ManageServer : null,
@@ -672,12 +680,16 @@ public sealed partial class WizardViewModel : IWizardViewModel
         // Build llama-server settings - only include edited fields
         var llamaSettings = BuildLlamaServerSettings();
 
-        // Build judge config - only include if judge-related fields were edited
-        var judge = _editedFields.Contains(nameof(EnableJudge)) || _editedFields.Contains(nameof(JudgeManageServer)) ||
-                    _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo)) ||
-                    _editedFields.Contains(nameof(JudgeApiKey)) || _editedFields.Contains(nameof(JudgeServerUrl)) ||
-                    _editedFields.Contains(nameof(SelectedJudgeTemplateIndex)) || _editedFields.Contains(nameof(JudgeScoreMin)) ||
-                    _editedFields.Contains(nameof(JudgeScoreMax))
+        // Build judge config - check if any judge-related field has a value (not just edited)
+        var hasJudgeField = EnableJudge || _enableJudge ||
+                            !string.IsNullOrEmpty(JudgeLocalModelPath) || !string.IsNullOrEmpty(JudgeHfRepo) ||
+                            !string.IsNullOrEmpty(JudgeServerUrl) || !string.IsNullOrEmpty(JudgeApiKey) ||
+                            _editedFields.Contains(nameof(EnableJudge)) || _editedFields.Contains(nameof(JudgeManageServer)) ||
+                            _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo)) ||
+                            _editedFields.Contains(nameof(JudgeApiKey)) || _editedFields.Contains(nameof(JudgeServerUrl)) ||
+                            _editedFields.Contains(nameof(SelectedJudgeTemplateIndex)) || _editedFields.Contains(nameof(JudgeScoreMin)) ||
+                            _editedFields.Contains(nameof(JudgeScoreMax));
+        var judge = hasJudgeField
             ? (EnableJudge ? BuildJudgeConfig() : new PartialJudgeConfig { Enable = false })
             : null;
 
@@ -806,8 +818,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
     private PartialJudgeConfig? BuildJudgeConfig()
     {
-        var judgeModel = _editedFields.Contains(nameof(JudgeManageServer)) || _editedFields.Contains(nameof(JudgeUseLocalFile)) ||
-                         _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo))
+        // Build judge model - check if any judge model field has a value (not just edited)
+        var hasJudgeModelField = !string.IsNullOrEmpty(JudgeLocalModelPath) || !string.IsNullOrEmpty(JudgeHfRepo) ||
+                                 _editedFields.Contains(nameof(JudgeManageServer)) || _editedFields.Contains(nameof(JudgeUseLocalFile)) ||
+                                 _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo));
+        var judgeModel = hasJudgeModelField
             ? (JudgeManageServer
                 ? (JudgeUseLocalFile && !string.IsNullOrEmpty(JudgeLocalModelPath)
                     ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = JudgeLocalModelPath }
@@ -990,7 +1005,415 @@ public sealed partial class WizardViewModel : IWizardViewModel
             CheckpointDatabasePath = path;
             // When a checkpoint is selected, automatically set ContinueFromCheckpoint to true
             ContinueFromCheckpoint = true;
+            
+            // Load and apply checkpoint configuration
+            await LoadCheckpointConfigAsync(path);
         }
+    }
+
+    /// <summary>
+    /// Loads configuration from a checkpoint database and populates wizard fields.
+    /// </summary>
+    private async Task LoadCheckpointConfigAsync(string dbPath)
+    {
+        try
+        {
+            if (!File.Exists(dbPath)) return;
+
+            // Open the checkpoint database and load the startup config
+            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT Value FROM StartupParameters WHERE Key = @key";
+            cmd.Parameters.AddWithValue("@key", "startup_config");
+
+            var configJson = await cmd.ExecuteScalarAsync() as string;
+            if (string.IsNullOrEmpty(configJson)) return;
+
+            var config = System.Text.Json.JsonSerializer.Deserialize<Seevalocal.Core.Models.ResolvedConfig>(configJson);
+            if (config == null) return;
+
+            // Populate wizard fields from the loaded config
+            PopulateFromCheckpointConfig(config);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to load checkpoint configuration from {DbPath}", dbPath);
+            OnShowNotification?.Invoke($"Warning: Could not load checkpoint configuration: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Populates wizard fields from a loaded checkpoint configuration.
+    /// Fields are marked as edited so BuildPartialConfig() includes them.
+    /// </summary>
+    private void PopulateFromCheckpointConfig(Seevalocal.Core.Models.ResolvedConfig config)
+    {
+        // Server configuration
+        if (config.Server != null)
+        {
+            if (config.Server.Manage.HasValue)
+            {
+                _manageServer = config.Server.Manage.Value;
+                _editedFields.Add(nameof(ManageServer));
+            }
+            if (!string.IsNullOrEmpty(config.Server.ExecutablePath))
+            {
+                _llamaServerExecutablePath = config.Server.ExecutablePath;
+                _editedFields.Add(nameof(LlamaServerExecutablePath));
+            }
+            if (!string.IsNullOrEmpty(config.Server.Host))
+            {
+                _host = config.Server.Host;
+                _editedFields.Add(nameof(Host));
+            }
+            if (config.Server.Port.HasValue)
+            {
+                _port = config.Server.Port.Value;
+                _editedFields.Add(nameof(Port));
+            }
+            if (!string.IsNullOrEmpty(config.Server.ApiKey))
+            {
+                _apiKey = config.Server.ApiKey;
+                _editedFields.Add(nameof(ApiKey));
+            }
+            if (!string.IsNullOrEmpty(config.Server.BaseUrl))
+            {
+                _serverUrl = config.Server.BaseUrl;
+                _editedFields.Add(nameof(ServerUrl));
+            }
+            
+            // Model configuration - handle both LocalFile and HuggingFace sources
+            if (config.Server.Model != null)
+            {
+                if (config.Server.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.LocalFile)
+                {
+                    _useLocalFile = true;
+                    _localModelPath = config.Server.Model.FilePath;
+                    _editedFields.Add(nameof(UseLocalFile));
+                    _editedFields.Add(nameof(LocalModelPath));
+                }
+                else if (config.Server.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.HuggingFace)
+                {
+                    _useLocalFile = false;
+                    _hfRepo = config.Server.Model.HfRepo;
+                    _hfToken = config.Server.Model.HfToken;
+                    _editedFields.Add(nameof(UseLocalFile));
+                    _editedFields.Add(nameof(HfRepo));
+                    _editedFields.Add(nameof(HfToken));
+                }
+            }
+        }
+
+        // Llama server settings
+        if (config.LlamaServer != null)
+        {
+            var ls = config.LlamaServer;
+            if (ls.ContextWindowTokens.HasValue) { _contextWindowTokens = ls.ContextWindowTokens; _editedFields.Add(nameof(ContextWindowTokens)); }
+            if (ls.BatchSizeTokens.HasValue) { _batchSizeTokens = ls.BatchSizeTokens; _editedFields.Add(nameof(BatchSizeTokens)); }
+            if (ls.UbatchSizeTokens.HasValue) { _ubatchSizeTokens = ls.UbatchSizeTokens; _editedFields.Add(nameof(UbatchSizeTokens)); }
+            if (ls.ParallelSlotCount.HasValue) { _parallelSlotCount = ls.ParallelSlotCount; _editedFields.Add(nameof(ParallelSlotCount)); }
+            if (ls.EnableContinuousBatching.HasValue) { _enableContinuousBatching = ls.EnableContinuousBatching; _editedFields.Add(nameof(EnableContinuousBatching)); }
+            if (ls.EnableCachePrompt.HasValue) { _enableCachePrompt = ls.EnableCachePrompt; _editedFields.Add(nameof(EnableCachePrompt)); }
+            if (ls.EnableContextShift.HasValue) { _enableContextShift = ls.EnableContextShift; _editedFields.Add(nameof(EnableContextShift)); }
+            if (ls.GpuLayerCount.HasValue) { _gpuLayerCount = ls.GpuLayerCount; _editedFields.Add(nameof(GpuLayerCount)); }
+            if (!string.IsNullOrEmpty(ls.SplitMode)) { _splitMode = ls.SplitMode; _editedFields.Add(nameof(SplitMode)); }
+            if (!string.IsNullOrEmpty(ls.KvCacheTypeK)) { _kvCacheTypeK = ls.KvCacheTypeK; _editedFields.Add(nameof(KvCacheTypeK)); }
+            if (!string.IsNullOrEmpty(ls.KvCacheTypeV)) { _kvCacheTypeV = ls.KvCacheTypeV; _editedFields.Add(nameof(KvCacheTypeV)); }
+            if (ls.EnableKvOffload.HasValue) { _enableKvOffload = ls.EnableKvOffload; _editedFields.Add(nameof(EnableKvOffload)); }
+            if (ls.EnableFlashAttention.HasValue) { _enableFlashAttention = ls.EnableFlashAttention; _editedFields.Add(nameof(EnableFlashAttention)); }
+            if (ls.SamplingTemperature.HasValue) { _samplingTemperature = ls.SamplingTemperature; _editedFields.Add(nameof(SamplingTemperature)); }
+            if (ls.TopP.HasValue) { _topP = ls.TopP; _editedFields.Add(nameof(TopP)); }
+            if (ls.TopK.HasValue) { _topK = ls.TopK; _editedFields.Add(nameof(TopK)); }
+            if (ls.MinP.HasValue) { _minP = ls.MinP; _editedFields.Add(nameof(MinP)); }
+            if (ls.RepeatPenalty.HasValue) { _repeatPenalty = ls.RepeatPenalty; _editedFields.Add(nameof(RepeatPenalty)); }
+            if (ls.RepeatLastNTokens.HasValue) { _repeatLastNTokens = ls.RepeatLastNTokens; _editedFields.Add(nameof(RepeatLastNTokens)); }
+            if (ls.PresencePenalty.HasValue) { _presencePenalty = ls.PresencePenalty; _editedFields.Add(nameof(PresencePenalty)); }
+            if (ls.FrequencyPenalty.HasValue) { _frequencyPenalty = ls.FrequencyPenalty; _editedFields.Add(nameof(FrequencyPenalty)); }
+            if (ls.Seed.HasValue) { _seed = ls.Seed; _editedFields.Add(nameof(Seed)); }
+            if (ls.ThreadCount.HasValue) { _threadCount = ls.ThreadCount; _editedFields.Add(nameof(ThreadCount)); }
+            if (ls.HttpThreadCount.HasValue) { _httpThreadCount = ls.HttpThreadCount; _editedFields.Add(nameof(HttpThreadCount)); }
+            if (!string.IsNullOrEmpty(ls.ChatTemplate)) { _chatTemplate = ls.ChatTemplate; _editedFields.Add(nameof(ChatTemplate)); }
+            if (ls.EnableJinja.HasValue) { _enableJinja = ls.EnableJinja; _editedFields.Add(nameof(EnableJinja)); }
+            if (!string.IsNullOrEmpty(ls.ReasoningFormat)) { _reasoningFormat = ls.ReasoningFormat; _editedFields.Add(nameof(ReasoningFormat)); }
+            if (!string.IsNullOrEmpty(ls.ModelAlias)) { _modelAlias = ls.ModelAlias; _editedFields.Add(nameof(ModelAlias)); }
+            if (ls.LogVerbosity.HasValue) { _logVerbosity = ls.LogVerbosity; _editedFields.Add(nameof(LogVerbosity)); }
+            if (ls.EnableMlock.HasValue) { _enableMlock = ls.EnableMlock; _editedFields.Add(nameof(EnableMlock)); }
+            if (ls.EnableMmap.HasValue) { _enableMmap = ls.EnableMmap; _editedFields.Add(nameof(EnableMmap)); }
+            if (ls.ServerTimeoutSeconds.HasValue) { _serverTimeoutSeconds = ls.ServerTimeoutSeconds; _editedFields.Add(nameof(ServerTimeoutSeconds)); }
+        }
+
+        // Judge configuration
+        if (config.Judge != null)
+        {
+            var judge = config.Judge;
+            _enableJudge = judge.Enable;
+            _editedFields.Add(nameof(EnableJudge));
+            
+            _judgeManageServer = judge.Manage;
+            _editedFields.Add(nameof(JudgeManageServer));
+            
+            if (!string.IsNullOrEmpty(judge.BaseUrl))
+            {
+                _judgeServerUrl = judge.BaseUrl;
+                _editedFields.Add(nameof(JudgeServerUrl));
+            }
+            if (judge.ServerConfig != null)
+            {
+                if (!string.IsNullOrEmpty(judge.ServerConfig.ExecutablePath))
+                {
+                    _judgeExecutablePath = judge.ServerConfig.ExecutablePath;
+                    _editedFields.Add(nameof(JudgeExecutablePath));
+                }
+                if (judge.ServerConfig.Model != null)
+                {
+                    if (judge.ServerConfig.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.LocalFile)
+                    {
+                        _judgeUseLocalFile = true;
+                        _judgeLocalModelPath = judge.ServerConfig.Model.FilePath;
+                        _editedFields.Add(nameof(JudgeUseLocalFile));
+                        _editedFields.Add(nameof(JudgeLocalModelPath));
+                    }
+                    else if (judge.ServerConfig.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.HuggingFace)
+                    {
+                        _judgeUseLocalFile = false;
+                        _judgeHfRepo = judge.ServerConfig.Model.HfRepo;
+                        _judgeHfToken = judge.ServerConfig.Model.HfToken;
+                        _editedFields.Add(nameof(JudgeUseLocalFile));
+                        _editedFields.Add(nameof(JudgeHfRepo));
+                        _editedFields.Add(nameof(JudgeHfToken));
+                    }
+                }
+                if (!string.IsNullOrEmpty(judge.ServerConfig.ApiKey))
+                {
+                    _judgeApiKey = judge.ServerConfig.ApiKey;
+                    _editedFields.Add(nameof(JudgeApiKey));
+                }
+            }
+            if (judge.ServerSettings != null)
+            {
+                var js = judge.ServerSettings;
+                if (js.ContextWindowTokens.HasValue) { _judgeContextWindowTokens = js.ContextWindowTokens; _editedFields.Add(nameof(JudgeContextWindowTokens)); }
+                if (js.BatchSizeTokens.HasValue) { _judgeBatchSizeTokens = js.BatchSizeTokens; _editedFields.Add(nameof(JudgeBatchSizeTokens)); }
+                if (js.ParallelSlotCount.HasValue) { _judgeParallelSlotCount = js.ParallelSlotCount; _editedFields.Add(nameof(JudgeParallelSlotCount)); }
+                if (js.GpuLayerCount.HasValue) { _judgeGpuLayerCount = js.GpuLayerCount; _editedFields.Add(nameof(JudgeGpuLayerCount)); }
+                if (!string.IsNullOrEmpty(js.SplitMode)) { _judgeSplitMode = js.SplitMode; _editedFields.Add(nameof(JudgeSplitMode)); }
+                if (!string.IsNullOrEmpty(js.KvCacheTypeK)) { _judgeKvCacheTypeK = js.KvCacheTypeK; _editedFields.Add(nameof(JudgeKvCacheTypeK)); }
+                if (!string.IsNullOrEmpty(js.KvCacheTypeV)) { _judgeKvCacheTypeV = js.KvCacheTypeV; _editedFields.Add(nameof(JudgeKvCacheTypeV)); }
+                if (js.EnableFlashAttention.HasValue) { _judgeEnableFlashAttention = js.EnableFlashAttention; _editedFields.Add(nameof(JudgeEnableFlashAttention)); }
+                if (js.SamplingTemperature.HasValue) { _judgeSamplingTemperature = js.SamplingTemperature; _editedFields.Add(nameof(JudgeSamplingTemperature)); }
+                if (js.TopP.HasValue) { _judgeTopP = js.TopP; _editedFields.Add(nameof(JudgeTopP)); }
+                if (js.TopK.HasValue) { _judgeTopK = js.TopK; _editedFields.Add(nameof(JudgeTopK)); }
+                if (js.MinP.HasValue) { _judgeMinP = js.MinP; _editedFields.Add(nameof(JudgeMinP)); }
+                if (js.RepeatPenalty.HasValue) { _judgeRepeatPenalty = js.RepeatPenalty; _editedFields.Add(nameof(JudgeRepeatPenalty)); }
+                if (js.Seed.HasValue) { _judgeSeed = js.Seed; _editedFields.Add(nameof(JudgeSeed)); }
+                if (js.ThreadCount.HasValue) { _judgeThreadCount = js.ThreadCount; _editedFields.Add(nameof(JudgeThreadCount)); }
+                if (js.HttpThreadCount.HasValue) { _judgeHttpThreadCount = js.HttpThreadCount; _editedFields.Add(nameof(JudgeHttpThreadCount)); }
+                if (!string.IsNullOrEmpty(js.ChatTemplate)) { _judgeChatTemplate = js.ChatTemplate; _editedFields.Add(nameof(JudgeChatTemplate)); }
+                if (js.EnableJinja.HasValue) { _judgeEnableJinja = js.EnableJinja; _editedFields.Add(nameof(JudgeEnableJinja)); }
+                if (js.LogVerbosity.HasValue) { _judgeLogVerbosity = js.LogVerbosity; _editedFields.Add(nameof(JudgeLogVerbosity)); }
+                if (js.EnableMlock.HasValue) { _judgeEnableMlock = js.EnableMlock; _editedFields.Add(nameof(JudgeEnableMlock)); }
+                if (js.EnableMmap.HasValue) { _judgeEnableMmap = js.EnableMmap; _editedFields.Add(nameof(JudgeEnableMmap)); }
+                if (js.ServerTimeoutSeconds.HasValue) { _judgeServerTimeoutSeconds = js.ServerTimeoutSeconds; _editedFields.Add(nameof(JudgeServerTimeoutSeconds)); }
+            }
+            if (!string.IsNullOrEmpty(judge.JudgePromptTemplate))
+            {
+                _judgeTemplate = judge.JudgePromptTemplate;
+                _editedFields.Add(nameof(JudgeTemplate));
+            }
+            if (judge.ScoreMinValue != 0)
+            {
+                _judgeScoreMin = judge.ScoreMinValue;
+                _editedFields.Add(nameof(JudgeScoreMin));
+            }
+            if (judge.ScoreMaxValue != 10)
+            {
+                _judgeScoreMax = judge.ScoreMaxValue;
+                _editedFields.Add(nameof(JudgeScoreMax));
+            }
+        }
+
+        // Run configuration
+        if (config.Run != null)
+        {
+            var run = config.Run;
+            if (!string.IsNullOrEmpty(run.RunName))
+            {
+                _runName = run.RunName;
+                _editedFields.Add(nameof(RunName));
+            }
+            if (!string.IsNullOrEmpty(run.OutputDirectoryPath))
+            {
+                _outputDir = run.OutputDirectoryPath;
+                _editedFields.Add(nameof(OutputDir));
+            }
+            if (run.ExportShellTarget.HasValue)
+            {
+                _shellTarget = run.ExportShellTarget.Value;
+                _editedFields.Add(nameof(ShellTarget));
+            }
+            if (run.ContinueOnEvalFailure.HasValue)
+            {
+                _continueOnEvalFailure = run.ContinueOnEvalFailure.Value;
+                _editedFields.Add(nameof(ContinueOnEvalFailure));
+            }
+            if (run.MaxConcurrentEvals.HasValue)
+            {
+                _maxConcurrentEvals = run.MaxConcurrentEvals;
+                _editedFields.Add(nameof(MaxConcurrentEvals));
+            }
+        }
+
+        // Data source configuration
+        if (config.EvalSets.Count > 0)
+        {
+            var evalSet = config.EvalSets[0];
+            if (!string.IsNullOrEmpty(evalSet.PipelineName))
+            {
+                _pipelineName = evalSet.PipelineName;
+                _editedFields.Add(nameof(PipelineName));
+            }
+
+            var ds = evalSet.DataSource;
+            if (ds.Kind is Seevalocal.Core.Models.DataSourceKind.SingleFile or
+                Seevalocal.Core.Models.DataSourceKind.JsonFile or
+                Seevalocal.Core.Models.DataSourceKind.YamlFile or
+                Seevalocal.Core.Models.DataSourceKind.CsvFile or
+                Seevalocal.Core.Models.DataSourceKind.ParquetFile or
+                Seevalocal.Core.Models.DataSourceKind.File)
+            {
+                _useSingleFileDataSource = true;
+                _dataFilePath = ds.FilePath;
+                _editedFields.Add(nameof(UseSingleFileDataSource));
+                _editedFields.Add(nameof(DataFilePath));
+            }
+            else if (ds.Kind is Seevalocal.Core.Models.DataSourceKind.SplitDirectories or
+                     Seevalocal.Core.Models.DataSourceKind.DirectoryPair or
+                     Seevalocal.Core.Models.DataSourceKind.Directory)
+            {
+                _useSingleFileDataSource = false;
+                _promptDir = ds.PromptDirectoryPath;
+                _expectedDir = ds.ExpectedOutputDirectoryPath;
+                _editedFields.Add(nameof(UseSingleFileDataSource));
+                _editedFields.Add(nameof(PromptDir));
+                _editedFields.Add(nameof(ExpectedDir));
+            }
+        }
+
+        // Notify UI of all changes
+        OnPropertyChanged(nameof(ManageServer));
+        OnPropertyChanged(nameof(UseLocalFile));
+        OnPropertyChanged(nameof(LocalModelPath));
+        OnPropertyChanged(nameof(HfRepo));
+        OnPropertyChanged(nameof(HfToken));
+        OnPropertyChanged(nameof(ServerUrl));
+        OnPropertyChanged(nameof(Host));
+        OnPropertyChanged(nameof(Port));
+        OnPropertyChanged(nameof(ApiKey));
+        OnPropertyChanged(nameof(LlamaServerExecutablePath));
+
+        OnPropertyChanged(nameof(ContextWindowTokens));
+        OnPropertyChanged(nameof(BatchSizeTokens));
+        OnPropertyChanged(nameof(UbatchSizeTokens));
+        OnPropertyChanged(nameof(ParallelSlotCount));
+        OnPropertyChanged(nameof(EnableContinuousBatching));
+        OnPropertyChanged(nameof(EnableCachePrompt));
+        OnPropertyChanged(nameof(EnableContextShift));
+        OnPropertyChanged(nameof(GpuLayerCount));
+        OnPropertyChanged(nameof(SplitMode));
+        OnPropertyChanged(nameof(KvCacheTypeK));
+        OnPropertyChanged(nameof(KvCacheTypeV));
+        OnPropertyChanged(nameof(EnableKvOffload));
+        OnPropertyChanged(nameof(EnableFlashAttention));
+        OnPropertyChanged(nameof(SamplingTemperature));
+        OnPropertyChanged(nameof(TopP));
+        OnPropertyChanged(nameof(TopK));
+        OnPropertyChanged(nameof(MinP));
+        OnPropertyChanged(nameof(RepeatPenalty));
+        OnPropertyChanged(nameof(RepeatLastNTokens));
+        OnPropertyChanged(nameof(PresencePenalty));
+        OnPropertyChanged(nameof(FrequencyPenalty));
+        OnPropertyChanged(nameof(Seed));
+        OnPropertyChanged(nameof(ThreadCount));
+        OnPropertyChanged(nameof(HttpThreadCount));
+        OnPropertyChanged(nameof(ChatTemplate));
+        OnPropertyChanged(nameof(EnableJinja));
+        OnPropertyChanged(nameof(ReasoningFormat));
+        OnPropertyChanged(nameof(ModelAlias));
+        OnPropertyChanged(nameof(LogVerbosity));
+        OnPropertyChanged(nameof(EnableMlock));
+        OnPropertyChanged(nameof(EnableMmap));
+        OnPropertyChanged(nameof(ServerTimeoutSeconds));
+
+        OnPropertyChanged(nameof(EnableJudge));
+        OnPropertyChanged(nameof(JudgeManageServer));
+        OnPropertyChanged(nameof(JudgeUseLocalFile));
+        OnPropertyChanged(nameof(JudgeLocalModelPath));
+        OnPropertyChanged(nameof(JudgeHfRepo));
+        OnPropertyChanged(nameof(JudgeHfToken));
+        OnPropertyChanged(nameof(JudgeServerUrl));
+        OnPropertyChanged(nameof(JudgeApiKey));
+        OnPropertyChanged(nameof(JudgeExecutablePath));
+        OnPropertyChanged(nameof(JudgeContextWindowTokens));
+        OnPropertyChanged(nameof(JudgeBatchSizeTokens));
+        OnPropertyChanged(nameof(JudgeParallelSlotCount));
+        OnPropertyChanged(nameof(JudgeGpuLayerCount));
+        OnPropertyChanged(nameof(JudgeSplitMode));
+        OnPropertyChanged(nameof(JudgeKvCacheTypeK));
+        OnPropertyChanged(nameof(JudgeKvCacheTypeV));
+        OnPropertyChanged(nameof(JudgeEnableFlashAttention));
+        OnPropertyChanged(nameof(JudgeSamplingTemperature));
+        OnPropertyChanged(nameof(JudgeTopP));
+        OnPropertyChanged(nameof(JudgeTopK));
+        OnPropertyChanged(nameof(JudgeMinP));
+        OnPropertyChanged(nameof(JudgeRepeatPenalty));
+        OnPropertyChanged(nameof(JudgeSeed));
+        OnPropertyChanged(nameof(JudgeThreadCount));
+        OnPropertyChanged(nameof(JudgeHttpThreadCount));
+        OnPropertyChanged(nameof(JudgeChatTemplate));
+        OnPropertyChanged(nameof(JudgeEnableJinja));
+        OnPropertyChanged(nameof(JudgeLogVerbosity));
+        OnPropertyChanged(nameof(JudgeEnableMlock));
+        OnPropertyChanged(nameof(JudgeEnableMmap));
+        OnPropertyChanged(nameof(JudgeServerTimeoutSeconds));
+        OnPropertyChanged(nameof(JudgeTemplate));
+        OnPropertyChanged(nameof(SelectedJudgeTemplateIndex));
+        OnPropertyChanged(nameof(JudgeScoreMin));
+        OnPropertyChanged(nameof(JudgeScoreMax));
+
+        OnPropertyChanged(nameof(RunName));
+        OnPropertyChanged(nameof(OutputDir));
+        OnPropertyChanged(nameof(ShellTarget));
+        OnPropertyChanged(nameof(ContinueOnEvalFailure));
+        OnPropertyChanged(nameof(MaxConcurrentEvals));
+
+        OnPropertyChanged(nameof(PipelineName));
+        OnPropertyChanged(nameof(SelectedPipelineIndex));
+        OnPropertyChanged(nameof(UseSingleFileDataSource));
+        OnPropertyChanged(nameof(DataFilePath));
+        OnPropertyChanged(nameof(PromptDir));
+        OnPropertyChanged(nameof(ExpectedDir));
+
+        // Notify UI that CanGoForward may have changed
+        OnPropertyChanged(nameof(CanGoForward));
+        
+        // Notify commands that CanExecute may have changed
+        ((RelayCommand)GoBackCommand).NotifyCanExecuteChanged();
+        ((RelayCommand)GoForwardCommand).NotifyCanExecuteChanged();
+
+        // Build notification message about what was loaded
+        var missingFields = new List<string>();
+        if (_manageServer && string.IsNullOrEmpty(_localModelPath) && string.IsNullOrEmpty(_hfRepo))
+            missingFields.Add("model file");
+        if (_enableJudge && _judgeManageServer && string.IsNullOrEmpty(_judgeLocalModelPath) && string.IsNullOrEmpty(_judgeHfRepo))
+            missingFields.Add("judge model file");
+        
+        var notification = "Checkpoint configuration loaded successfully.";
+        if (missingFields.Count > 0)
+            notification += $" Please re-select: {string.Join(", ", missingFields)}.";
+        
+        OnShowNotification?.Invoke(notification);
     }
 
     private async Task TestConnectionAsync()

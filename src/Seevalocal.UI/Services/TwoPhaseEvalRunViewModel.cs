@@ -72,8 +72,9 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
         LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
 
-        // Subscribe to server error events
+        // Subscribe to server events
         _serverLifecycle.ServerErrorReceived += OnServerErrorReceived;
+        _serverLifecycle.LoadingProgressChanged += OnServerLoadingProgressChanged;
     }
 
     private void OnServerErrorReceived(object? sender, ServerErrorEventArgs e)
@@ -82,6 +83,15 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         StatusLine = $"llama-server error: {e.ErrorMessage}";
         OnPropertyChanged(nameof(StatusLine));
         _logger.LogWarning("llama-server error: {ErrorMessage}", e.ErrorMessage);
+    }
+
+    private void OnServerLoadingProgressChanged(object? sender, ServerLoadingProgressEventArgs e)
+    {
+        // Update progress bar and status line during server startup
+        ProgressPercent = e.ProgressPercent;
+        StatusLine = e.Message ?? $"Starting llama-server... {e.ProgressPercent:F0}%";
+        OnPropertyChanged(nameof(ProgressPercent));
+        OnPropertyChanged(nameof(StatusLine));
     }
 
     // ─── IEvalRunViewModel Implementation ─────────────────────────────────────
@@ -141,6 +151,9 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
         ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
+        
+        // Tell the orchestrator to pause/resume
+        _primaryOrchestrator?.SetPaused(IsPaused);
     }
 
     public void Cancel()
@@ -461,13 +474,15 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
     private void OnProgressChanged(object? sender, EvalProgress e)
     {
-        CompletedCount = e.CompletedCount;
-        EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
-        AverageTokensPerSecond = e.AverageCompletionTokensPerSecond ?? 0;
-
-        // Update results list on UI thread from in-memory cache (fast, safe after disposal)
+        // Update all properties on UI thread
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
+            CompletedCount = e.CompletedCount;
+            EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
+            
+            // Calculate moving average tokens/sec from last 10 completed items
+            AverageTokensPerSecond = CalculateMovingAverageTokensPerSecond();
+
             var results = _collector.GetResults();
 
             Results.Clear();
@@ -490,6 +505,37 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 cmd.NotifyCanExecuteChanged();
             }
         });
+    }
+
+    /// <summary>
+    /// Calculates a moving average of tokens/sec from the last 10 completed items.
+    /// This provides a more stable and meaningful metric than instantaneous values.
+    /// </summary>
+    private double CalculateMovingAverageTokensPerSecond()
+    {
+        // Get the last 10 completed results
+        var recentResults = Results.TakeLast(10).ToList();
+        if (recentResults.Count == 0)
+            return 0.0;
+
+        double totalTokens = 0;
+        double totalDuration = 0;
+
+        foreach (var result in recentResults)
+        {
+            // Get total token count from metrics
+            var totalTokenMetric = result.Metrics.FirstOrDefault(m => m.Name == "totalTokenCount");
+            var tokenCount = totalTokenMetric?.Value is MetricScalar.IntMetric intMetric ? intMetric.Value : 0;
+            
+            totalTokens += tokenCount;
+            totalDuration += result.DurationSeconds;
+        }
+
+        // Avoid division by zero
+        if (totalDuration <= 0)
+            return 0.0;
+
+        return totalTokens / totalDuration;
     }
 
     private static HttpClient CreateHttpClient(ServerInfo serverInfo)
@@ -544,6 +590,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         // Unsubscribe from events
         _progress.ProgressChanged -= OnProgressChanged;
         _serverLifecycle.ServerErrorReceived -= OnServerErrorReceived;
+        _serverLifecycle.LoadingProgressChanged -= OnServerLoadingProgressChanged;
 
         // Dispose async resources
         try

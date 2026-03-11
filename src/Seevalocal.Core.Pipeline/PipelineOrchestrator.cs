@@ -71,6 +71,28 @@ public sealed class PipelineOrchestrator(
     private const int MaxConsecutiveServerCrashes = 5;
     private readonly Lock _crashLock = new();
 
+    // Pause mechanism
+    private readonly SemaphoreSlim _pauseSemaphore = new(1, 1);
+    private volatile bool _isPaused;
+
+    /// <summary>
+    /// Pauses or resumes the evaluation. When paused, the orchestrator will wait
+    /// before processing each item.
+    /// </summary>
+    public void SetPaused(bool paused)
+    {
+        if (paused && !_isPaused)
+        {
+            _isPaused = true;
+            _pauseSemaphore.Wait(); // Acquire the semaphore to block processing
+        }
+        else if (!paused && _isPaused)
+        {
+            _isPaused = false;
+            _pauseSemaphore.Release(); // Release to allow processing to continue
+        }
+    }
+
     /// <summary>
     /// Progress event for simple scenarios (non-checkpoint).
     /// </summary>
@@ -413,6 +435,13 @@ public sealed class PipelineOrchestrator(
 
     private async Task ProcessItemAsync(EvalItem item, Func<int> incrementCompleted, Stopwatch runSw, int? totalCount, CancellationToken ct)
     {
+        // Wait for pause semaphore (blocks if paused)
+        if (_isPaused)
+        {
+            await _pauseSemaphore.WaitAsync(ct);
+            _pauseSemaphore.Release(); // Immediately release so other items can check pause state
+        }
+
         var result = await RunItemWithRetryAsync(item, ct);
 
         // Use phase-appropriate collection method

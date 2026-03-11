@@ -27,10 +27,22 @@ public record MetricValue
 [JsonConverter(typeof(MetricScalarJsonConverter))]
 public abstract record MetricScalar
 {
-    public sealed record IntMetric(int Value) : MetricScalar;
-    public sealed record DoubleMetric(double Value) : MetricScalar;
-    public sealed record BoolMetric(bool Value) : MetricScalar;
-    public sealed record StringMetric(string Value) : MetricScalar;
+    public sealed record IntMetric(int Value) : MetricScalar
+    {
+        public override string ToString() => Value.ToString();
+    }
+    public sealed record DoubleMetric(double Value) : MetricScalar
+    {
+        public override string ToString() => Value.ToString();
+    }
+    public sealed record BoolMetric(bool Value) : MetricScalar
+    {
+        public override string ToString() => Value.ToString().ToLowerInvariant();
+    }
+    public sealed record StringMetric(string Value) : MetricScalar
+    {
+        public override string ToString() => Value;
+    }
 
     private MetricScalar() { }
 }

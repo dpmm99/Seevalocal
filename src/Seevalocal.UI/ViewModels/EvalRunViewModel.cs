@@ -41,6 +41,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     private LlamaServerClient? _managedJudgeClient;
     private readonly Progress<EvalProgress> _progress;
     private int _earlyCompletionsLimit = 10;
+    private PipelineOrchestrator? _orchestrator;
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -81,10 +82,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         CancelCommand = new RelayCommand(Cancel, () => IsRunning);
         LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => Results.Count > EarlyCompletionsLimit);
 
-        // Subscribe to server error events if server lifecycle is available
+        // Subscribe to server events if server lifecycle is available
         if (_serverLifecycle != null)
         {
             _serverLifecycle.ServerErrorReceived += OnServerErrorReceived;
+            _serverLifecycle.LoadingProgressChanged += OnServerLoadingProgressChanged;
         }
     }
 
@@ -96,13 +98,24 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         _logger.LogWarning("llama-server error: {ErrorMessage}", e.ErrorMessage);
     }
 
+    private void OnServerLoadingProgressChanged(object? sender, ServerLoadingProgressEventArgs e)
+    {
+        // Update progress bar and status line during server startup
+        ProgressPercent = e.ProgressPercent;
+        StatusLine = e.Message ?? $"Starting llama-server... {e.ProgressPercent:F0}%";
+        OnPropertyChanged(nameof(ProgressPercent));
+        OnPropertyChanged(nameof(StatusLine));
+    }
+
     private void OnProgressChanged(EvalProgress progress)
     {
         CompletedCount = progress.CompletedCount;
         TotalCount = progress.TotalCount;
         ProgressPercent = progress.TotalCount > 0 ? (double)progress.CompletedCount / progress.TotalCount * 100 : 0;
         EstimatedRemainingSeconds = progress.EstimatedRemainingSeconds;
-        AverageTokensPerSecond = progress.AverageCompletionTokensPerSecond ?? 0;
+        
+        // Calculate moving average tokens/sec from last 10 completed items
+        AverageTokensPerSecond = CalculateMovingAverageTokensPerSecond();
 
         OnPropertyChanged(nameof(EarlyCompletions));
         OnPropertyChanged(nameof(RecentActivitySummary));
@@ -131,6 +144,37 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                     responsePreview);
             }
         }
+    }
+
+    /// <summary>
+    /// Calculates a moving average of tokens/sec from the last 10 completed items.
+    /// This provides a more stable and meaningful metric than instantaneous values.
+    /// </summary>
+    private double CalculateMovingAverageTokensPerSecond()
+    {
+        // Get the last 10 completed results
+        var recentResults = Results.TakeLast(10).ToList();
+        if (recentResults.Count == 0)
+            return 0.0;
+
+        double totalTokens = 0;
+        double totalDuration = 0;
+
+        foreach (var result in recentResults)
+        {
+            // Get total token count from metrics
+            var totalTokenMetric = result.Metrics.FirstOrDefault(m => m.Name == "totalTokenCount");
+            var tokenCount = totalTokenMetric?.Value is MetricScalar.IntMetric intMetric ? intMetric.Value : 0;
+            
+            totalTokens += tokenCount;
+            totalDuration += result.DurationSeconds;
+        }
+
+        // Avoid division by zero
+        if (totalDuration <= 0)
+            return 0.0;
+
+        return totalTokens / totalDuration;
     }
 
     private void OnOrchestratorProgressChanged(EvalProgress progress)
@@ -209,6 +253,9 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         StatusLine = IsPaused ? "Paused" : "Running...";
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
+        
+        // Tell the orchestrator to pause/resume
+        _orchestrator?.SetPaused(IsPaused);
     }
 
     private void LoadMoreEarlyCompletions()
@@ -428,7 +475,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
             // Create orchestrator now that we have clients (simple mode, returns results)
             var orchestratorLogger = _loggerFactory.CreateLogger<PipelineOrchestrator>();
-            var orchestrator = new PipelineOrchestrator(
+            _orchestrator = new PipelineOrchestrator(
                 _pipeline,
                 _dataSource,
                 _collector,
@@ -438,10 +485,10 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                 orchestratorLogger);
 
             // Subscribe to orchestrator progress events
-            orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
+            _orchestrator.ProgressChanged += OnOrchestratorProgressChanged;
 
             // Run the pipeline
-            await orchestrator.RunAsync(orchestratorMaxConcurrent, _cts.Token);
+            await _orchestrator.RunAsync(orchestratorMaxConcurrent, _cts.Token);
 
             // Final results refresh after completion (from database with full stage outputs)
             await RefreshResultsFromDatabaseAsync();
@@ -532,10 +579,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         _cts?.Cancel();
         _progress.ProgressChanged -= (_, progress) => OnProgressChanged(progress);
 
-        // Unsubscribe from server error events
+        // Unsubscribe from server events
         if (_serverLifecycle != null)
         {
             _serverLifecycle.ServerErrorReceived -= OnServerErrorReceived;
+            _serverLifecycle.LoadingProgressChanged -= OnServerLoadingProgressChanged;
         }
 
         await StopAllServersAsync();
@@ -587,6 +635,11 @@ public sealed class EvalResultViewModel(EvalResult result)
     public double DurationSeconds => _result.DurationSeconds;
     public DateTimeOffset StartedAt => _result.StartedAt;
     public string? RawResponse => _result.RawLlmResponse;
+
+    /// <summary>
+    /// Exposes the underlying metrics for programmatic access (e.g., calculating tokens/sec).
+    /// </summary>
+    public IReadOnlyList<MetricValue> Metrics => _result.Metrics;
 
     public string? UserPrompt =>
         _result.AllStageOutputs.TryGetValue("PromptStage.userPrompt", out var val)
