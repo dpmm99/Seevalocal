@@ -239,6 +239,13 @@ public sealed class DefaultRunnerService(
 
     private static string GetCheckpointDatabasePath(ResolvedConfig config)
     {
+        // If continuing from checkpoint, use the specified checkpoint database path
+        if (config.Run.ContinueFromCheckpoint && !string.IsNullOrEmpty(config.Run.CheckpointDatabasePath))
+        {
+            return config.Run.CheckpointDatabasePath;
+        }
+
+        // Otherwise, generate a new checkpoint database path based on run name
         var outputDir = config.Run.OutputDirectoryPath ?? "./results";
         var runName = config.Run.RunName ?? "unnamed";
         var safeRunName = string.Concat(runName.Where(c => !Path.GetInvalidFileNameChars().Contains(c)));

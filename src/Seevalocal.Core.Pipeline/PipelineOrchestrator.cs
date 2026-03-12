@@ -101,6 +101,16 @@ public sealed class PipelineOrchestrator(
         add => _progressEvent += value;
         remove => _progressEvent -= value;
     }
+    
+    /// <summary>
+    /// Event raised when an item starts processing.
+    /// </summary>
+    public event Action<string>? ItemStarted;  // EvalItemId
+    
+    /// <summary>
+    /// Event raised when an item completes processing.
+    /// </summary>
+    public event Action<string>? ItemCompleted;  // EvalItemId
 
     /// <summary>
     /// Creates a simple orchestrator without checkpoint/resume support.
@@ -167,15 +177,16 @@ public sealed class PipelineOrchestrator(
         var channel = Channel.CreateUnbounded<EvalItem>(
             new UnboundedChannelOptions { SingleWriter = true });
 
-        // Initial progress report
+        // Initial progress report - include already-completed items from checkpoint
+        var alreadyCompletedCount = _completedItemIds?.Count ?? 0;
         _progressEvent?.Invoke(new EvalProgress
         {
             EvalItemId = "",
             Succeeded = false,
-            CompletedCount = 0,
-            TotalCount = totalCount ?? -1,
+            CompletedCount = alreadyCompletedCount,  // Start with checkpoint count
+            TotalCount = (totalCount ?? -1) + alreadyCompletedCount,  // Total includes completed
             ElapsedSeconds = 0,
-            EstimatedRemainingSeconds = 60 * (totalCount ?? 0),
+            EstimatedRemainingSeconds = 60 * ((totalCount ?? 0) - alreadyCompletedCount),
             AverageCompletionTokensPerSecond = 0
         });
 
@@ -245,8 +256,8 @@ public sealed class PipelineOrchestrator(
                     {
                         EvalItemId = capturedItem.Id,
                         Succeeded = result.Succeeded,
-                        CompletedCount = done,
-                        TotalCount = totalCount ?? -1,
+                        CompletedCount = alreadyCompletedCount + done,  // Include checkpoint count
+                        TotalCount = (totalCount ?? -1) + alreadyCompletedCount,  // Total includes completed
                         ElapsedSeconds = elapsed,
                         EstimatedRemainingSeconds = remaining,
                         AverageCompletionTokensPerSecond = avgTps
@@ -305,17 +316,25 @@ public sealed class PipelineOrchestrator(
     /// </summary>
     private async Task<EvalResult> RunItemSimpleAsync(EvalItem item, CancellationToken ct)
     {
+        // Load existing stage outputs from database (for checkpoint resumption / judge phase)
+        var existingStageOutputs = new Dictionary<string, object?>();
+        if (_resultCollector is PersistentResultCollector persistentCollector)
+        {
+            existingStageOutputs = await persistentCollector.GetStageOutputsAsync(item.Id, ct);
+        }
+        
         var context = new EvalStageContext
         {
             Item = item,
             Config = _resolvedConfig,
             PrimaryClient = _primaryClient,
             JudgeClient = _judgeClient,
-            CancellationToken = ct
+            CancellationToken = ct,
+            StageOutputs = existingStageOutputs  // Pre-load existing outputs (PromptStage will use these)
         };
 
         var continueOnStageFailure = _resolvedConfig.Run?.ContinueOnEvalFailure ?? true;
-        return await _pipeline.RunItemAsync(context, continueOnStageFailure, evalSetId: "", ct: ct);
+        return await _pipeline.RunItemAsync(context, continueOnStageFailure, evalSetId: _evalSetConfig?.Id ?? "", ct: ct);
     }
 
     /// <summary>
@@ -435,45 +454,57 @@ public sealed class PipelineOrchestrator(
 
     private async Task ProcessItemAsync(EvalItem item, Func<int> incrementCompleted, Stopwatch runSw, int? totalCount, CancellationToken ct)
     {
-        // Wait for pause semaphore (blocks if paused)
-        if (_isPaused)
+        // Fire item started event
+        ItemStarted?.Invoke(item.Id);
+        
+        try
         {
-            await _pauseSemaphore.WaitAsync(ct);
-            _pauseSemaphore.Release(); // Immediately release so other items can check pause state
+            // Wait for pause semaphore (blocks if paused)
+            if (_isPaused)
+            {
+                await _pauseSemaphore.WaitAsync(ct);
+                _pauseSemaphore.Release(); // Immediately release so other items can check pause state
+            }
+
+            var result = await RunItemWithRetryAsync(item, ct);
+
+            // Use phase-appropriate collection method
+            if (_phase == "judge" && _resultCollector is PersistentResultCollector persistentCollector)
+            {
+                await persistentCollector.CollectJudgeResultAsync(result, ct);
+            }
+            else
+            {
+                await _resultCollector.CollectAsync(result, ct);
+            }
+
+            var completed = incrementCompleted();
+            var elapsed = runSw.Elapsed.TotalSeconds;
+
+            double? estimatedRemaining = null;
+            if (totalCount > 0 && completed > 0)
+            {
+                var rate = completed / elapsed;
+                var remaining = totalCount.Value - completed;
+                estimatedRemaining = remaining > 0 ? remaining / rate : 0.0;
+            }
+
+            var alreadyCompletedCount = _completedItemIds?.Count ?? 0;
+            _progress?.Report(new EvalProgress
+            {
+                EvalItemId = item.Id,
+                Succeeded = result.Succeeded,
+                CompletedCount = alreadyCompletedCount + completed,  // Include checkpoint count
+                TotalCount = (totalCount ?? -1) + alreadyCompletedCount,  // Total includes completed
+                ElapsedSeconds = elapsed,
+                EstimatedRemainingSeconds = estimatedRemaining
+            });
         }
-
-        var result = await RunItemWithRetryAsync(item, ct);
-
-        // Use phase-appropriate collection method
-        if (_phase == "judge" && _resultCollector is PersistentResultCollector persistentCollector)
+        finally
         {
-            await persistentCollector.CollectJudgeResultAsync(result, ct);
+            // Fire item completed event
+            ItemCompleted?.Invoke(item.Id);
         }
-        else
-        {
-            await _resultCollector.CollectAsync(result, ct);
-        }
-
-        var completed = incrementCompleted();
-        var elapsed = runSw.Elapsed.TotalSeconds;
-
-        double? estimatedRemaining = null;
-        if (totalCount > 0 && completed > 0)
-        {
-            var rate = completed / elapsed;
-            var remaining = totalCount.Value - completed;
-            estimatedRemaining = remaining > 0 ? remaining / rate : 0.0;
-        }
-
-        _progress?.Report(new EvalProgress
-        {
-            EvalItemId = item.Id,
-            Succeeded = result.Succeeded,
-            CompletedCount = completed,
-            TotalCount = totalCount ?? -1,
-            ElapsedSeconds = elapsed,
-            EstimatedRemainingSeconds = estimatedRemaining
-        });
     }
 
     private async Task<EvalResult> RunItemWithRetryAsync(EvalItem item, CancellationToken ct)
@@ -510,13 +541,21 @@ public sealed class PipelineOrchestrator(
                 };
             }
 
+            // Load existing stage outputs from database (for checkpoint resumption / judge phase)
+            var existingStageOutputs = new Dictionary<string, object?>();
+            if (_resultCollector is PersistentResultCollector persistentCollector)
+            {
+                existingStageOutputs = await persistentCollector.GetStageOutputsAsync(item.Id, ct);
+            }
+
             var context = new EvalStageContext
             {
                 Item = item,
                 Config = _resolvedConfig,
                 PrimaryClient = _primaryClient,
                 JudgeClient = _judgeClient,
-                CancellationToken = ct
+                CancellationToken = ct,
+                StageOutputs = existingStageOutputs  // Pre-load existing outputs (PromptStage will use these)
             };
 
             EvalResult result;
@@ -677,9 +716,26 @@ public static class PipelineOrchestratorFactory
         CancellationToken ct,
         LlamaServerClient? judgeClient = null)
     {
-        var completedItemIds = await resultCollector.GetCompletedItemIdsAsync(evalSetConfig.Id, "primary", ct);
+        logger.LogInformation("CreatePrimaryAsync: evalSetConfig.Id = {EvalSetId}", evalSetConfig.Id);
+        
+        // Log all eval set IDs in the checkpoint database for debugging
+        var dbEvalSetIds = await resultCollector.GetEvalSetIdsAsync(ct);
+        logger.LogInformation("Checkpoint database contains EvalSetIds: {EvalSetIds}", string.Join(", ", dbEvalSetIds));
+        
+        // Query completed items for ALL EvalSetIds in the database (not just the current one)
+        // This handles the case where previous runs used different EvalSetIds
+        var allCompletedItemIds = new HashSet<string>();
+        foreach (var dbEvalSetId in dbEvalSetIds)
+        {
+            var completedForThisId = await resultCollector.GetCompletedItemIdsAsync(dbEvalSetId, "primary", ct);
+            logger.LogInformation("EvalSetId {EvalSetId}: {CompletedCount} primary items completed", dbEvalSetId, completedForThisId.Count);
+            foreach (var id in completedForThisId)
+            {
+                allCompletedItemIds.Add(id);
+            }
+        }
 
-        logger.LogInformation("Primary phase: {CompletedCount} items already completed (will resume from checkpoint)", completedItemIds.Count);
+        logger.LogInformation("Primary phase: {CompletedCount} total items already completed across all EvalSetIds (will resume from checkpoint)", allCompletedItemIds.Count);
 
         return new PipelineOrchestrator(
             dataSource,
@@ -691,7 +747,7 @@ public static class PipelineOrchestratorFactory
             resultCollector,
             progress,
             logger,
-            completedItemIds,
+            allCompletedItemIds,
             phase: "primary");
     }
 
@@ -710,9 +766,10 @@ public static class PipelineOrchestratorFactory
         ILogger<PipelineOrchestrator> logger,
         CancellationToken ct)
     {
-        var completedItemIds = await resultCollector.GetCompletedItemIdsAsync(evalSetConfig.Id, "judge", ct);
+        // Get items that have completed judge phase (LastCompletedStage = 'JudgeComplete')
+        var allCompletedItemIds = await resultCollector.GetJudgeCompletedItemIdsAsync(ct);
 
-        logger.LogInformation("Judge phase: {CompletedCount} items already judged (will resume from checkpoint)", completedItemIds.Count);
+        logger.LogInformation("Judge phase: {CompletedCount} items already have judge results (will resume from checkpoint)", allCompletedItemIds.Count);
 
         return new PipelineOrchestrator(
             dataSource,
@@ -724,7 +781,7 @@ public static class PipelineOrchestratorFactory
             resultCollector,
             progress,
             logger,
-            completedItemIds,
+            allCompletedItemIds,
             phase: "judge");
     }
 

@@ -32,13 +32,13 @@ public class CheckpointWizardIntegrationTests : IAsyncLifetime
         var filePicker = new TestFilePickerService();
         var toastService = new TestToastService();
         var logger = new TestLogger(_output);
-        
+
         var wizard = new WizardViewModel(filePicker, toastService, logger);
-        
+
         // Load checkpoint config
         var collector = new PersistentResultCollector(_checkpointDbPath);
         var checkpointConfig = await collector.LoadStartupParametersAsync(default);
-        
+
         _output.WriteLine($"Loaded checkpoint config: {checkpointConfig != null}");
         if (checkpointConfig != null)
         {
@@ -53,14 +53,14 @@ public class CheckpointWizardIntegrationTests : IAsyncLifetime
         if (checkpointConfig != null)
         {
             // Use reflection to call the private PopulateFromCheckpointConfig method
-            var method = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+            var method = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             method?.Invoke(wizard, new object[] { checkpointConfig });
         }
 
         // Assert - validate each step
         _output.WriteLine("\n=== Validating Wizard Steps ===");
-        
+
         // Step 1: Continue Run
         wizard.CurrentStep = WizardStepKind.ContinueRun;
         var continueRunErrors = wizard.ValidateCurrentStep();
@@ -91,7 +91,7 @@ public class CheckpointWizardIntegrationTests : IAsyncLifetime
 
         // Step 5: Review (no validation, just build config)
         wizard.CurrentStep = WizardStepKind.ReviewAndRun;
-        
+
         // Build config and validate with ConfigValidator
         var partialConfig = wizard.BuildPartialConfig();
         _output.WriteLine($"\n=== Built PartialConfig ===");
@@ -110,11 +110,76 @@ public class CheckpointWizardIntegrationTests : IAsyncLifetime
         {
             partialConfig.Server.Model.Should().NotBeNull("server.manage is true but model is null");
         }
-        
+
         if (partialConfig.Judge?.ServerConfig?.Manage == true)
         {
             partialConfig.Judge.ServerConfig.Model.Should().NotBeNull("judge.manage is true but model is null");
         }
+
+        // Note: CheckpointDatabasePath may not be set if the original run didn't specify one
+        // (it's generated from run name by default)
+    }
+
+    [Fact]
+    public async Task CheckpointDatabase_ContainsCompletedItems()
+    {
+        // Arrange
+        var collector = new PersistentResultCollector(_checkpointDbPath);
+
+        // First, let's discover what eval set IDs exist in the database
+        var allEvalSetIds = await GetAllEvalSetIdsAsync(collector);
+        _output.WriteLine($"\n=== Eval Set IDs in Database ===");
+        foreach (var id in allEvalSetIds)
+        {
+            _output.WriteLine($"  {id}");
+        }
+
+        // Act - get completed item IDs for each eval set
+        foreach (var evalSetId in allEvalSetIds)
+        {
+            var primaryCompletedIds = await collector.GetCompletedItemIdsAsync(evalSetId, "primary", default);
+            var judgeCompletedIds = await collector.GetCompletedItemIdsAsync(evalSetId, "judge", default);
+
+            // Assert
+            _output.WriteLine($"\n=== Checkpoint Database Contents for '{evalSetId}' ===");
+            _output.WriteLine($"Primary phase completed items: {primaryCompletedIds.Count}");
+            _output.WriteLine($"Judge phase completed items: {judgeCompletedIds.Count}");
+
+            foreach (var id in primaryCompletedIds.Take(5))
+            {
+                _output.WriteLine($"  Primary completed: {id}");
+            }
+            if (primaryCompletedIds.Count > 5)
+            {
+                _output.WriteLine($"  ... and {primaryCompletedIds.Count - 5} more");
+            }
+
+            // At least one eval set should have completed items
+            if (primaryCompletedIds.Count > 0)
+            {
+                return; // Test passes
+            }
+        }
+
+        // If we get here, no eval sets had completed items
+        throw new Xunit.Sdk.XunitException("No eval sets in checkpoint database have completed items");
+    }
+
+    private async Task<List<string>> GetAllEvalSetIdsAsync(PersistentResultCollector collector)
+    {
+        var evalSetIds = new List<string>();
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_checkpointDbPath}");
+        await connection.OpenAsync();
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            evalSetIds.Add(reader.GetString(0));
+        }
+
+        return evalSetIds;
     }
 }
 

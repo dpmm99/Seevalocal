@@ -31,6 +31,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private readonly Progress<EvalProgress> _progress;
 
     private PipelineOrchestrator? _primaryOrchestrator;
+    private PipelineOrchestrator? _judgeOrchestrator;  // Track judge orchestrator for pause
     private bool _primaryPhaseComplete;
     private bool _judgePhaseComplete;
     private LlamaServerClient? _primaryClient;  // Track primary client for managed servers
@@ -40,6 +41,10 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private int _earlyCompletionsLimit = 10;
 
     private CancellationTokenSource? _cts;
+
+    // Pause state tracking
+    private int _inFlightItemCount;  // Atomic counter for items currently being processed
+    private bool _isPausing;  // True when waiting for in-flight items to complete
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -147,13 +152,51 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     public void TogglePause()
     {
         IsPaused = !IsPaused;
-        StatusLine = IsPaused ? "Paused" : "Running...";
+
+        // When pausing, show "Pausing..." until in-flight items complete
+        if (IsPaused)
+        {
+            _isPausing = _inFlightItemCount > 0;
+            StatusLine = _isPausing ? $"Pausing... ({_inFlightItemCount} items in progress)" : "Paused";
+        }
+        else
+        {
+            _isPausing = false;
+            StatusLine = "Running...";
+        }
+
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
         ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
-        
-        // Tell the orchestrator to pause/resume
+
+        // Tell both orchestrators to pause/resume (primary may be null if already complete)
         _primaryOrchestrator?.SetPaused(IsPaused);
+        _judgeOrchestrator?.SetPaused(IsPaused);
+    }
+
+    /// <summary>
+    /// Called when an item starts processing. Increments the in-flight counter.
+    /// </summary>
+    public void OnItemStarted(string itemId)
+    {
+        Interlocked.Increment(ref _inFlightItemCount);
+    }
+
+    /// <summary>
+    /// Called when an item completes processing. Decrements the in-flight counter
+    /// and updates pause state if all items have finished.
+    /// </summary>
+    public void OnItemCompleted(string itemId)
+    {
+        var remaining = Interlocked.Decrement(ref _inFlightItemCount);
+
+        // If we were pausing and all in-flight items have completed, update status
+        if (_isPausing && remaining == 0)
+        {
+            _isPausing = false;
+            StatusLine = "Paused";
+            OnPropertyChanged(nameof(StatusLine));
+        }
     }
 
     public void Cancel()
@@ -206,8 +249,24 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 Config.Run.RunName ?? "(unnamed)",
                 Config.Run.ContinueFromCheckpoint ? " (continuing from checkpoint)" : "");
 
-            // Start primary server if managed (before creating orchestrator so UI shows progress)
-            if (Config.Server.Manage != false && _serverLifecycle != null)
+            // Check if primary phase is already complete (when continuing from checkpoint)
+            bool primaryPhaseAlreadyComplete = false;
+            if (Config.Run.ContinueFromCheckpoint)
+            {
+                var checkpointTotalCount = await _dataSource.GetCountAsync(_cts.Token);
+                var completedPrimaryCount = await _collector.GetCompletedItemIdsAsync(_evalSet.Id, "primary", _cts.Token);
+                if (completedPrimaryCount.Count >= checkpointTotalCount)
+                {
+                    primaryPhaseAlreadyComplete = true;
+                    _logger.LogInformation("Primary phase already complete ({CompletedCount}/{TotalCount} items). Skipping to judge phase.",
+                        completedPrimaryCount.Count, checkpointTotalCount);
+                    StatusLine = $"Primary phase already complete. Starting judge phase at {DateTimeOffset.Now:HH:mm:ss}...";
+                    OnPropertyChanged(nameof(StatusLine));
+                }
+            }
+
+            // Start primary server if managed AND primary phase is not already complete
+            if (!primaryPhaseAlreadyComplete && Config.Server.Manage != false && _serverLifecycle != null)
             {
                 StatusLine = $"Starting primary llama-server at {DateTimeOffset.Now:HH:mm:ss}...";
                 OnPropertyChanged(nameof(StatusLine));
@@ -243,28 +302,38 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 _primarySlotCount = Config.Run?.MaxConcurrentEvals ?? primaryServerInfo.TotalSlots;
             }
 
-            // Create the primary phase orchestrator now that server is ready
-            // Use _primaryPipeline which doesn't have JudgeStage if judge is locally managed
-            var orchestratorLogger = _loggerFactory.CreateLogger<PipelineOrchestrator>();
-            _primaryOrchestrator = await PipelineOrchestratorFactory.CreatePrimaryAsync(
-                _dataSource,
-                _primaryPipeline,
-                _evalSet,
-                Config,
-                _primaryClient!,
-                _collector,
-                _progress,
-                orchestratorLogger,
-                _cts.Token);
+            // Create the primary phase orchestrator now that server is ready (or skip if already complete)
+            if (!primaryPhaseAlreadyComplete)
+            {
+                var orchestratorLogger = _loggerFactory.CreateLogger<PipelineOrchestrator>();
+                _primaryOrchestrator = await PipelineOrchestratorFactory.CreatePrimaryAsync(
+                    _dataSource,
+                    _primaryPipeline,
+                    _evalSet,
+                    Config,
+                    _primaryClient!,
+                    _collector,
+                    _progress,
+                    orchestratorLogger,
+                    _cts.Token);
 
-            // Phase 1: Primary evaluation
-            StatusLine = "Phase 1: Primary evaluation...";
-            OnPropertyChanged(nameof(StatusLine));
-            await RunPrimaryPhaseAsync(_cts.Token);
-            _primaryPhaseComplete = true;
+                // Hook up item start/complete events for pause state tracking
+                _primaryOrchestrator.ItemStarted += OnItemStarted;
+                _primaryOrchestrator.ItemCompleted += OnItemCompleted;
+
+                // Phase 1: Primary evaluation
+                StatusLine = "Phase 1: Primary evaluation...";
+                OnPropertyChanged(nameof(StatusLine));
+                await RunPrimaryPhaseAsync(_cts.Token);
+            }
+            else
+            {
+                // Primary phase already complete, mark as done
+                _primaryPhaseComplete = true;
+            }
 
             // Phase 2: Judge evaluation
-            StatusLine = "Phase 1 complete at {DateTimeOffset.Now:HH:mm:ss}. Starting judge server...";
+            StatusLine = "Primary phase complete. Starting judge phase at {DateTimeOffset.Now:HH:mm:ss}...";
             OnPropertyChanged(nameof(StatusLine));
             await RunJudgePhaseAsync(_cts.Token);
 
@@ -400,7 +469,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             var judgeProgress = new Progress<EvalProgress>();
             judgeProgress.ProgressChanged += OnProgressChanged;
 
-            var judgeOrchestrator = await PipelineOrchestratorFactory.CreateJudgeAsync(
+            _judgeOrchestrator = await PipelineOrchestratorFactory.CreateJudgeAsync(
                 _dataSource,
                 _pipeline,
                 _evalSet,
@@ -411,10 +480,14 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
                 orchestratorLogger,
                 ct);
 
+            // Hook up item start/complete events for pause state tracking
+            _judgeOrchestrator.ItemStarted += OnItemStarted;
+            _judgeOrchestrator.ItemCompleted += OnItemCompleted;
+
             StatusLine = "Phase 2: Judge evaluation...";
             OnPropertyChanged(nameof(StatusLine));
             var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? _judgeSlotCount;
-            await judgeOrchestrator.RunAsync(maxConcurrent, ct);
+            await _judgeOrchestrator.RunAsync(maxConcurrent, ct);
 
             _logger.LogInformation("Judge phase completed");
         }
@@ -479,7 +552,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         {
             CompletedCount = e.CompletedCount;
             EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
-            
+
             // Calculate moving average tokens/sec from last 10 completed items
             AverageTokensPerSecond = CalculateMovingAverageTokensPerSecond();
 
@@ -526,7 +599,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             // Get total token count from metrics
             var totalTokenMetric = result.Metrics.FirstOrDefault(m => m.Name == "totalTokenCount");
             var tokenCount = totalTokenMetric?.Value is MetricScalar.IntMetric intMetric ? intMetric.Value : 0;
-            
+
             totalTokens += tokenCount;
             totalDuration += result.DurationSeconds;
         }

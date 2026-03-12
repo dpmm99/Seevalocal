@@ -32,6 +32,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private readonly ILogger<WizardViewModel>? _logger;
     private WizardStepKind _currentStep = WizardStepKind.ContinueRun;
     private string? _checkpointDatabasePath;
+    private string? _checkpointEvalSetId;  // Original EvalSetId from checkpoint
 
     // Track which fields have been edited by the user in the wizard
     private readonly HashSet<string> _editedFields = [];
@@ -705,6 +706,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         var evalSet = dataSource != null || _editedFields.Contains(nameof(PipelineName))
             ? new EvalSetConfig
             {
+                Id = _checkpointEvalSetId ?? Guid.NewGuid().ToString(),  // Use original EvalSetId for checkpoint resumption
                 PipelineName = _editedFields.Contains(nameof(PipelineName)) ? PipelineName : "CasualQA",
                 DataSource = dataSource ?? new DataSourceConfig { Kind = DataSourceKind.SingleFile }
             }
@@ -713,13 +715,15 @@ public sealed partial class WizardViewModel : IWizardViewModel
         // Build run meta - only include edited fields
         var runEdited = _editedFields.Contains(nameof(RunName)) || _editedFields.Contains(nameof(OutputDir)) ||
                         _editedFields.Contains(nameof(ShellTarget)) || _editedFields.Contains(nameof(ContinueFromCheckpoint)) ||
-                        _editedFields.Contains(nameof(ContinueOnEvalFailure)) || _editedFields.Contains(nameof(MaxConcurrentEvals));
+                        _editedFields.Contains(nameof(ContinueOnEvalFailure)) || _editedFields.Contains(nameof(MaxConcurrentEvals)) ||
+                        _editedFields.Contains(nameof(CheckpointDatabasePath));
         var run = runEdited ? new PartialRunMeta
         {
             RunName = _editedFields.Contains(nameof(RunName)) ? RunName : null,
             OutputDirectoryPath = _editedFields.Contains(nameof(OutputDir)) ? OutputDir : null,
             ExportShellTarget = _editedFields.Contains(nameof(ShellTarget)) ? ShellTarget : null,
             ContinueFromCheckpoint = _editedFields.Contains(nameof(ContinueFromCheckpoint)) ? _continueFromCheckpoint : null,
+            CheckpointDatabasePath = _editedFields.Contains(nameof(CheckpointDatabasePath)) ? CheckpointDatabasePath : null,
             ContinueOnEvalFailure = _editedFields.Contains(nameof(ContinueOnEvalFailure)) ? (_continueOnEvalFailure ? true : null) : null,
             MaxConcurrentEvals = _editedFields.Contains(nameof(MaxConcurrentEvals)) ? _maxConcurrentEvals : null,
         } : null;
@@ -1005,7 +1009,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
             CheckpointDatabasePath = path;
             // When a checkpoint is selected, automatically set ContinueFromCheckpoint to true
             ContinueFromCheckpoint = true;
-            
+
             // Load and apply checkpoint configuration
             await LoadCheckpointConfigAsync(path);
         }
@@ -1083,7 +1087,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 _serverUrl = config.Server.BaseUrl;
                 _editedFields.Add(nameof(ServerUrl));
             }
-            
+
             // Model configuration - handle both LocalFile and HuggingFace sources
             if (config.Server.Model != null)
             {
@@ -1150,10 +1154,10 @@ public sealed partial class WizardViewModel : IWizardViewModel
             var judge = config.Judge;
             _enableJudge = judge.Enable;
             _editedFields.Add(nameof(EnableJudge));
-            
+
             _judgeManageServer = judge.Manage;
             _editedFields.Add(nameof(JudgeManageServer));
-            
+
             if (!string.IsNullOrEmpty(judge.BaseUrl))
             {
                 _judgeServerUrl = judge.BaseUrl;
@@ -1263,12 +1267,24 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 _maxConcurrentEvals = run.MaxConcurrentEvals;
                 _editedFields.Add(nameof(MaxConcurrentEvals));
             }
+            if (!string.IsNullOrEmpty(run.CheckpointDatabasePath))
+            {
+                _checkpointDatabasePath = run.CheckpointDatabasePath;
+                _editedFields.Add(nameof(CheckpointDatabasePath));
+            }
         }
 
         // Data source configuration
         if (config.EvalSets.Count > 0)
         {
             var evalSet = config.EvalSets[0];
+
+            // Store the original EvalSetId for checkpoint resumption
+            if (!string.IsNullOrEmpty(evalSet.Id))
+            {
+                _checkpointEvalSetId = evalSet.Id;
+            }
+
             if (!string.IsNullOrEmpty(evalSet.PipelineName))
             {
                 _pipelineName = evalSet.PipelineName;
@@ -1397,7 +1413,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
         // Notify UI that CanGoForward may have changed
         OnPropertyChanged(nameof(CanGoForward));
-        
+
         // Notify commands that CanExecute may have changed
         ((RelayCommand)GoBackCommand).NotifyCanExecuteChanged();
         ((RelayCommand)GoForwardCommand).NotifyCanExecuteChanged();
@@ -1408,11 +1424,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
             missingFields.Add("model file");
         if (_enableJudge && _judgeManageServer && string.IsNullOrEmpty(_judgeLocalModelPath) && string.IsNullOrEmpty(_judgeHfRepo))
             missingFields.Add("judge model file");
-        
+
         var notification = "Checkpoint configuration loaded successfully.";
         if (missingFields.Count > 0)
             notification += $" Please re-select: {string.Join(", ", missingFields)}.";
-        
+
         OnShowNotification?.Invoke(notification);
     }
 
@@ -1476,6 +1492,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     {
         _currentStep = WizardStepKind.ContinueRun;
         _checkpointDatabasePath = null;
+        _checkpointEvalSetId = null;
 
         // Server management
         _manageServer = true;

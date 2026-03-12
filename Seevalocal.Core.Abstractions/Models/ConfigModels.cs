@@ -177,6 +177,11 @@ public record OutputConfig
 
 public record EvalSetConfig
 {
+    /// <summary>
+    /// Unique identifier for this eval set.
+    /// When continuing from checkpoint, this MUST match the original run's EvalSetId.
+    /// Default: new GUID (for new runs).
+    /// </summary>
     public string Id { get; init; } = Guid.NewGuid().ToString();
     public string Name { get; init; } = "";
     public string PipelineName { get; init; } = "";
@@ -209,6 +214,7 @@ public record RunMeta
     public ShellTarget? ExportShellTarget { get; init; }
     public bool? ContinueOnEvalFailure { get; init; }
     public bool ContinueFromCheckpoint { get; init; }
+    public string? CheckpointDatabasePath { get; init; }
 
     /// <summary>null = use total_slots from server /props response.</summary>
     public int? MaxConcurrentEvals { get; init; }
@@ -356,6 +362,7 @@ public record PartialRunMeta
     public ShellTarget? ExportShellTarget { get; init; }
     public bool? ContinueOnEvalFailure { get; init; }
     public bool? ContinueFromCheckpoint { get; init; }
+    public string? CheckpointDatabasePath { get; init; }
     public int? MaxConcurrentEvals { get; init; }
     public double? TimeoutSeconds { get; init; }
     public int? RetryCount { get; init; }

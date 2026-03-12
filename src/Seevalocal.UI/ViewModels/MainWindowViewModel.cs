@@ -576,6 +576,45 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             UpdateWizardStateFromSettingsField(field);
         }
+
+        // If continuing from checkpoint, load the original EvalSetId from the checkpoint database
+        if (WizardState is WizardViewModel wizardVm &&
+            wizardVm.ContinueFromCheckpoint &&
+            !string.IsNullOrEmpty(wizardVm.CheckpointDatabasePath) &&
+            File.Exists(wizardVm.CheckpointDatabasePath))
+        {
+            LoadCheckpointEvalSetId(wizardVm.CheckpointDatabasePath);
+        }
+    }
+
+    /// <summary>
+    /// Loads the original EvalSetId from a checkpoint database.
+    /// </summary>
+    private void LoadCheckpointEvalSetId(string dbPath)
+    {
+        try
+        {
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            connection.Open();
+
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults LIMIT 1";
+            var result = cmd.ExecuteScalar();
+
+            if (result is string evalSetId && !string.IsNullOrEmpty(evalSetId))
+            {
+                // Use reflection to set the private _checkpointEvalSetId field
+                var field = typeof(WizardViewModel).GetField("_checkpointEvalSetId",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                field?.SetValue(WizardState, evalSetId);
+
+                _logger.LogInformation("Loaded checkpoint EvalSetId: {EvalSetId}", evalSetId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load EvalSetId from checkpoint database {DbPath}", dbPath);
+        }
     }
 
     public void RemoveSettingsLayer(SettingsLayerViewModel layer)

@@ -26,6 +26,28 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         var item = context.Item;
         var ct = context.CancellationToken;
 
+        // Check if we already have a response from a previous run (checkpoint resumption)
+        if (context.StageOutputs.TryGetValue("PromptStage.response", out var existingResponse) && existingResponse is string existingResponseText && !string.IsNullOrEmpty(existingResponseText))
+        {
+            _logger.LogDebug("[PromptStage] Using cached response for item {EvalItemId}", item.Id);
+
+            // Return cached response without making API call
+            var cachedOutputs = new Dictionary<string, object?>
+            {
+                ["PromptStage.response"] = existingResponseText,
+                ["PromptStage.userPrompt"] = item.UserPrompt,
+                ["PromptStage.systemPrompt"] = item.SystemPrompt
+            };
+
+            // Try to restore rawResponse if available
+            if (context.StageOutputs.TryGetValue("PromptStage.rawResponse", out var existingRawResponse))
+            {
+                cachedOutputs["PromptStage.rawResponse"] = existingRawResponse;
+            }
+
+            return StageResult.Success(cachedOutputs, []);  // No new metrics on cache hit
+        }
+
         var messages = BuildMessages(item);
 
         var request = new ChatCompletionRequest

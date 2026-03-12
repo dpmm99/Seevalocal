@@ -113,6 +113,44 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     }
 
     /// <summary>
+    /// Gets all eval set IDs that have results in this checkpoint database.
+    /// </summary>
+    public async Task<List<string>> GetEvalSetIdsAsync(CancellationToken ct)
+    {
+        var evalSetIds = new List<string>();
+
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults";
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            evalSetIds.Add(reader.GetString(0));
+        }
+
+        return evalSetIds;
+    }
+
+    /// <summary>
+    /// Gets IDs of items that have completed the judge phase (LastCompletedStage = 'JudgeComplete').
+    /// </summary>
+    public async Task<HashSet<string>> GetJudgeCompletedItemIdsAsync(CancellationToken ct)
+    {
+        var completed = new HashSet<string>();
+
+        await using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE LastCompletedStage = 'JudgeComplete'";
+
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            completed.Add(reader.GetString(0));
+        }
+
+        return completed;
+    }
+
+    /// <summary>
     /// Loads all results for a specific phase.
     /// </summary>
     public async Task<IReadOnlyList<EvalResult>> GetResultsForPhaseAsync(string evalSetId, string phase, CancellationToken ct)
@@ -200,13 +238,13 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         // Load from StartupParameters table (preferred)
         var configJson = await LoadStartupParameterAsync("startup_config", ct);
-        
+
         // Fallback to RunMetadata for backward compatibility
         if (string.IsNullOrEmpty(configJson))
         {
             configJson = await LoadMetadataAsync("startup_config", ct);
         }
-        
+
         if (string.IsNullOrEmpty(configJson)) return null;
 
         return JsonSerializer.Deserialize<ResolvedConfig>(configJson);
@@ -283,14 +321,14 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
         cmd.Parameters.AddWithValue("@metricName", metricName);
         cmd.Parameters.AddWithValue("@sourceStage", metricValue.SourceStage ?? (object)DBNull.Value);
-        
+
         // Extract type and value from the discriminated union
         string metricType;
         object? intValue = DBNull.Value;
         object? doubleValue = DBNull.Value;
         object? boolValue = DBNull.Value;
         object? stringValue = DBNull.Value;
-        
+
         switch (metricValue.Value)
         {
             case MetricScalar.IntMetric m:
@@ -314,7 +352,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 stringValue = metricValue.Value.ToString();
                 break;
         }
-        
+
         cmd.Parameters.AddWithValue("@metricType", metricType);
         cmd.Parameters.AddWithValue("@intValue", intValue);
         cmd.Parameters.AddWithValue("@doubleValue", doubleValue);
@@ -342,7 +380,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             var metricName = reader.GetString(0);
             var sourceStage = reader.IsDBNull(1) ? null : reader.GetString(1);
             var metricType = reader.GetString(2);
-            
+
             MetricScalar value = metricType switch
             {
                 "int" => new MetricScalar.IntMetric(reader.GetInt32(3)),
@@ -351,7 +389,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 "string" => new MetricScalar.StringMetric(reader.IsDBNull(6) ? "" : reader.GetString(6)),
                 _ => new MetricScalar.StringMetric("")
             };
-            
+
             metrics.Add(new MetricValue
             {
                 Name = metricName,
@@ -438,11 +476,28 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
 
     /// <summary>
     /// Deserializes a JSON value, handling primitives correctly.
+    /// Optimized to avoid exceptions for plain strings (which are the common case).
     /// </summary>
     private static object? DeserializeJsonValue(string valueStr)
     {
         if (string.IsNullOrEmpty(valueStr))
             return null;
+
+        // Quick check: if it doesn't look like JSON, return as plain string
+        // JSON must start with { [ " or be a number/true/false/null
+        var trimmed = valueStr.Trim();
+        if (trimmed.Length == 0)
+            return null;
+
+        char firstChar = trimmed[0];
+        bool looksLikeJson = firstChar == '{' || firstChar == '[' || firstChar == '"' ||
+                             char.IsDigit(firstChar) || firstChar == '-' || firstChar == '+' ||
+                             trimmed.StartsWith("true", StringComparison.OrdinalIgnoreCase) ||
+                             trimmed.StartsWith("false", StringComparison.OrdinalIgnoreCase) ||
+                             trimmed.StartsWith("null", StringComparison.OrdinalIgnoreCase);
+
+        if (!looksLikeJson)
+            return valueStr;  // Plain string - no parsing needed
 
         // Try to parse as JSON
         try
@@ -596,6 +651,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
 
     /// <summary>
     /// Saves partial progress for an item that's in progress (for crash recovery mid-item).
+    /// Does NOT overwrite RawLlmResponse to avoid losing the primary phase response.
     /// </summary>
     public async Task SavePartialProgressAsync(string evalItemId, string evalSetId, string lastStageName, CancellationToken ct)
     {
@@ -603,18 +659,42 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         try
         {
             await using var cmd = _connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO EvalResults
-                (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
-                VALUES
-                (@evalItemId, @evalSetId, 0, NULL, NULL, @startedAt, 0, @phase, @lastStage)
-                """;
-
+            // Use UPDATE instead of INSERT OR REPLACE to avoid overwriting RawLlmResponse
+            // First check if row exists
+            cmd.CommandText = "SELECT COUNT(*) FROM EvalResults WHERE EvalItemId = @evalItemId";
             cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
-            cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
-            cmd.Parameters.AddWithValue("@startedAt", DateTimeOffset.UtcNow.ToString("O"));
-            cmd.Parameters.AddWithValue("@phase", "primary");
-            cmd.Parameters.AddWithValue("@lastStage", lastStageName);
+            var exists = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct)) > 0;
+
+            if (exists)
+            {
+                // Update existing row - don't touch RawLlmResponse
+                cmd.CommandText = """
+                    UPDATE EvalResults SET
+                        LastCompletedStage = @lastStage,
+                        Phase = @phase
+                    WHERE EvalItemId = @evalItemId
+                    """;
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
+                cmd.Parameters.AddWithValue("@phase", "primary");
+                cmd.Parameters.AddWithValue("@lastStage", lastStageName);
+            }
+            else
+            {
+                // Insert new row for items not yet started (no RawLlmResponse yet anyway)
+                cmd.CommandText = """
+                    INSERT INTO EvalResults
+                    (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
+                    VALUES
+                    (@evalItemId, @evalSetId, 0, NULL, NULL, @startedAt, 0, @phase, @lastStage)
+                    """;
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
+                cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
+                cmd.Parameters.AddWithValue("@startedAt", DateTimeOffset.UtcNow.ToString("O"));
+                cmd.Parameters.AddWithValue("@phase", "primary");
+                cmd.Parameters.AddWithValue("@lastStage", lastStageName);
+            }
 
             await cmd.ExecuteNonQueryAsync(ct);
         }
@@ -650,7 +730,27 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
 
-            await cmd.ExecuteNonQueryAsync(ct);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);
+
+            // If no rows were updated, the primary phase result doesn't exist - this is an error
+            if (rowsAffected == 0)
+            {
+                // Insert a new row with the judge result (shouldn't normally happen)
+                cmd.CommandText = """
+                    INSERT INTO EvalResults
+                    (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
+                    VALUES
+                    (@evalItemId, @evalSetId, @succeeded, @failureReason, NULL, @startedAt, @duration, 'judge', 'JudgeComplete')
+                    """;
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@evalItemId", result.EvalItemId);
+                cmd.Parameters.AddWithValue("@evalSetId", result.EvalSetId);
+                cmd.Parameters.AddWithValue("@succeeded", result.Succeeded ? 1 : 0);
+                cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@startedAt", DateTimeOffset.UtcNow.ToString("O"));
+                cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
 
             // Clear existing metrics and save new ones to the Metrics table (use internal methods since we already hold the semaphore)
             await ClearMetricsInternalAsync(result.EvalItemId, ct);
@@ -715,24 +815,6 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             FailureReason = reader.IsDBNull("FailureReason") ? null : reader.GetString("FailureReason"),
             Metrics = metrics,
             AllStageOutputs = stageOutputs,
-            RawLlmResponse = reader.IsDBNull("RawLlmResponse") ? null : reader.GetString("RawLlmResponse"),
-            StartedAt = DateTimeOffset.Parse(reader.GetString("StartedAt")),
-            DurationSeconds = reader.GetDouble("DurationSeconds")
-        };
-    }
-
-    private static EvalResult ReadResult(SqliteDataReader reader)
-    {
-        // Synchronous version for backward compatibility - doesn't load stage outputs or metrics
-        // Prefer ReadResultAsync for complete data
-        return new EvalResult
-        {
-            EvalItemId = reader.GetString("EvalItemId"),
-            EvalSetId = reader.GetString("EvalSetId"),
-            Succeeded = reader.GetInt32("Succeeded") == 1,
-            FailureReason = reader.IsDBNull("FailureReason") ? null : reader.GetString("FailureReason"),
-            Metrics = [],  // Synchronous read doesn't load metrics from relational table
-            AllStageOutputs = new Dictionary<string, object?>(),
             RawLlmResponse = reader.IsDBNull("RawLlmResponse") ? null : reader.GetString("RawLlmResponse"),
             StartedAt = DateTimeOffset.Parse(reader.GetString("StartedAt")),
             DurationSeconds = reader.GetDouble("DurationSeconds")
