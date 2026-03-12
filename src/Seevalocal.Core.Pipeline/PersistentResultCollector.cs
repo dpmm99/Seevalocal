@@ -132,14 +132,14 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     }
 
     /// <summary>
-    /// Gets IDs of items that have completed the judge phase (LastCompletedStage = 'JudgeComplete').
+    /// Gets IDs of items that have completed the judge phase (LastCompletedStage = 'JudgeStage').
     /// </summary>
     public async Task<HashSet<string>> GetJudgeCompletedItemIdsAsync(CancellationToken ct)
     {
         var completed = new HashSet<string>();
 
         await using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE LastCompletedStage = 'JudgeComplete'";
+        cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE LastCompletedStage = 'JudgeStage'";
 
         await using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
@@ -721,7 +721,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                     FailureReason = @failureReason,
                     DurationSeconds = @duration,
                     Phase = 'judge',
-                    LastCompletedStage = 'JudgeComplete'
+                    LastCompletedStage = 'JudgeStage'  -- Use actual stage name for skip logic
                 WHERE EvalItemId = @evalItemId
                 """;
 
@@ -826,6 +826,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         if (_disposed) return;
         _disposed = true;
 
+        // Wait for any pending write operations to complete
         await _writeSemaphore.WaitAsync();
         try
         {
@@ -838,7 +839,8 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         finally
         {
             _writeSemaphore.Release();
-            _writeSemaphore.Dispose();
+            // Don't dispose the semaphore - it may still be in use by pending operations
+            // The semaphore will be garbage collected when no longer referenced
         }
     }
 }

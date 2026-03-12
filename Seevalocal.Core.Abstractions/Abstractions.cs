@@ -39,6 +39,12 @@ public record EvalStageContext
     public IReadOnlyDictionary<string, object?> StageOutputs { get; init; }
         = new Dictionary<string, object?>();
 
+    /// <summary>
+    /// The name of the last completed stage for this item (for checkpoint resumption).
+    /// If set, stages up to and including this stage will be skipped.
+    /// </summary>
+    public string? LastCompletedStage { get; init; }
+
     /// <summary>The fully resolved run configuration.</summary>
     public required ResolvedConfig Config { get; init; }
 

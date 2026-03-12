@@ -694,12 +694,18 @@ public sealed partial class WizardViewModel : IWizardViewModel
             ? (EnableJudge ? BuildJudgeConfig() : new PartialJudgeConfig { Enable = false })
             : null;
 
-        // Build data source - only include if data source fields were edited
+        // Build data source - include if fields were edited OR if current values are valid
         var dataSourceEdited = _editedFields.Contains(nameof(UseSingleFileDataSource)) ||
                                _editedFields.Contains(nameof(DataFilePath)) ||
                                _editedFields.Contains(nameof(PromptDir)) ||
                                _editedFields.Contains(nameof(ExpectedDir));
-        var dataSource = dataSourceEdited ? (UseSingleFileDataSource ?
+
+        // Check if we have valid data source values (even if not edited)
+        var hasValidDataSource = UseSingleFileDataSource ?
+            !string.IsNullOrEmpty(DataFilePath) :
+            !string.IsNullOrEmpty(PromptDir);
+
+        var dataSource = (dataSourceEdited || hasValidDataSource) ? (UseSingleFileDataSource ?
             new DataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = DataFilePath } :
             new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectoryPath = PromptDir, ExpectedOutputDirectoryPath = ExpectedDir }) : null;
 

@@ -202,7 +202,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
     }
 
     [Fact]
-    public async Task CollectJudgeResultAsync_SetsLastCompletedStageToJudgeComplete()
+    public async Task CollectJudgeResultAsync_SetsLastCompletedStageToJudgeStage()
     {
         // Arrange
         await using var collector = new PersistentResultCollector(_dbPath);
@@ -238,7 +238,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
 
         // Assert
         var lastStage = await collector.GetLastCompletedStageAsync(judgeResult.EvalItemId, cts.Token);
-        lastStage.Should().Be("JudgeComplete");
+        lastStage.Should().Be("JudgeStage");
     }
 
     [Fact]

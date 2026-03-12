@@ -19,5 +19,3 @@ There's probably a lot of code simplification that can be done thanks to leftove
 Make it clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
 
 To-test list:
-Continuation of an interrupted run
-Loading progress still doesn't appear (maybe just the dots now?)

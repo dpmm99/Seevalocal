@@ -74,7 +74,7 @@ public sealed class DefaultServerLifecycleService(
     {
         // Create a new manager for this server instance
         var managerLogger = _loggerFactory.CreateLogger<LlamaServerManager>();
-        var manager = new LlamaServerManager(argBuilder, downloader, gpuDetector, httpClient, managerLogger);
+        var manager = new LlamaServerManager(downloader, gpuDetector, httpClient, managerLogger);
         _managers.Add(manager);
         ActiveManager = manager;
 

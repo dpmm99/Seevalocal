@@ -41,6 +41,67 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
 
         foreach (var stage in Stages)
         {
+            // Check if this stage has already been completed (checkpoint resumption)
+            // Skip all stages up to and including the last completed one
+            if (!string.IsNullOrEmpty(context.LastCompletedStage))
+            {
+                // Find the index of the last completed stage in THIS pipeline
+                var lastCompletedIndex = -1;
+                for (int i = 0; i < Stages.Count; i++)
+                {
+                    if (Stages[i].StageName == context.LastCompletedStage)
+                    {
+                        lastCompletedIndex = i;
+                        break;
+                    }
+                }
+
+                // If LastCompletedStage is not in this pipeline, check if it's a "later" stage
+                // (e.g., JudgeStage when running primary pipeline) - if so, skip all stages
+                if (lastCompletedIndex < 0)
+                {
+                    // Check if LastCompletedStage is from a later phase/pipeline
+                    // For now, if it contains "Judge", assume it's later than any non-judge stage
+                    if (context.LastCompletedStage.Contains("Judge", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogDebug("Skipping all stages for item {EvalItemId} - completed in later phase (last={LastCompletedStage})",
+                            context.Item.Id, context.LastCompletedStage);
+
+                        // Load all existing outputs
+                        foreach (var kvp in context.StageOutputs)
+                        {
+                            allOutputs[kvp.Key] = kvp.Value;
+                        }
+                        break;  // Skip all remaining stages
+                    }
+                }
+
+                // Find the index of the current stage
+                var currentIndex = -1;
+                for (int i = 0; i < Stages.Count; i++)
+                {
+                    if (Stages[i].StageName == stage.StageName)
+                    {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                // Skip if this stage was already completed (current index <= last completed index)
+                if (lastCompletedIndex >= 0 && currentIndex >= 0 && currentIndex <= lastCompletedIndex)
+                {
+                    _logger.LogDebug("Skipping stage {StageName} for item {EvalItemId} - already completed (last={LastCompletedStage})",
+                        stage.StageName, context.Item.Id, context.LastCompletedStage);
+
+                    // Load existing outputs for this stage from context if available
+                    foreach (var kvp in context.StageOutputs.Where(kvp => kvp.Key.StartsWith(stage.StageName + ".", StringComparison.Ordinal)))
+                    {
+                        allOutputs[kvp.Key] = kvp.Value;
+                    }
+                    continue;
+                }
+            }
+
             if (!overallSucceeded && !continueOnStageFailure)
             {
                 _logger.LogDebug("Skipping stage {StageName} for item {EvalItemId} due to prior failure",

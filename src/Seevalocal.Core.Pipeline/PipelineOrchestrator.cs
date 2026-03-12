@@ -101,12 +101,12 @@ public sealed class PipelineOrchestrator(
         add => _progressEvent += value;
         remove => _progressEvent -= value;
     }
-    
+
     /// <summary>
     /// Event raised when an item starts processing.
     /// </summary>
     public event Action<string>? ItemStarted;  // EvalItemId
-    
+
     /// <summary>
     /// Event raised when an item completes processing.
     /// </summary>
@@ -322,7 +322,14 @@ public sealed class PipelineOrchestrator(
         {
             existingStageOutputs = await persistentCollector.GetStageOutputsAsync(item.Id, ct);
         }
-        
+
+        // Load the last completed stage for checkpoint resumption
+        string? lastCompletedStage = null;
+        if (_resultCollector is PersistentResultCollector stageCollector)
+        {
+            lastCompletedStage = await stageCollector.GetLastCompletedStageAsync(item.Id, ct);
+        }
+
         var context = new EvalStageContext
         {
             Item = item,
@@ -330,7 +337,8 @@ public sealed class PipelineOrchestrator(
             PrimaryClient = _primaryClient,
             JudgeClient = _judgeClient,
             CancellationToken = ct,
-            StageOutputs = existingStageOutputs  // Pre-load existing outputs (PromptStage will use these)
+            StageOutputs = existingStageOutputs,  // Pre-load existing outputs (PromptStage will use these)
+            LastCompletedStage = lastCompletedStage  // For skipping already-completed stages
         };
 
         var continueOnStageFailure = _resolvedConfig.Run?.ContinueOnEvalFailure ?? true;
@@ -387,6 +395,30 @@ public sealed class PipelineOrchestrator(
                     {
                         _logger.LogDebug("Skipping already completed item {EvalItemId} (phase={Phase})", item.Id, _phase);
                         continue;
+                    }
+                    
+                    // In 2-phase mode, also skip items completed in the OTHER phase
+                    // For primary phase: skip if any stage was completed (including JudgeStage from previous run)
+                    // For judge phase: skip if JudgeStage was completed
+                    if (_resultCollector is PersistentResultCollector persistentCollector)
+                    {
+                        var lastCompletedStage = await persistentCollector.GetLastCompletedStageAsync(item.Id, ct);
+                        if (!string.IsNullOrEmpty(lastCompletedStage))
+                        {
+                            if (_phase == "primary")
+                            {
+                                // Primary phase: skip if ANY stage was completed (item was processed before)
+                                _logger.LogDebug("Skipping item {EvalItemId} - already processed (last={LastCompletedStage})", 
+                                    item.Id, lastCompletedStage);
+                                continue;
+                            }
+                            else if (_phase == "judge" && lastCompletedStage == "JudgeStage")
+                            {
+                                // Judge phase: skip if JudgeStage was completed
+                                _logger.LogDebug("Skipping item {EvalItemId} - judge already completed", item.Id);
+                                continue;
+                            }
+                        }
                     }
 
                     await channel.Writer.WriteAsync(item, ct);
@@ -456,7 +488,7 @@ public sealed class PipelineOrchestrator(
     {
         // Fire item started event
         ItemStarted?.Invoke(item.Id);
-        
+
         try
         {
             // Wait for pause semaphore (blocks if paused)
@@ -548,6 +580,13 @@ public sealed class PipelineOrchestrator(
                 existingStageOutputs = await persistentCollector.GetStageOutputsAsync(item.Id, ct);
             }
 
+            // Load the last completed stage for checkpoint resumption
+            string? lastCompletedStage = null;
+            if (_resultCollector is PersistentResultCollector stageCollector)
+            {
+                lastCompletedStage = await stageCollector.GetLastCompletedStageAsync(item.Id, ct);
+            }
+
             var context = new EvalStageContext
             {
                 Item = item,
@@ -555,7 +594,8 @@ public sealed class PipelineOrchestrator(
                 PrimaryClient = _primaryClient,
                 JudgeClient = _judgeClient,
                 CancellationToken = ct,
-                StageOutputs = existingStageOutputs  // Pre-load existing outputs (PromptStage will use these)
+                StageOutputs = existingStageOutputs,  // Pre-load existing outputs (PromptStage will use these)
+                LastCompletedStage = lastCompletedStage  // For skipping already-completed stages
             };
 
             EvalResult result;
@@ -717,11 +757,11 @@ public static class PipelineOrchestratorFactory
         LlamaServerClient? judgeClient = null)
     {
         logger.LogInformation("CreatePrimaryAsync: evalSetConfig.Id = {EvalSetId}", evalSetConfig.Id);
-        
+
         // Log all eval set IDs in the checkpoint database for debugging
         var dbEvalSetIds = await resultCollector.GetEvalSetIdsAsync(ct);
         logger.LogInformation("Checkpoint database contains EvalSetIds: {EvalSetIds}", string.Join(", ", dbEvalSetIds));
-        
+
         // Query completed items for ALL EvalSetIds in the database (not just the current one)
         // This handles the case where previous runs used different EvalSetIds
         var allCompletedItemIds = new HashSet<string>();

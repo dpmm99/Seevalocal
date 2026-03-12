@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
 using Seevalocal.Server.Models;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
+using System.Text;
 
 namespace Seevalocal.Server;
 
@@ -16,16 +16,14 @@ namespace Seevalocal.Server;
 /// - Unix: Spawns a monitor process that watches for parent death and kills llama-server
 /// </summary>
 public sealed partial class LlamaServerManager(
-    LlamaServerArgBuilder argBuilder,
     LlamaServerDownloader downloader,
     GpuDetector gpuDetector,
     HttpClient httpClient,
     ILogger<LlamaServerManager> logger) : IAsyncDisposable
 {
     private const double DefaultHealthTimeoutSeconds = 300.0;
-    private const int ExpectedLoadingDots = 80;  // llama-server typically outputs ~80 dots during model load
+    private const int ExpectedLoadingDots = 94;  // llama-server typically outputs ~94 dots during model load
 
-    private readonly LlamaServerArgBuilder _argBuilder = argBuilder;
     private readonly LlamaServerDownloader _downloader = downloader;
     private readonly GpuDetector _gpuDetector = gpuDetector;
     private readonly ILogger<LlamaServerManager> _logger = logger;
@@ -36,8 +34,8 @@ public sealed partial class LlamaServerManager(
     private string? _binaryPath;  // Track the binary path for managed servers
     private bool _disposed;
     private int _loadingDotCount;
+    private bool _loadingStarted;  // True after seeing "load_tensors"
     private bool _loadingComplete;
-    private readonly Regex _dotPattern = LoadingDotsPattern();
 
     // Process cleanup helpers
     private WindowsJobObject? _jobObject;  // Windows only
@@ -66,6 +64,7 @@ public sealed partial class LlamaServerManager(
 
         // Reset loading state
         _loadingDotCount = 0;
+        _loadingStarted = false;
         _loadingComplete = false;
 
         return config.Manage != false
@@ -124,29 +123,11 @@ public sealed partial class LlamaServerManager(
 
         _process = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
 
-        _process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                _logger.LogDebug("[llama-server] {Line}", e.Data);
-                TrackModelLoadingProgress(e.Data);
-            }
-        };
-
+        // Use character-by-character reading to capture loading dots in real-time
+        // llama-server outputs dots one at a time without newlines during model loading
+        var outputLock = new object();
         var errors = new List<string>() { "error", "failed", "unable", "insufficient", "lost device", "device lost", "out of memory", "fatal", "violation" };
-        _process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                // Filter to known error messages, because llama-server spits a bunch of non-error logs to stderr.
-                if (errors.Any(err => e.Data.Contains(err, StringComparison.OrdinalIgnoreCase)))
-                {
-                    _logger.LogDebug("[llama-server stderr] {Line}", e.Data);
-                    ServerErrorReceived?.Invoke(this, new ServerErrorEventArgs(e.Data));
-                    TrackModelLoadingProgress(e.Data);
-                }
-            }
-        };
+
         _process.Exited += OnProcessExited;
 
         try
@@ -193,8 +174,10 @@ public sealed partial class LlamaServerManager(
             }
         }
 
-        _process.BeginOutputReadLine();
-        _process.BeginErrorReadLine();
+        // Start background tasks to read output character-by-character
+        // This captures loading dots in real-time (they're output one at a time without newlines)
+        _ = Task.Run(() => ReadOutputStreamAsync(_process.StandardOutput, outputLock, isErrorStream: false, ct), ct);
+        _ = Task.Run(() => ReadOutputStreamAsync(_process.StandardError, outputLock, isErrorStream: true, ct), ct);
 
         _logger.LogInformation("llama-server process started (PID={Pid})", _process.Id);
 
@@ -241,32 +224,6 @@ public sealed partial class LlamaServerManager(
         });
 
         return Result.Ok(_serverInfo);
-    }
-
-    private void TrackModelLoadingProgress(string data)
-    {
-        // Track loading progress from dots
-        if (!_loadingComplete && _dotPattern.IsMatch(data))
-        {
-            _loadingDotCount += data.Length;
-            // Map dots to 15-80% range
-            var progressPercent = 15 + Math.Min(65, _loadingDotCount * 65 / ExpectedLoadingDots);
-            LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-            {
-                ProgressPercent = progressPercent,
-                Message = $"Loading model... {progressPercent}%"
-            });
-        }
-        // Detect when loading is complete (llama-server outputs "http://..." or "llama-server listening")
-        else if (!_loadingComplete && (data.Contains("http://") || data.Contains("listening")))
-        {
-            _loadingComplete = true;
-            LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
-            {
-                ProgressPercent = 80,
-                Message = "Server started, running health check..."
-            });
-        }
     }
 
     // ── Connect Existing ──────────────────────────────────────────────────────
@@ -460,8 +417,114 @@ public sealed partial class LlamaServerManager(
         }
     }
 
-    [GeneratedRegex(@"^\.*$", RegexOptions.Compiled)]
-    private static partial Regex LoadingDotsPattern();
+    /// <summary>
+    /// Reads output stream character-by-character to capture loading dots in real-time.
+    /// llama-server outputs dots one at a time without newlines during model loading.
+    /// </summary>
+    private async Task ReadOutputStreamAsync(StreamReader reader, object outputLock, bool isErrorStream = false, CancellationToken ct = default)
+    {
+        var buffer = new char[1];
+        var lineBuffer = new StringBuilder();
+
+        try
+        {
+            int charsRead;
+            do
+            {
+                charsRead = await reader.ReadAsync(buffer, ct);
+                if (charsRead > 0)
+                {
+                    var ch = buffer[0];
+
+                    if (ch == '.' && _loadingStarted && !_loadingComplete)
+                    {
+                        HandleLoadingDot();  // real-time, no newline needed
+                        lineBuffer.Append(ch);
+                    }
+                    else if (ch == '\n' || ch == '\r')
+                    {
+                        var line = lineBuffer.ToString().Trim();
+                        lineBuffer.Clear();
+
+                        if (!string.IsNullOrEmpty(line))
+                        {
+                            lock (outputLock) { ProcessOutputLine(line, isErrorStream); }
+                        }
+                    }
+                    else
+                    {
+                        lineBuffer.Append(ch);
+                    }
+                }
+            } while (charsRead > 0);
+        }
+        catch (ObjectDisposedException) { /* Expected during shutdown */ }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error reading llama-server output stream");
+        }
+    }
+
+    private void HandleLoadingDot()
+    {
+        _loadingDotCount++;
+        // Map dots (0–94) to progress range 15–80%
+        var progressPercent = 15 + Math.Min(65, _loadingDotCount * 65 / ExpectedLoadingDots);
+        LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+        {
+            ProgressPercent = progressPercent,
+            Message = $"Loading model... ({_loadingDotCount}/{ExpectedLoadingDots})"
+        });
+    }
+
+    private void ProcessOutputLine(string line, bool isErrorStream)
+    {
+        // Must be called with outputLock held
+
+        if (isErrorStream)
+            ProcessStderrLine(line);
+        else
+            _logger.LogDebug("[llama-server] {Line}", line);
+
+        ProcessLoadingMarkers(line);
+    }
+
+    private void ProcessStderrLine(string line)
+    {
+        _logger.LogDebug("[llama-server stderr] {Line}", line);
+
+        var errorKeywords = new[] { "error", "failed", "unable", "insufficient", "lost device", "device lost", "out of memory", "fatal", "violation" };
+        if (errorKeywords.Any(kw => line.Contains(kw, StringComparison.OrdinalIgnoreCase)))
+            ServerErrorReceived?.Invoke(this, new ServerErrorEventArgs(line));
+    }
+
+    private void ProcessLoadingMarkers(string line)
+    {
+        if (line.StartsWith("load_tensors", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!_loadingStarted)
+            {
+                _loadingStarted = true;
+                _loadingDotCount = 0;
+                _logger.LogDebug("[llama-server] Model loading started");
+                LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+                {
+                    ProgressPercent = 15,
+                    Message = "Loading model tensors..."
+                });
+            }
+        }
+        else if (_loadingStarted && _loadingDotCount > 5 && line.StartsWith("common_init_result", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadingComplete = true;
+            _logger.LogDebug("[llama-server] Model loading complete");
+            LoadingProgressChanged?.Invoke(this, new ServerLoadingProgressEventArgs
+            {
+                ProgressPercent = 80,
+                Message = "Model loaded, starting health check..."
+            });
+        }
+    }
 }
 
 /// <summary>
