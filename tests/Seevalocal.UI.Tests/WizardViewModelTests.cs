@@ -119,8 +119,8 @@ public sealed class WizardViewModelTests
         // Act
         await vm.GoForwardAsync();
 
-        // Assert
-        _ = vm.CurrentStep.Should().Be(WizardStepKind.ModelAndServer);
+        // Assert - First step after ContinueRun is now PipelineSelection
+        _ = vm.CurrentStep.Should().Be(WizardStepKind.PipelineSelection);
         _ = vm.CanGoBack.Should().BeTrue();
     }
 
@@ -148,11 +148,14 @@ public sealed class WizardViewModelTests
         vm.LocalModelPath = "test.gguf";
 
         // Act - navigate through steps
+        await vm.GoForwardAsync(); // PipelineSelection (no validation)
         await vm.GoForwardAsync(); // ModelAndServer (valid)
         await vm.GoForwardAsync(); // PerformanceSettings (no validation)
         await vm.GoForwardAsync(); // EvaluationDataset (need valid data source)
         vm.UseSingleFileDataSource = true;
         vm.DataFilePath = Path.GetTempFileName();
+        await vm.GoForwardAsync(); // FieldMapping (no validation)
+        await vm.GoForwardAsync(); // PipelineConfiguration (no validation)
         await vm.GoForwardAsync(); // Scoring (no validation when judge disabled)
         await vm.GoForwardAsync(); // Output
 
@@ -166,6 +169,7 @@ public sealed class WizardViewModelTests
     {
         // Arrange
         var vm = new WizardViewModel(_filePicker, _toastService);
+        await vm.GoForwardAsync(); // Move to PipelineSelection
         await vm.GoForwardAsync(); // Move to ModelAndServer
         vm.ManageServer = true;
         vm.UseLocalFile = true;

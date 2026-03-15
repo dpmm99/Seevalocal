@@ -542,13 +542,8 @@ public sealed class ServerLoadingProgressEventArgs : EventArgs
 /// <summary>
 /// Event args for llama-server error output.
 /// </summary>
-public sealed class ServerErrorEventArgs : EventArgs
+public sealed class ServerErrorEventArgs(string errorMessage) : EventArgs
 {
     /// <summary>The error message line.</summary>
-    public string ErrorMessage { get; }
-
-    public ServerErrorEventArgs(string errorMessage)
-    {
-        ErrorMessage = errorMessage;
-    }
+    public string ErrorMessage { get; } = errorMessage;
 }

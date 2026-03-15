@@ -14,9 +14,12 @@ namespace Seevalocal.UI.ViewModels;
 public enum WizardStepKind
 {
     ContinueRun,
+    PipelineSelection,
     ModelAndServer,
     PerformanceSettings,
     EvaluationDataset,
+    FieldMapping,
+    PipelineConfiguration,
     Scoring,
     Output,
     ReviewAndRun
@@ -153,6 +156,23 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private bool _continueOnEvalFailure = true;
     private int? _maxConcurrentEvals;
 
+    // Extra llama-server arguments (free-text, advanced)
+    private string? _extraLlamaArgs;
+
+    // Field mapping (for structured data sources)
+    private string? _fieldMappingId;
+    private string? _fieldMappingUserPrompt;
+    private string? _fieldMappingExpectedOutput;
+    private string? _fieldMappingSystemPrompt;
+    private string? _fieldMappingTestFile;      // For C# coding pipeline
+    private string? _fieldMappingBuildScript;   // For C# coding pipeline
+
+    // Pipeline-specific configuration
+    private string? _translationSourceLanguage = "English";
+    private string? _translationTargetLanguage = "French";
+    private string? _translationSystemPrompt;   // Custom system prompt for translation
+    private string? _codeBuildScriptPath;       // Custom build script for C# coding pipeline
+
     // ─── Step navigation ──────────────────────────────────────────────────────
 
     public WizardStepKind CurrentStep
@@ -178,6 +198,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public ICommand BrowseOutputDirCommand { get; }
     public ICommand BrowseJudgeModelCommand { get; }
     public ICommand BrowseCheckpointDbCommand { get; }
+    public ICommand BrowseBuildScriptCommand { get; }
 
     // Test connection commands
     public ICommand TestConnectionCommand { get; }
@@ -213,6 +234,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         TestConnectionCommand = new RelayCommand(async () => await TestConnectionAsync());
         TestJudgeConnectionCommand = new RelayCommand(async () => await TestJudgeConnectionAsync());
         BrowseCheckpointDbCommand = new RelayCommand(async () => await BrowseCheckpointDbAsync());
+        BrowseBuildScriptCommand = new RelayCommand(async () => await BrowseBuildScriptAsync());
 
         // Auto-select shell dialect based on OS (default for when user reaches Output step)
         _shellTarget = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
@@ -287,8 +309,14 @@ public sealed partial class WizardViewModel : IWizardViewModel
     {
         WizardStepKind.ContinueRun => ValidateContinueRunStep(),
         WizardStepKind.ModelAndServer => ValidateServerStep(),
+        WizardStepKind.PerformanceSettings => [],  // No validation - all optional
+        WizardStepKind.PipelineSelection => [],  // No validation - pipeline always has a default
         WizardStepKind.EvaluationDataset => ValidateDatasetStep(),
+        WizardStepKind.FieldMapping => [],  // No validation - all mappings optional
+        WizardStepKind.PipelineConfiguration => [],  // No validation - all config optional
         WizardStepKind.Scoring => ValidateScoringStep(),
+        WizardStepKind.Output => [],  // No validation - defaults are fine
+        WizardStepKind.ReviewAndRun => [],  // No validation - just a summary
         _ => []
     };
 
@@ -640,6 +668,23 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public int? MaxConcurrentEvals { get => _maxConcurrentEvals; set => SetField(ref _maxConcurrentEvals, value); }
     public bool ContinueFromCheckpoint { get => _continueFromCheckpoint; set => SetField(ref _continueFromCheckpoint, value); }
 
+    // Extra llama-server arguments
+    public string? ExtraLlamaArgs { get => _extraLlamaArgs; set => SetField(ref _extraLlamaArgs, value); }
+
+    // Field mapping
+    public string? FieldMappingId { get => _fieldMappingId; set => SetField(ref _fieldMappingId, value); }
+    public string? FieldMappingUserPrompt { get => _fieldMappingUserPrompt; set => SetField(ref _fieldMappingUserPrompt, value); }
+    public string? FieldMappingExpectedOutput { get => _fieldMappingExpectedOutput; set => SetField(ref _fieldMappingExpectedOutput, value); }
+    public string? FieldMappingSystemPrompt { get => _fieldMappingSystemPrompt; set => SetField(ref _fieldMappingSystemPrompt, value); }
+    public string? FieldMappingTestFile { get => _fieldMappingTestFile; set => SetField(ref _fieldMappingTestFile, value); }
+    public string? FieldMappingBuildScript { get => _fieldMappingBuildScript; set => SetField(ref _fieldMappingBuildScript, value); }
+
+    // Pipeline-specific configuration
+    public string? TranslationSourceLanguage { get => _translationSourceLanguage; set => SetField(ref _translationSourceLanguage, value); }
+    public string? TranslationTargetLanguage { get => _translationTargetLanguage; set => SetField(ref _translationTargetLanguage, value); }
+    public string? TranslationSystemPrompt { get => _translationSystemPrompt; set => SetField(ref _translationSystemPrompt, value); }
+    public string? CodeBuildScriptPath { get => _codeBuildScriptPath; set => SetField(ref _codeBuildScriptPath, value); }
+
     // ─── Build config from wizard state ──────────────────────────────────────
 
     public PartialConfig BuildPartialConfig()
@@ -706,15 +751,39 @@ public sealed partial class WizardViewModel : IWizardViewModel
             !string.IsNullOrEmpty(PromptDir);
 
         var dataSource = (dataSourceEdited || hasValidDataSource) ? (UseSingleFileDataSource ?
-            new DataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = DataFilePath } :
-            new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectoryPath = PromptDir, ExpectedOutputDirectoryPath = ExpectedDir }) : null;
+            new DataSourceConfig
+            {
+                Kind = DataSourceKind.SingleFile,
+                FilePath = DataFilePath,
+                FieldMapping = new FieldMapping
+                {
+                    IdField = FieldMappingId,
+                    UserPromptField = FieldMappingUserPrompt,
+                    ExpectedOutputField = FieldMappingExpectedOutput,
+                    SystemPromptField = FieldMappingSystemPrompt,
+                }
+            } :
+            new DataSourceConfig
+            {
+                Kind = DataSourceKind.SplitDirectories,
+                PromptDirectoryPath = PromptDir,
+                ExpectedOutputDirectoryPath = ExpectedDir,
+                FieldMapping = new FieldMapping
+                {
+                    IdField = FieldMappingId,
+                    UserPromptField = FieldMappingUserPrompt,
+                    ExpectedOutputField = FieldMappingExpectedOutput,
+                    SystemPromptField = FieldMappingSystemPrompt,
+                }
+            }) : null;
 
         var evalSet = dataSource != null || _editedFields.Contains(nameof(PipelineName))
             ? new EvalSetConfig
             {
                 Id = _checkpointEvalSetId ?? Guid.NewGuid().ToString(),  // Use original EvalSetId for checkpoint resumption
                 PipelineName = _editedFields.Contains(nameof(PipelineName)) ? PipelineName : "CasualQA",
-                DataSource = dataSource ?? new DataSourceConfig { Kind = DataSourceKind.SingleFile }
+                DataSource = dataSource ?? new DataSourceConfig { Kind = DataSourceKind.SingleFile },
+                PipelineOptions = BuildPipelineOptions()
             }
             : null;
 
@@ -822,8 +891,42 @@ public sealed partial class WizardViewModel : IWizardViewModel
             LogVerbosity = _editedFields.Contains(nameof(LogVerbosity)) ? LogVerbosity : null,
             EnableMlock = _editedFields.Contains(nameof(EnableMlock)) ? EnableMlock : null,
             EnableMmap = _editedFields.Contains(nameof(EnableMmap)) ? EnableMmap : null,
-            ServerTimeoutSeconds = _editedFields.Contains(nameof(ServerTimeoutSeconds)) ? ServerTimeoutSeconds : null
+            ServerTimeoutSeconds = _editedFields.Contains(nameof(ServerTimeoutSeconds)) ? ServerTimeoutSeconds : null,
+            ExtraArgs = !string.IsNullOrEmpty(ExtraLlamaArgs)
+                ? ExtraLlamaArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList()
+                : null
         };
+    }
+
+    /// <summary>
+    /// Builds pipeline-specific options based on the selected pipeline.
+    /// </summary>
+    private Dictionary<string, object?>? BuildPipelineOptions()
+    {
+        var options = new Dictionary<string, object?>();
+
+        switch (PipelineName)
+        {
+            case "Translation":
+                // Translation pipeline options
+                if (!string.IsNullOrEmpty(TranslationSourceLanguage))
+                    options["sourceLanguage"] = TranslationSourceLanguage;
+                if (!string.IsNullOrEmpty(TranslationTargetLanguage))
+                    options["targetLanguage"] = TranslationTargetLanguage;
+                if (!string.IsNullOrEmpty(TranslationSystemPrompt))
+                    options["systemPrompt"] = TranslationSystemPrompt;
+                break;
+
+            case "CSharpCoding":
+                // C# coding pipeline options
+                if (!string.IsNullOrEmpty(CodeBuildScriptPath))
+                    options["buildScriptPath"] = CodeBuildScriptPath;
+                if (!string.IsNullOrEmpty(FieldMappingTestFile))
+                    options["testFilePath"] = FieldMappingTestFile;
+                break;
+        }
+
+        return options.Count > 0 ? options : null;
     }
 
     private PartialJudgeConfig? BuildJudgeConfig()
@@ -947,6 +1050,16 @@ public sealed partial class WizardViewModel : IWizardViewModel
         if (path != null)
         {
             DataFilePath = path;
+        }
+    }
+
+    private async Task BrowseBuildScriptAsync()
+    {
+        if (_filePicker == null) return;
+        var path = await _filePicker.ShowOpenFileDialogAsync("Select Build Script", "Script Files|*.sh;*.bat;*.ps1;*.cmd|All Files|*.*");
+        if (path != null)
+        {
+            CodeBuildScriptPath = path;
         }
     }
 
@@ -1097,14 +1210,14 @@ public sealed partial class WizardViewModel : IWizardViewModel
             // Model configuration - handle both LocalFile and HuggingFace sources
             if (config.Server.Model != null)
             {
-                if (config.Server.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.LocalFile)
+                if (config.Server.Model.Kind == ModelSourceKind.LocalFile)
                 {
                     _useLocalFile = true;
                     _localModelPath = config.Server.Model.FilePath;
                     _editedFields.Add(nameof(UseLocalFile));
                     _editedFields.Add(nameof(LocalModelPath));
                 }
-                else if (config.Server.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.HuggingFace)
+                else if (config.Server.Model.Kind == ModelSourceKind.HuggingFace)
                 {
                     _useLocalFile = false;
                     _hfRepo = config.Server.Model.HfRepo;
@@ -1152,6 +1265,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
             if (ls.EnableMlock.HasValue) { _enableMlock = ls.EnableMlock; _editedFields.Add(nameof(EnableMlock)); }
             if (ls.EnableMmap.HasValue) { _enableMmap = ls.EnableMmap; _editedFields.Add(nameof(EnableMmap)); }
             if (ls.ServerTimeoutSeconds.HasValue) { _serverTimeoutSeconds = ls.ServerTimeoutSeconds; _editedFields.Add(nameof(ServerTimeoutSeconds)); }
+            if (ls.ExtraArgs?.Count > 0)
+            {
+                _extraLlamaArgs = string.Join(" ", ls.ExtraArgs);
+                _editedFields.Add(nameof(ExtraLlamaArgs));
+            }
         }
 
         // Judge configuration
@@ -1178,14 +1296,14 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 }
                 if (judge.ServerConfig.Model != null)
                 {
-                    if (judge.ServerConfig.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.LocalFile)
+                    if (judge.ServerConfig.Model.Kind == ModelSourceKind.LocalFile)
                     {
                         _judgeUseLocalFile = true;
                         _judgeLocalModelPath = judge.ServerConfig.Model.FilePath;
                         _editedFields.Add(nameof(JudgeUseLocalFile));
                         _editedFields.Add(nameof(JudgeLocalModelPath));
                     }
-                    else if (judge.ServerConfig.Model.Kind == Seevalocal.Core.Models.ModelSourceKind.HuggingFace)
+                    else if (judge.ServerConfig.Model.Kind == ModelSourceKind.HuggingFace)
                     {
                         _judgeUseLocalFile = false;
                         _judgeHfRepo = judge.ServerConfig.Model.HfRepo;
@@ -1298,21 +1416,43 @@ public sealed partial class WizardViewModel : IWizardViewModel
             }
 
             var ds = evalSet.DataSource;
-            if (ds.Kind is Seevalocal.Core.Models.DataSourceKind.SingleFile or
-                Seevalocal.Core.Models.DataSourceKind.JsonFile or
-                Seevalocal.Core.Models.DataSourceKind.YamlFile or
-                Seevalocal.Core.Models.DataSourceKind.CsvFile or
-                Seevalocal.Core.Models.DataSourceKind.ParquetFile or
-                Seevalocal.Core.Models.DataSourceKind.File)
+            if (ds.Kind is DataSourceKind.SingleFile or
+                DataSourceKind.JsonFile or
+                DataSourceKind.YamlFile or
+                DataSourceKind.CsvFile or
+                DataSourceKind.ParquetFile or
+                DataSourceKind.File)
             {
                 _useSingleFileDataSource = true;
                 _dataFilePath = ds.FilePath;
                 _editedFields.Add(nameof(UseSingleFileDataSource));
                 _editedFields.Add(nameof(DataFilePath));
+
+                // Load field mapping
+                if (!string.IsNullOrEmpty(ds.FieldMapping.IdField))
+                {
+                    _fieldMappingId = ds.FieldMapping.IdField;
+                    _editedFields.Add(nameof(FieldMappingId));
+                }
+                if (!string.IsNullOrEmpty(ds.FieldMapping.UserPromptField))
+                {
+                    _fieldMappingUserPrompt = ds.FieldMapping.UserPromptField;
+                    _editedFields.Add(nameof(FieldMappingUserPrompt));
+                }
+                if (!string.IsNullOrEmpty(ds.FieldMapping.ExpectedOutputField))
+                {
+                    _fieldMappingExpectedOutput = ds.FieldMapping.ExpectedOutputField;
+                    _editedFields.Add(nameof(FieldMappingExpectedOutput));
+                }
+                if (!string.IsNullOrEmpty(ds.FieldMapping.SystemPromptField))
+                {
+                    _fieldMappingSystemPrompt = ds.FieldMapping.SystemPromptField;
+                    _editedFields.Add(nameof(FieldMappingSystemPrompt));
+                }
             }
-            else if (ds.Kind is Seevalocal.Core.Models.DataSourceKind.SplitDirectories or
-                     Seevalocal.Core.Models.DataSourceKind.DirectoryPair or
-                     Seevalocal.Core.Models.DataSourceKind.Directory)
+            else if (ds.Kind is DataSourceKind.SplitDirectories or
+                     DataSourceKind.DirectoryPair or
+                     DataSourceKind.Directory)
             {
                 _useSingleFileDataSource = false;
                 _promptDir = ds.PromptDirectoryPath;
@@ -1320,6 +1460,44 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 _editedFields.Add(nameof(UseSingleFileDataSource));
                 _editedFields.Add(nameof(PromptDir));
                 _editedFields.Add(nameof(ExpectedDir));
+            }
+
+            // Load pipeline-specific options
+            if (evalSet.PipelineOptions != null)
+            {
+                switch (evalSet.PipelineName)
+                {
+                    case "Translation":
+                        if (evalSet.PipelineOptions.TryGetValue("sourceLanguage", out var srcLang) && srcLang is string srcLangStr)
+                        {
+                            _translationSourceLanguage = srcLangStr;
+                            _editedFields.Add(nameof(TranslationSourceLanguage));
+                        }
+                        if (evalSet.PipelineOptions.TryGetValue("targetLanguage", out var tgtLang) && tgtLang is string tgtLangStr)
+                        {
+                            _translationTargetLanguage = tgtLangStr;
+                            _editedFields.Add(nameof(TranslationTargetLanguage));
+                        }
+                        if (evalSet.PipelineOptions.TryGetValue("systemPrompt", out var sysPrompt) && sysPrompt is string sysPromptStr)
+                        {
+                            _translationSystemPrompt = sysPromptStr;
+                            _editedFields.Add(nameof(TranslationSystemPrompt));
+                        }
+                        break;
+
+                    case "CSharpCoding":
+                        if (evalSet.PipelineOptions.TryGetValue("buildScriptPath", out var buildScript) && buildScript is string buildScriptStr)
+                        {
+                            _codeBuildScriptPath = buildScriptStr;
+                            _editedFields.Add(nameof(CodeBuildScriptPath));
+                        }
+                        if (evalSet.PipelineOptions.TryGetValue("testFilePath", out var testFile) && testFile is string testFileStr)
+                        {
+                            _fieldMappingTestFile = testFileStr;
+                            _editedFields.Add(nameof(FieldMappingTestFile));
+                        }
+                        break;
+                }
             }
         }
 

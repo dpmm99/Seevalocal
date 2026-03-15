@@ -12,17 +12,14 @@ namespace Seevalocal.Core.Pipeline;
 /// </summary>
 public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposable
 {
-    private readonly string _dbPath;
     private readonly SqliteConnection _connection;
     private readonly ConcurrentDictionary<string, EvalResult> _resultsCache = new();
     private readonly SemaphoreSlim _writeSemaphore = new(1);
     private bool _disposed;
     private bool _finalized;
-    private ResolvedConfig? _startupConfig;
 
     public PersistentResultCollector(string dbPath)
     {
-        _dbPath = dbPath;
         _connection = new SqliteConnection($"Data Source={dbPath}");
         _connection.Open();
         InitializeDatabase();
@@ -176,8 +173,6 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     public async Task SaveStartupParametersAsync(ResolvedConfig config, CancellationToken ct)
     {
-        _startupConfig = config;
-
         await _writeSemaphore.WaitAsync(ct);
         try
         {

@@ -1,0 +1,328 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Seevalocal.UI.ViewModels"
+             xmlns:models="using:Seevalocal.Core.Models"
+             xmlns:local="using:Seevalocal.UI"
+             xmlns:converters="using:Seevalocal.UI.Converters"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="800"
+             x:Class="Seevalocal.UI.Views.EvalGenView"
+             x:DataType="vm:EvalGenViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.formLabel">
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Foreground" Value="#CDD6F4"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="0,0,0,4"/>
+    </Style>
+    <Style Selector="TextBox.formInput">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#CDD6F4"/>
+      <Setter Property="BorderBrush" Value="#45475A"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <Style Selector="TextBox.multiline">
+      <Setter Property="AcceptsReturn" Value="True"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="MinHeight" Value="80"/>
+    </Style>
+    <Style Selector="NumericUpDown.formInput">
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#CDD6F4"/>
+      <Setter Property="BorderBrush" Value="#45475A"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#89B4FA"/>
+      <Setter Property="Foreground" Value="#1E1E2E"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="16,10"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Margin" Value="0,8"/>
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Background" Value="#45475A"/>
+      <Setter Property="Foreground" Value="#CDD6F4"/>
+      <Setter Property="Padding" Value="12,8"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Background" Value="#F38BA8"/>
+      <Setter Property="Foreground" Value="#1E1E2E"/>
+      <Setter Property="Padding" Value="12,8"/>
+      <Setter Property="CornerRadius" Value="4"/>
+    </Style>
+    <Style Selector="Border.formSection">
+      <Setter Property="Background" Value="#1E1E2E"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16"/>
+      <Setter Property="Margin" Value="0,0,0,16"/>
+    </Style>
+    <Style Selector="TextBlock.sectionHeader">
+      <Setter Property="FontSize" Value="16"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#89B4FA"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+    <Style Selector="TextBlock.hintText">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="Foreground" Value="#6C7086"/>
+      <Setter Property="Margin" Value="0,-8,0,12"/>
+    </Style>
+    <Style Selector="ProgressBar.genProgress">
+      <Setter Property="Height" Value="20"/>
+      <Setter Property="Margin" Value="0,8"/>
+      <Setter Property="Background" Value="#313244"/>
+      <Setter Property="Foreground" Value="#89B4FA"/>
+    </Style>
+    <Style Selector="TextBlock.phaseBadge">
+      <Setter Property="Background" Value="#45475A"/>
+      <Setter Property="Foreground" Value="#A6ADC8"/>
+      <Setter Property="Padding" Value="8,4"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <TextBlock Text="Generate Evaluation Set" Classes="pageTitle" Grid.Row="0"/>
+
+    <Border Grid.Row="1" Background="#181825" CornerRadius="8" Padding="20" Margin="0,16">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+          <!-- Configuration Form -->
+          <StackPanel IsVisible="{Binding ShowConfigurationForm}">
+            
+            <!-- Domain Prompt -->
+            <Border Classes="formSection">
+              <StackPanel>
+                <TextBlock Text="Domain Focus" Classes="sectionHeader"/>
+                <TextBlock Text="Describe the domain or focus area for the evaluation set." Classes="hintText"/>
+                
+                <TextBlock Text="Domain Prompt" Classes="formLabel"/>
+                <TextBox Text="{Binding DomainPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                         Classes="formInput multiline"
+                         Watermark="E.g., 'Software engineering coding challenges' or 'Medical diagnosis reasoning'"/>
+                
+                <TextBlock Text="Additional Context (optional)" Classes="formLabel"/>
+                <TextBox Text="{Binding ContextPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                         Classes="formInput multiline"
+                         Watermark="E.g., 'Focus on edge cases and multi-step reasoning problems'"/>
+                
+                <TextBlock Text="System Prompt (optional)" Classes="formLabel"/>
+                <TextBox Text="{Binding SystemPrompt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                         Classes="formInput"
+                         Watermark="Guide the LLM's role. Leave empty for default."/>
+              </StackPanel>
+            </Border>
+
+            <!-- Generation Settings -->
+            <Border Classes="formSection">
+              <StackPanel>
+                <TextBlock Text="Generation Settings" Classes="sectionHeader"/>
+                
+                <Grid ColumnDefinitions="*,*">
+                  <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Target Categories" Classes="formLabel"/>
+                    <NumericUpDown Value="{Binding TargetCategoryCount, Mode=TwoWay}" 
+                                   Classes="formInput"
+                                   Minimum="1" Maximum="100" Increment="1"/>
+                    <TextBlock Text="Number of non-overlapping categories to generate" Classes="hintText"/>
+                  </StackPanel>
+                  
+                  <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                    <TextBlock Text="Problems per Category" Classes="formLabel"/>
+                    <NumericUpDown Value="{Binding TargetProblemsPerCategory, Mode=TwoWay}" 
+                                   Classes="formInput"
+                                   Minimum="1" Maximum="50" Increment="1"/>
+                    <TextBlock Text="Number of problems to generate for each category" Classes="hintText"/>
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Output Settings -->
+            <Border Classes="formSection">
+              <StackPanel>
+                <TextBlock Text="Output Settings" Classes="sectionHeader"/>
+                
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Output Directory" Classes="formLabel"/>
+                    <TextBox Text="{Binding OutputDirectoryPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                             Classes="formInput"
+                             Watermark="E.g., ./generated_evals/my_eval_set"/>
+                    <TextBlock Text="Results will be saved in SplitDirectories format (prompts/ and expected_outputs/)" Classes="hintText"/>
+                  </StackPanel>
+                  
+                  <Button Grid.Column="1" Content="Browse" Classes="secondary" 
+                          Command="{Binding BrowseOutputDirectoryCommand}"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,0,12"
+                          Padding="16,8"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Continue from Checkpoint -->
+            <Border Classes="formSection" IsVisible="{Binding ShowCheckpointOption}">
+              <StackPanel>
+                <TextBlock Text="Continue from Checkpoint" Classes="sectionHeader"/>
+                
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Checkpoint Database (optional)" Classes="formLabel"/>
+                    <TextBox Text="{Binding CheckpointDatabasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                             Classes="formInput"
+                             Watermark="Leave empty to start a new generation"/>
+                    <TextBlock Text="If provided, will continue from a previous cancelled/failed run" Classes="hintText"/>
+                  </StackPanel>
+                  
+                  <Button Grid.Column="1" Content="Browse" Classes="secondary" 
+                          Command="{Binding BrowseCheckpointCommand}"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,0,12"
+                          Padding="16,8"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- Start Button -->
+            <Button Content="🚀 Start Generation" Classes="primary" 
+                    Command="{Binding StartGenerationCommand}"
+                    HorizontalAlignment="Stretch"/>
+            
+            <TextBlock Text="The generation will use your LLM-As-Judge server and model configuration and run in 3 phases: 1) Generate problem categories, 2) Generate one-line example problem statements, 3) Flesh out full prompt-response pairs." 
+                       Classes="hintText" TextAlignment="Center" Margin="0,8,0,0"/>
+          </StackPanel>
+
+          <!-- Progress Display -->
+          <StackPanel IsVisible="{Binding ShowProgress}">
+            <!-- Status Header -->
+            <TextBlock Text="{Binding StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+
+            <!-- Phase Indicator -->
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,0,0,16">
+              <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.GeneratingCategories}}">
+                <TextBlock Text="📁 Phase 1: Generating Categories"/>
+              </Border>
+              <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.GeneratingProblems}}">
+                <TextBlock Text="📝 Phase 2: Generating Problems"/>
+              </Border>
+              <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.FleshingOutProblems}}">
+                <TextBlock Text="✍️ Phase 3: Fleshing Out Problems"/>
+              </Border>
+              <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.Completed}}">
+                <TextBlock Text="✅ Complete"/>
+              </Border>
+            </StackPanel>
+
+            <!-- Overall Progress Bar -->
+            <ProgressBar Value="{Binding ProgressPercent}" Maximum="100" Classes="genProgress"/>
+            <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:F1}%}" HorizontalAlignment="Center" Margin="0,4"/>
+
+            <!-- Stats Grid -->
+            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto" Margin="0,16">
+              <StackPanel Grid.Column="0" Spacing="4">
+                <TextBlock Text="Categories" Foreground="#7F849C" FontSize="12"/>
+                <TextBlock FontSize="18">
+                  <Run Text="{Binding CategoriesGenerated}"/>
+                  <Run Text=" / "/>
+                  <Run Text="{Binding TargetCategories}"/>
+                </TextBlock>
+              </StackPanel>
+
+              <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Text="Problems" Foreground="#7F849C" FontSize="12"/>
+                <TextBlock FontSize="18">
+                  <Run Text="{Binding ProblemsGenerated}"/>
+                  <Run Text=" / "/>
+                  <Run Text="{Binding TargetProblems}"/>
+                </TextBlock>
+              </StackPanel>
+
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Text="Fleshed Out" Foreground="#7F849C" FontSize="12"/>
+                <TextBlock FontSize="18">
+                  <Run Text="{Binding ProblemsFleshedOut}"/>
+                  <Run Text=" / "/>
+                  <Run Text="{Binding TargetProblems}"/>
+                </TextBlock>
+              </StackPanel>
+            </Grid>
+
+            <!-- Control Buttons -->
+            <Grid ColumnDefinitions="*,*" Margin="0,16">
+              <Button Content="⏸️ Pause" Classes="secondary"
+                      Command="{Binding TogglePauseCommand}"
+                      IsVisible="{Binding IsRunning}"
+                      HorizontalAlignment="Right"
+					  Margin="0,0,8,0"/>
+
+              <Button Content="❌ Cancel" Classes="danger"
+                      Command="{Binding CancelCommand}"
+                      IsVisible="{Binding IsRunning}"
+                      Margin="8,0,0,0"
+                      Grid.Column="1"/>
+            </Grid>
+
+            <!-- Categories List -->
+            <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8">
+              <StackPanel>
+                <TextBlock Text="Generated Categories" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                
+                <ScrollViewer MinHeight="200" MaxHeight="400" HorizontalScrollBarVisibility="Disabled">
+                  <ItemsControl ItemsSource="{Binding Categories}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" Spacing="4"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Background="#1E1E2E" CornerRadius="4" Padding="8">
+                          <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ProblemCount, StringFormat={}{0} problems}" 
+                                       Foreground="#6C7086" FontSize="12"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Completed State -->
+          <StackPanel IsVisible="{Binding IsCompleted}" Spacing="16" HorizontalAlignment="Center" Margin="0,32">
+            <TextBlock FontSize="24" FontWeight="SemiBold" Text="{Binding StatusLine}"/>
+
+            <TextBlock Text="{Binding Error}" Foreground="#6C7086" HorizontalAlignment="Center"
+                       IsVisible="{Binding Error, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+              <Button Content="📁 Open Output Directory" Classes="primary"
+                      Command="{Binding OpenOutputDirectoryCommand}"
+                      IsVisible="{Binding IsCancelled, Converter={x:Static converters:BoolNegationConverter.Instance}}"/>
+              <Button Content="🔄 Generate Another" Classes="secondary"
+                      Command="{Binding ResetCommand}"/>
+            </StackPanel>
+          </StackPanel>
+
+          <!-- Error State -->
+          <StackPanel IsVisible="{Binding Error, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}" 
+                      Spacing="16" HorizontalAlignment="Center" Margin="0,32">
+            <TextBlock Text="❌ Error" FontSize="24" FontWeight="SemiBold" Foreground="#F38BA8"/>
+            <TextBlock Text="{Binding Error}" Foreground="#6C7086" TextWrapping="Wrap" TextAlignment="Center"/>
+            <Button Content="🔄 Try Again" Classes="primary" Command="{Binding ResetCommand}"/>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</UserControl>

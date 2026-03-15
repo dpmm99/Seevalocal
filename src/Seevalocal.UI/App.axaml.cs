@@ -6,11 +6,14 @@ using Microsoft.Extensions.Logging;
 using Seevalocal.Config.Loading;
 using Seevalocal.Config.Merging;
 using Seevalocal.Config.Validation;
+using Seevalocal.Core;
+using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.DataSources;
 using Seevalocal.Pipelines;
 using Seevalocal.Pipelines.Factories;
 using Seevalocal.Server;
+using Seevalocal.Server.Models;
 using Seevalocal.UI.Services;
 using Seevalocal.UI.ViewModels;
 using Serilog;
@@ -163,6 +166,36 @@ public partial class App : Application
 
         // ViewModels
         _ = services.AddSingleton<IWizardViewModel>(static sp => new WizardViewModel(sp.GetRequiredService<IFilePickerService>(), sp.GetRequiredService<IToastService>()));
+        _ = services.AddSingleton<IEvalGenService>(sp =>
+        {
+            var serverLifecycle = sp.GetService<IServerLifecycleService>();
+            var serverManager = sp.GetRequiredService<LlamaServerManager>();
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            var httpClient = sp.GetRequiredService<HttpClient>();
+            var logger = sp.GetRequiredService<ILogger<EvalGenService>>();
+            return new EvalGenService(serverLifecycle, serverManager, loggerFactory, httpClient, logger);
+        });
+        _ = services.AddSingleton<EvalGenRunViewModel>(sp =>
+        {
+            var evalGenService = sp.GetRequiredService<IEvalGenService>();
+            var logger = sp.GetRequiredService<ILogger<EvalGenRunViewModel>>();
+            return new EvalGenRunViewModel(evalGenService, logger);
+        });
+        _ = services.AddSingleton<EvalGenViewModel>(sp =>
+        {
+            var evalGenService = sp.GetRequiredService<IEvalGenService>();
+            var runViewModel = sp.GetRequiredService<EvalGenRunViewModel>();
+            var filePicker = sp.GetService<IFilePickerService>();
+            var logger = sp.GetRequiredService<ILogger<EvalGenViewModel>>();
+            // Factory function to get judge config from MainWindowViewModel (resolved at call time, avoiding circular dependency)
+            Func<JudgeConfig?> getJudgeConfig = () =>
+            {
+                var mainWindowViewModel = sp.GetRequiredService<MainWindowViewModel>();
+                var result = mainWindowViewModel.ResolveCurrentConfig();
+                return result.IsSuccess ? result.Value.Judge : null;
+            };
+            return new EvalGenViewModel(evalGenService, runViewModel, filePicker, logger, getJudgeConfig);
+        });
         _ = services.AddSingleton<MainWindowViewModel>();
     }
 }

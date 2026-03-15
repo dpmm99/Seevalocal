@@ -281,7 +281,7 @@ public sealed class SettingsSectionGroup : INotifyPropertyChanged
     public SettingsSectionGroup(string sectionName, IEnumerable<SettingsFieldViewModel> fields)
     {
         SectionName = sectionName;
-        _fields = new ObservableCollection<SettingsFieldViewModel>(fields);
+        _fields = [..fields];
 
         // Subscribe to property changes in child fields; only notify when visibility changes
         foreach (var field in _fields)
@@ -600,8 +600,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 FilePath = F("dataSource.filePath"),
                 PromptDirectoryPath = F("dataSource.promptDirectory"),
                 ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+                FieldMapping = new FieldMapping
+                {
+                    IdField = F("dataSource.fieldMapping.idField"),
+                    UserPromptField = F("dataSource.fieldMapping.userPromptField"),
+                    ExpectedOutputField = F("dataSource.fieldMapping.expectedOutputField"),
+                    SystemPromptField = F("dataSource.fieldMapping.systemPromptField"),
+                },
             },
             EvalSets = [],
+            PipelineOptions = BuildPipelineOptionsFromFields(F, Fi, Fd, Fb),
         };
 
         static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
@@ -619,6 +627,28 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             "directory" => DataSourceKind.Directory,
             _ => null
         };
+
+        static Dictionary<string, object?>? BuildPipelineOptionsFromFields(
+            Func<string, string?> F, Func<string, int?> Fi, Func<string, double?> Fd, Func<string, bool?> Fb)
+        {
+            var options = new Dictionary<string, object?>();
+            
+            // Translation pipeline options
+            var sourceLang = F("pipelineOptions.sourceLanguage");
+            var targetLang = F("pipelineOptions.targetLanguage");
+            var sysPrompt = F("pipelineOptions.systemPrompt");
+            if (!string.IsNullOrEmpty(sourceLang)) options["sourceLanguage"] = sourceLang;
+            if (!string.IsNullOrEmpty(targetLang)) options["targetLanguage"] = targetLang;
+            if (!string.IsNullOrEmpty(sysPrompt)) options["systemPrompt"] = sysPrompt;
+            
+            // C# coding pipeline options
+            var buildScript = F("pipelineOptions.buildScriptPath");
+            var testFile = F("pipelineOptions.testFilePath");
+            if (!string.IsNullOrEmpty(buildScript)) options["buildScriptPath"] = buildScript;
+            if (!string.IsNullOrEmpty(testFile)) options["testFilePath"] = testFile;
+            
+            return options.Count > 0 ? options : null;
+        }
     }
 
     /// <summary>
@@ -936,6 +966,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("dataSource.filePath", "Data File Path", "Data Source", "", "Path to single data file (JSON, YAML, CSV, etc.)", true);
         AddField("dataSource.promptDirectory", "Prompt Directory", "Data Source", "", "Path to prompt files directory", true);
         AddField("dataSource.expectedDirectory", "Expected Output Directory", "Data Source", "", "Path to expected output files directory", true);
+        
+        // Field Mapping Settings
+        AddField("dataSource.fieldMapping.idField", "ID Field", "Data Source", "", "Field name for item ID", true);
+        AddField("dataSource.fieldMapping.userPromptField", "User Prompt Field", "Data Source", "", "Field name for user prompt", true);
+        AddField("dataSource.fieldMapping.expectedOutputField", "Expected Output Field", "Data Source", "", "Field name for expected output", true);
+        AddField("dataSource.fieldMapping.systemPromptField", "System Prompt Field", "Data Source", "", "Field name for system prompt", true);
+        
+        // Pipeline Options - Translation
+        AddField("pipelineOptions.sourceLanguage", "Source Language", "Pipeline Options", "English", "Source language for translation", true);
+        AddField("pipelineOptions.targetLanguage", "Target Language", "Pipeline Options", "French", "Target language for translation", true);
+        AddField("pipelineOptions.systemPrompt", "Translation System Prompt", "Pipeline Options", "", "Custom system prompt for translation", true);
+        
+        // Pipeline Options - C# Coding
+        AddField("pipelineOptions.buildScriptPath", "Build Script Path", "Pipeline Options", "", "Path to custom build script", true);
+        AddField("pipelineOptions.testFilePath", "Test File Path", "Pipeline Options", "", "Path to test file", true);
     }
 
     private void AddField(string key, string displayName, string section, string defaultValue, string? description = null, bool isOptional = false)

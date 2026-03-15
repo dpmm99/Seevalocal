@@ -37,16 +37,40 @@
           <TextBlock Text="GPU &amp; memory" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
-        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PipelineSelection}}">
           <TextBlock Text="3"/>
+        </Border>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="Pipeline" FontSize="12" FontWeight="SemiBold"/>
+          <TextBlock Text="Select pipeline type" FontSize="10" Foreground="#7F849C"/>
+        </StackPanel>
+
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
+          <TextBlock Text="4"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="Dataset" FontSize="12" FontWeight="SemiBold"/>
           <TextBlock Text="Evaluation data" FontSize="10" Foreground="#7F849C"/>
         </StackPanel>
 
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.FieldMapping}}">
+          <TextBlock Text="5"/>
+        </Border>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="Field Mapping" FontSize="12" FontWeight="SemiBold"/>
+          <TextBlock Text="Map input fields" FontSize="10" Foreground="#7F849C"/>
+        </StackPanel>
+
+        <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PipelineConfiguration}}">
+          <TextBlock Text="6"/>
+        </Border>
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="Pipeline Config" FontSize="12" FontWeight="SemiBold"/>
+          <TextBlock Text="Pipeline options" FontSize="10" Foreground="#7F849C"/>
+        </StackPanel>
+
         <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
-          <TextBlock Text="4"/>
+          <TextBlock Text="7"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="Scoring" FontSize="12" FontWeight="SemiBold"/>
@@ -54,7 +78,7 @@
         </StackPanel>
 
         <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
-          <TextBlock Text="5"/>
+          <TextBlock Text="8"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="Output" FontSize="12" FontWeight="SemiBold"/>
@@ -62,7 +86,7 @@
         </StackPanel>
 
         <Border Classes="stepBadge" Classes.active="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
-          <TextBlock Text="6"/>
+          <TextBlock Text="9"/>
         </Border>
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="Review" FontSize="12" FontWeight="SemiBold"/>
@@ -340,10 +364,10 @@
               </StackPanel>
             </Border>
           </StackPanel>
-          <!-- Step 3: Evaluation Dataset -->
-          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
-            <TextBlock Text="Evaluation Dataset" Classes="stepTitle"/>
-            <TextBlock Text="Select the pipeline type and configure your evaluation dataset."
+          <!-- Step 2: Pipeline Selection -->
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PipelineSelection}}">
+            <TextBlock Text="Pipeline Selection" Classes="stepTitle"/>
+            <TextBlock Text="Select the evaluation pipeline type that matches your use case."
                        Classes="helpText" Margin="0,0,0,16"/>
 
             <TextBlock Text="Pipeline Type" Classes="label"/>
@@ -352,6 +376,45 @@
               <ComboBoxItem Content="Translation"/>
               <ComboBoxItem Content="CSharpCoding"/>
             </ComboBox>
+
+            <Border Background="#181825" CornerRadius="6" Padding="16" Margin="0,8">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Pipeline Descriptions" Classes="sectionHeader"/>
+                
+                <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CasualQA}" 
+                        Background="#13131F" CornerRadius="4" Padding="12">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="CasualQA" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="Evaluates casual conversational Q&amp;A — open-ended questions scored by LLM-as-judge for semantic accuracy." 
+                               TextWrapping="Wrap" Foreground="#A6ADC8"/>
+                  </StackPanel>
+                </Border>
+                
+                <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}" 
+                        Background="#13131F" CornerRadius="4" Padding="12">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="Translation" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="Evaluates language translation quality using LLM-as-judge for accuracy scoring." 
+                               TextWrapping="Wrap" Foreground="#A6ADC8"/>
+                  </StackPanel>
+                </Border>
+                
+                <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CSharpCoding}" 
+                        Background="#13131F" CornerRadius="4" Padding="12">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="CSharpCoding" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="Evaluates C# code generation quality by compiling the output and running unit tests." 
+                               TextWrapping="Wrap" Foreground="#A6ADC8"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <!-- Step 3: Evaluation Dataset -->
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.EvaluationDataset}}">
+            <TextBlock Text="Evaluation Dataset" Classes="stepTitle"/>
+            <TextBlock Text="Configure your evaluation dataset source."
+                       Classes="helpText" Margin="0,0,0,16"/>
 
             <Border Background="#181825" CornerRadius="6" Padding="16" Margin="0,8">
               <StackPanel Spacing="12">
@@ -382,7 +445,97 @@
             </Border>
           </StackPanel>
 
-          <!-- Step 4: Scoring -->
+          <!-- Step 4: Field Mapping -->
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.FieldMapping}}">
+            <TextBlock Text="Field Mapping" Classes="stepTitle"/>
+            <TextBlock Text="Map fields from your input files to the evaluation pipeline."
+                       Classes="helpText" Margin="0,0,0,16"/>
+
+            <Border Background="#181825" CornerRadius="6" Padding="16">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Standard Field Mappings" Classes="sectionHeader"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="ID Field:" Classes="label" VerticalAlignment="Center"/>
+                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FieldMappingId}" Watermark="Field name for item ID (optional)" Margin="12,0,0,0"/>
+                  
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="User Prompt Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FieldMappingUserPrompt}" Watermark="Field name for user prompt" Margin="12,8,0,0"/>
+                  
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="Expected Output Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding FieldMappingExpectedOutput}" Watermark="Field name for expected output" Margin="12,8,0,0"/>
+                  
+                  <TextBlock Grid.Row="3" Grid.Column="0" Text="System Prompt Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding FieldMappingSystemPrompt}" Watermark="Field name for system prompt (optional)" Margin="12,8,0,0"/>
+                </Grid>
+
+                <Separator Background="#45475A" Margin="0,16"/>
+
+                <TextBlock Text="Pipeline-Specific Fields" Classes="sectionHeader"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Test File Field:" Classes="label" VerticalAlignment="Center"/>
+                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FieldMappingTestFile}" Watermark="Field name for test file path (C# coding pipeline)" Margin="12,0,0,0"/>
+                  
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Build Script Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FieldMappingBuildScript}" Watermark="Field name for build script path (C# coding pipeline)" Margin="12,8,0,0"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Step 5: Pipeline Configuration -->
+          <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.PipelineConfiguration}}">
+            <TextBlock Text="Pipeline Configuration" Classes="stepTitle"/>
+            <TextBlock Text="Configure pipeline-specific options."
+                       Classes="helpText" Margin="0,0,0,16"/>
+
+            <!-- Translation Pipeline Config -->
+            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}" 
+                    Background="#181825" CornerRadius="6" Padding="16">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Translation Settings" Classes="sectionHeader"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Language:" Classes="label" VerticalAlignment="Center"/>
+                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TranslationSourceLanguage}" Watermark="e.g., English" Margin="12,0,0,0"/>
+                  
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Language:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TranslationTargetLanguage}" Watermark="e.g., French" Margin="12,8,0,0"/>
+                  
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="System Prompt:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TranslationSystemPrompt}" 
+                           Watermark="Custom system prompt for translation (optional)" 
+                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="12,8,0,0"/>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- C# Coding Pipeline Config -->
+            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CSharpCoding}" 
+                    Background="#181825" CornerRadius="6" Padding="16">
+              <StackPanel Spacing="12">
+                <TextBlock Text="C# Coding Settings" Classes="sectionHeader"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto" Margin="0,8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Build Script:" Classes="label" VerticalAlignment="Center"/>
+                  <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" Margin="12,0,0,0">
+                    <TextBox Grid.Column="0" Text="{Binding CodeBuildScriptPath}" Watermark="Path to custom build script (optional)"/>
+                    <Button Grid.Column="1" Content="Browse..." Margin="8,0,0,0" Padding="16,6"
+                            Command="{Binding BrowseBuildScriptCommand}"/>
+                  </Grid>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <!-- No pipeline-specific config message -->
+            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CasualQA}" 
+                    Background="#181825" CornerRadius="6" Padding="16">
+              <StackPanel Spacing="12">
+                <TextBlock Text="CasualQA Settings" Classes="sectionHeader"/>
+                <TextBlock Text="The CasualQA pipeline uses default settings. No additional configuration is required." 
+                           Foreground="#7F849C" TextWrapping="Wrap"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+
+          <!-- Step 6: Scoring -->
           <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Scoring}}">
             <TextBlock Text="Scoring Configuration" Classes="stepTitle"/>
             <TextBlock Text="Configure LLM-as-judge for automated scoring of evaluation results."
@@ -610,7 +763,7 @@
             </Border>
           </StackPanel>
 
-          <!-- Step 5: Output -->
+          <!-- Step 7: Output -->
           <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.Output}}">
             <TextBlock Text="Output Configuration" Classes="stepTitle"/>
             <TextBlock Text="Configure where results are saved and export options."
@@ -635,7 +788,7 @@
             </Grid>
           </StackPanel>
 
-          <!-- Step 6: Review & Run -->
+          <!-- Step 8: Review & Run -->
           <StackPanel Spacing="16" IsVisible="{Binding CurrentStep, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:WizardStepKind.ReviewAndRun}}">
             <TextBlock Text="Review &amp; Run" Classes="stepTitle"/>
             <TextBlock Text="Review your configuration before starting the evaluation."

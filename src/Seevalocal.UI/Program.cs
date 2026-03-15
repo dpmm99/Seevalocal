@@ -1,11 +1,15 @@
 using Avalonia;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Seevalocal.Config.Loading;
 using Seevalocal.Config.Merging;
 using Seevalocal.Config.Validation;
+using Seevalocal.Core;
+using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Pipelines.Factories;
 using Seevalocal.Server;
+using Seevalocal.Server.Models;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using Serilog;
@@ -116,6 +120,18 @@ internal class Program
             _ = services.AddTransient<ServerStartCommand>();
             _ = services.AddTransient<ServerCheckCommand>();
             _ = services.AddTransient<PipelineListCommand>();
+            _ = services.AddTransient<EvalGenCommand>();
+
+            // Register eval gen services
+            _ = services.AddSingleton<IEvalGenService>(sp =>
+            {
+                var serverLifecycle = sp.GetService<IServerLifecycleService>();
+                var serverManager = sp.GetRequiredService<LlamaServerManager>();
+                var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                var httpClient = sp.GetRequiredService<HttpClient>();
+                var logger = sp.GetRequiredService<ILogger<EvalGenService>>();
+                return new EvalGenService(serverLifecycle, serverManager, loggerFactory, httpClient, logger);
+            });
 
             var registrar = new TypeRegistrar(services);
             var app = new CommandApp(registrar);
@@ -133,6 +149,9 @@ internal class Program
 
                 _ = config.AddCommand<ExportScriptCommand>("export-script")
                     .WithDescription("Export a shell script from a settings file");
+
+                _ = config.AddCommand<EvalGenCommand>("eval-gen")
+                    .WithDescription("Generate an evaluation set agentically using the judge LLM");
 
                 _ = config.AddBranch("server", static server =>
                 {

@@ -3,35 +3,64 @@ namespace Seevalocal.Core;
 /// <summary>
 /// Built-in Jinja2-style judge prompt templates.
 /// Variables: {prompt}, {expectedOutput}, {actualOutput}, {metadata.KEY}
+/// 
+/// Design principles based on LLM next-token prediction:
+/// 1. XML delimiters for clear structure (models trained on XML-heavy data)
+/// 2. Chain-of-thought BEFORE scoring (forces reasoning before commitment)
+/// 3. Response format at END (recency bias - format is fresh in context)
+/// 4. Explicit negative constraints ("DO NOT...")
+/// 5. Concrete examples when possible
 /// </summary>
 public static class DefaultTemplates
 {
     /// <summary>
     /// Asks the judge to score the actual output on a 0–10 scale.
     /// Uses StructuredJson response format for robustness.
+    /// 
+    /// LLM First Principles:
+    /// - XML tags for clear section boundaries
+    /// - Explicit CoT instruction BEFORE score (reasoning before commitment)
+    /// - Response format at END (recency bias)
+    /// - Explicit "DO NOT" constraints
     /// </summary>
     public const string Standard = """
-        You are an expert evaluator. You will be given a task prompt, an expected output, and an actual output produced by an AI model.
+        You are an expert evaluator. Your task is to evaluate the quality of an AI model's output.
 
-        <TaskPrompt>
+        <instructions>
+        1. Read the Task Prompt, Expected Output, and Actual Output carefully.
+        2. Think through your reasoning step-by-step BEFORE assigning any score.
+        3. Consider accuracy, completeness, and quality.
+        4. Output ONLY a JSON object - no markdown, no explanations outside the JSON.
+        </instructions>
+
+        <task-prompt>
         {prompt}
-        </TaskPrompt>
+        </task-prompt>
 
-        <ExpectedOutput>
+        <expected-output>
         {expectedOutput}
-        </ExpectedOutput>
+        </expected-output>
 
-        <ActualOutput>
+        <actual-output>
         {actualOutput}
-        </ActualOutput>
+        </actual-output>
 
-        Evaluate the quality of the Actual Output. Consider:
-        - Accuracy, 50 points: Does it match the expected output in meaning and content?
-        - Completeness, 30 points: Does it address the full scope of the prompt?
-        - Quality, 20 points: Is it well-formed, clear, and free of errors?
+        <evaluation-criteria>
+        - Accuracy (50 points): Does the meaning match the expected output?
+        - Completeness (30 points): Does it address the full scope of the prompt?
+        - Quality (20 points): Is it well-formed, clear, and error-free?
+        </evaluation-criteria>
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first and MUST consider all parts of the rubric verbally BEFORE giving numbers):
-        {"rationale": "<one sentence explaining your score>", "score": <0-100>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your step-by-step reasoning here>", "score": <number 0-100>}
+
+        IMPORTANT: 
+        - The "rationale" field MUST contain your reasoning BEFORE you give the score.
+        - The "score" field MUST be a number between 0 and 100.
+        - DO NOT include any text outside the JSON object.
+        - DO NOT use markdown code fences like ```json.
+        </response-format>
         """;
 
     /// <summary>
@@ -39,23 +68,41 @@ public static class DefaultTemplates
     /// Uses StructuredJson response format for robustness.
     /// </summary>
     public const string PassFail = """
-        You are an expert evaluator. Determine whether the Actual Output correctly answers the Task Prompt, using the Expected Output as a reference.
+        You are an expert evaluator. Determine whether the Actual Output correctly answers the Task Prompt.
 
-        Task Prompt:
+        <instructions>
+        1. Compare the Actual Output to the Expected Output.
+        2. Think through whether they convey the same essential information.
+        3. Minor wording differences are acceptable; factual errors are not.
+        4. Output ONLY a JSON object - no other text.
+        </instructions>
+
+        <task-prompt>
         {prompt}
+        </task-prompt>
 
-        Expected Output:
+        <expected-output>
         {expectedOutput}
+        </expected-output>
 
-        Actual Output:
+        <actual-output>
         {actualOutput}
+        </actual-output>
 
-        Criteria for PASS:
-        - The actual output conveys the same essential information or meaning as the expected output.
-        - Minor wording differences are acceptable; factual errors or omissions are not.
+        <pass-criteria>
+        - The actual output conveys the same essential information as the expected output.
+        - No factual errors or critical omissions.
+        </pass-criteria>
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence explaining your verdict>", "score": <10 if passed else 0>, "passed": <true|false>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your reasoning here>", "score": <10 if passed else 0>, "passed": <true|false>}
+
+        IMPORTANT:
+        - The "rationale" MUST explain your reasoning BEFORE the verdict.
+        - The "passed" field MUST be true or false (lowercase, no quotes).
+        - DO NOT include any text outside the JSON object.
+        </response-format>
         """;
 
     /// <summary>
@@ -65,101 +112,202 @@ public static class DefaultTemplates
     public const string StructuredJson = """
         You are an expert evaluator. Evaluate the Actual Output and respond with a JSON object.
 
-        Task Prompt:
+        <instructions>
+        1. Read all inputs carefully.
+        2. Think through your reasoning step-by-step.
+        3. Assign a score based on the rubric.
+        4. Output ONLY the JSON - no markdown, no extra text.
+        </instructions>
+
+        <task-prompt>
         {prompt}
+        </task-prompt>
 
-        Expected Output:
+        <expected-output>
         {expectedOutput}
+        </expected-output>
 
-        Actual Output:
+        <actual-output>
         {actualOutput}
+        </actual-output>
 
-        Scoring rubric (0–10):
+        <scoring-rubric>
         0  — Completely wrong or irrelevant
         5  — Partially correct
         10 — Perfect match in meaning and quality
+        </scoring-rubric>
 
-        Respond ONLY with a JSON object in this exact format (no markdown, no extra text, rationale MUST come first):
-        {"rationale": "<one sentence>", "score": <0-10>, "passed": <true|false>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your step-by-step reasoning>", "score": <0-10>, "passed": <true|false>}
+
+        IMPORTANT:
+        - The "rationale" MUST come FIRST and contain your reasoning.
+        - The "score" MUST be a number.
+        - The "passed" MUST be true or false (lowercase).
+        - DO NOT include any text outside the JSON.
+        - DO NOT use markdown code fences.
+        </response-format>
         """;
 
     /// <summary>
     /// Template for translation evaluation. Scores translation accuracy on 0-10 scale.
+    /// 
+    /// LLM First Principles:
+    /// - Clear source/target language specification
+    /// - Explicit evaluation criteria
+    /// - CoT before scoring
     /// </summary>
     public const string TranslationJudgeTemplate = """
         You are an expert translator evaluator. Evaluate the quality of a translation.
 
-        Task Prompt:
+        <instructions>
+        1. Compare the model's translation to the reference translation.
+        2. Consider accuracy, fluency, and naturalness.
+        3. Think through your reasoning BEFORE assigning a score.
+        4. Output ONLY a JSON object.
+        </instructions>
+
+        <source-text>
         {prompt}
+        </source-text>
 
-        Expected Output (reference translation):
+        <reference-translation>
         {expectedOutput}
+        </reference-translation>
 
-        Actual Output (model translation):
+        <model-translation>
         {actualOutput}
+        </model-translation>
 
-        Scoring rubric (0–10):
-        0  — Completely wrong language or gibberish
-        5  — Partially correct translation with significant errors
-        10 — Perfect, natural translation with equivalent meaning
+        <scoring-rubric>
+        0  — Wrong language or gibberish
+        3  — Major errors, wrong meaning
+        5  — Partially correct with significant errors
+        7  — Good translation with minor issues
+        10 — Perfect, natural, equivalent meaning
+        </scoring-rubric>
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence>", "score": <0-10>, "passed": <true if score >= 6>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your step-by-step reasoning>", "score": <0-10>, "passed": <true if score >= 6 else false>}
+
+        IMPORTANT:
+        - The "rationale" MUST explain your reasoning first.
+        - The "score" MUST be a number 0-10.
+        - The "passed" MUST be true or false.
+        - DO NOT include any text outside the JSON.
+        </response-format>
         """;
 
     /// <summary>
     /// Template for casual Q&A evaluation. Scores semantic correctness.
+    /// 
+    /// LLM First Principles:
+    /// - Focus on semantic equivalence, not exact wording
+    /// - Clear pass/fail threshold
+    /// - CoT before scoring
     /// </summary>
     public const string CasualQAJudgeTemplate = """
         You are an expert evaluator of conversational responses.
 
-        Task Prompt:
+        <instructions>
+        1. Compare the model's answer to the expected answer.
+        2. Focus on SEMANTIC EQUIVALENCE, not exact wording.
+        3. Minor phrasing differences are acceptable.
+        4. Factual errors or missing key information are not acceptable.
+        5. Think through your reasoning BEFORE assigning a score.
+        6. Output ONLY a JSON object.
+        </instructions>
+
+        <question>
         {prompt}
+        </question>
 
-        Expected Output:
+        <expected-answer>
         {expectedOutput}
+        </expected-answer>
 
-        Actual Output:
+        <model-answer>
         {actualOutput}
+        </model-answer>
 
-        Evaluate whether the Actual Output conveys the same essential information as the Expected Output.
-        Minor wording differences are acceptable; factual errors are not.
-
-        Scoring rubric (0–10):
+        <scoring-rubric>
         0  — Completely wrong or irrelevant
-        5  — Partially correct but missing key information
-        10 — Semantically equivalent to expected output
+        3  — Missing key information or has factual errors
+        5  — Partially correct but incomplete
+        7  — Mostly correct with minor issues
+        10 — Semantically equivalent to expected answer
+        </scoring-rubric>
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence>", "score": <0-10>, "passed": <true if score >= 6>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your step-by-step reasoning>", "score": <0-10>, "passed": <true if score >= 6 else false>}
+
+        IMPORTANT:
+        - The "rationale" MUST explain your reasoning first.
+        - The "score" MUST be a number 0-10.
+        - The "passed" MUST be true or false.
+        - DO NOT include any text outside the JSON.
+        </response-format>
         """;
 
     /// <summary>
     /// Template for code quality evaluation. Scores code correctness and style.
+    /// 
+    /// LLM First Principles:
+    /// - Explicit criteria for code evaluation
+    /// - Clear scoring rubric with concrete thresholds
+    /// - CoT before scoring
     /// </summary>
     public const string CodeQualityJudgeTemplate = """
         You are an expert code reviewer. Evaluate the quality of generated code.
 
-        Task Prompt:
+        <instructions>
+        1. Read the task prompt and understand the requirements.
+        2. Compare the generated code to the reference solution.
+        3. Evaluate correctness, style, and completeness.
+        4. Think through your reasoning BEFORE assigning a score.
+        5. Output ONLY a JSON object.
+        </instructions>
+
+        <task-prompt>
         {prompt}
+        </task-prompt>
 
-        Expected Output (reference solution):
+        <reference-solution>
         {expectedOutput}
+        </reference-solution>
 
-        Actual Output (generated code):
+        <generated-code>
         {actualOutput}
+        </generated-code>
 
-        Evaluate the code for:
-        - Correctness: Does it solve the problem?
-        - Style: Is it idiomatic and well-formatted?
-        - Completeness: Does it handle edge cases?
+        <evaluation-criteria>
+        - Correctness: Does the code solve the problem correctly?
+        - Style: Is it idiomatic, well-formatted, and readable?
+        - Completeness: Does it handle edge cases and errors?
+        - Efficiency: Is the approach reasonable (not necessarily optimal)?
+        </evaluation-criteria>
 
-        Scoring rubric (0–10):
-        0  — Does not compile or completely wrong
-        5  — Compiles but has significant bugs or style issues
-        10 — Correct, clean, idiomatic code
+        <scoring-rubric>
+        0  — Does not compile or completely wrong approach
+        3  — Compiles but has major bugs or wrong logic
+        5  — Works but has significant issues (bugs, style, edge cases)
+        7  — Good solution with minor issues
+        10 — Correct, clean, idiomatic, handles edge cases
+        </scoring-rubric>
 
-        Respond ONLY with a JSON object in this exact format (rationale MUST come first):
-        {"rationale": "<one sentence>", "score": <0-10>, "passed": <true if score >= 6>}
+        <response-format>
+        Respond ONLY with a JSON object in this exact format:
+        {"rationale": "<your step-by-step reasoning>", "score": <0-10>, "passed": <true if score >= 6 else false>}
+
+        IMPORTANT:
+        - The "rationale" MUST explain your reasoning first.
+        - The "score" MUST be a number 0-10.
+        - The "passed" MUST be true or false.
+        - DO NOT include any text outside the JSON.
+        - DO NOT use markdown code fences.
+        </response-format>
         """;
 }

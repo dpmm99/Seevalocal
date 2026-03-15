@@ -15,7 +15,7 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace Seevalocal.UI.ViewModels;
 
-public enum AppView { Wizard, RunDashboard, Results, Settings }
+public enum AppView { Wizard, RunDashboard, Results, Settings, EvalGen }
 
 /// <summary>
 /// Top-level ViewModel for the Avalonia MainWindow.
@@ -69,6 +69,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>View model for the Settings view.</summary>
     public SettingsViewModel SettingsViewModel { get; }
 
+    /// <summary>View model for the Generate Eval Set view.</summary>
+    public EvalGenViewModel EvalGenViewModel { get; }
+
     /// <summary>
     /// Gets the collection of active toast notifications for display in the UI.
     /// </summary>
@@ -80,8 +83,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public IEvalRunViewModel? ActiveRun
     {
         get => _activeRun;
-        private set => SetField(ref _activeRun, value);
+        private set
+        {
+            SetField(ref _activeRun, value);
+            OnPropertyChanged(nameof(CanNavigateToEvalGen));
+        }
     }
+
+    /// <summary>
+    /// Whether navigation to Eval Gen view is allowed.
+    /// Blocked when any run is active (regular eval run or eval gen run).
+    /// </summary>
+    public bool CanNavigateToEvalGen => !IsAnyRunActive;
+
+    /// <summary>
+    /// Whether any run is currently active (eval run or eval gen run).
+    /// </summary>
+    private bool IsAnyRunActive => ActiveRun?.IsRunning == true || EvalGenViewModel?.IsRunning == true;
 
     // ─── Navigation Commands ──────────────────────────────────────────────────
 
@@ -89,6 +107,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand NavigateToDashboardCommand { get; }
     public ICommand NavigateToResultsCommand { get; }
     public ICommand NavigateToSettingsCommand { get; }
+    public ICommand NavigateToEvalGenCommand { get; }
     public ICommand AddSettingsFileCommand { get; }
 
     // ─── Settings View Commands ───────────────────────────────────────────────
@@ -115,7 +134,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ILogger<MainWindowViewModel> logger,
         IFilePickerService filePicker,
         IWizardViewModel wizardState,
-        IToastService toastService)
+        IToastService toastService,
+        EvalGenViewModel evalGenViewModel)
     {
         _configService = configService;
         _runnerService = runnerService;
@@ -125,6 +145,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _toastService = toastService;
         WizardState = wizardState;
         SettingsViewModel = new SettingsViewModel();
+        EvalGenViewModel = evalGenViewModel;
 
         // Subscribe to settings layer changes to update the SettingsViewModel
         SettingsLayers.CollectionChanged += (_, e) =>
@@ -175,6 +196,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
         };
 
+        // Subscribe to eval gen run state changes to update navigation availability
+        EvalGenViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(EvalGenViewModel.IsRunning) or nameof(EvalGenViewModel.IsCompleted))
+            {
+                OnPropertyChanged(nameof(CanNavigateToEvalGen));
+            }
+        };
+
         NavigateToWizardCommand = new RelayCommand(() =>
         {
             // Sync defaults from loaded settings when navigating to wizard
@@ -188,6 +218,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         NavigateToDashboardCommand = new RelayCommand(() => CurrentView = AppView.RunDashboard);
         NavigateToResultsCommand = new RelayCommand(() => CurrentView = AppView.Results);
         NavigateToSettingsCommand = new RelayCommand(() => CurrentView = AppView.Settings);
+        NavigateToEvalGenCommand = new RelayCommand(() => CurrentView = AppView.EvalGen, () => CanNavigateToEvalGen);
         AddSettingsFileCommand = new RelayCommand(async () => await AddSettingsFileAsync());
 
         // Settings view commands

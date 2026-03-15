@@ -426,6 +426,7 @@ public record PartialConfig
     public PartialJudgeConfig? Judge { get; init; }
     public OutputConfig? Output { get; init; }
     public PartialDataSourceConfig? DataSource { get; init; }
+    public Dictionary<string, object?>? PipelineOptions { get; init; }
 
     /// <summary>Alias for LlamaServer (for CLI compatibility).</summary>
     public PartialLlamaServerSettings? LlamaSettings
@@ -444,6 +445,7 @@ public record PartialDataSourceConfig
     public string? FilePath { get; init; }
     public string? PromptDirectoryPath { get; init; }
     public string? ExpectedOutputDirectoryPath { get; init; }
+    public FieldMapping? FieldMapping { get; init; }
 
     /// <summary>Alias for PromptDirectoryPath (for CLI compatibility).</summary>
     public string? PromptDirectory

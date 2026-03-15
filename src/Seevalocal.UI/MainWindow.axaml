@@ -76,6 +76,16 @@
           </StackPanel>
         </Button>
 
+        <Button Classes="navButton"
+                Classes.active="{Binding CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.EvalGen}}"
+                Command="{Binding NavigateToEvalGenCommand}"
+                IsVisible="{Binding CanNavigateToEvalGen}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="✨" FontSize="16"/>
+            <TextBlock Text="Generate Eval Set" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
         <Separator Margin="0,16,0,8" Background="#45475A"/>
         
         <!-- Settings file stack -->
@@ -119,6 +129,11 @@
         <views:SettingsView Grid.Row="0" x:Name="SettingsView"
             DataContext="{Binding SettingsViewModel}"
             IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.Settings}}"/>
+
+        <!-- Generate Eval Set View -->
+        <views:EvalGenView Grid.Row="0" x:Name="EvalGenView"
+            DataContext="{Binding EvalGenViewModel}"
+            IsVisible="{Binding $parent[Window].DataContext.CurrentView, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static vm:AppView.EvalGen}}"/>
       </Grid>
     </Border>
 

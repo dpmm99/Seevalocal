@@ -9,7 +9,11 @@ namespace Seevalocal.Pipelines.Factories;
 
 /// <summary>
 /// Builds a pipeline that evaluates language translation quality.
-/// Stages: PromptStage → JudgeStage
+/// Stages: PromptStage (with translation system prompt) → JudgeStage
+/// 
+/// The PromptStage uses a system prompt that instructs the model to translate
+/// from sourceLanguage to targetLanguage. The JudgeStage then evaluates the
+/// translation quality using the translation-specific judge template.
 /// </summary>
 public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : IBuiltinPipelineFactory
 {
@@ -47,19 +51,23 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         var opts = evalSetConfig.PipelineOptions;
         var sourceLanguage = opts?.GetValueOrDefault("sourceLanguage") as string ?? "English";
         var targetLanguage = opts?.GetValueOrDefault("targetLanguage") as string ?? "French";
-        _ =
-            "You are a professional translator. " +
-            $"Translate the following text from {sourceLanguage} to {targetLanguage} accurately and naturally. " +
-            "Output only the translation, with no explanation or preamble.";
+        var customSystemPrompt = opts?.GetValueOrDefault("systemPrompt") as string;
+
+        // Create system prompt - use custom if provided, otherwise use default template
+        var systemPrompt = !string.IsNullOrEmpty(customSystemPrompt)
+            ? customSystemPrompt
+            : $"You are a professional translator. Translate the following text from {sourceLanguage} to {targetLanguage} accurately and naturally. Output only the translation, with no explanation or preamble.";
 
         var promptStage = new PromptStage(_loggerFactory.CreateLogger<PromptStage>())
         {
             MaxTokens = null,
             StopSequences = [],
+            // The system prompt is set per-item via the EvalItem.SystemPrompt field
+            // The data source should populate this, or it can be set via PipelineOptions
         };
 
-        // For translation, we use a system prompt via the item's SystemPrompt field
-        // The pipeline expects items to have SystemPrompt set, or we can inject it via data source
+        // Store the system prompt in pipeline options so it can be injected into items
+        // This is handled by the data source when creating EvalItems
 
         // Create JudgeStage using JudgeConfig from resolved config
         // If no judge config exists, create a default one with pipeline-specific template

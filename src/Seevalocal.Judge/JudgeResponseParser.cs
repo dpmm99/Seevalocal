@@ -20,10 +20,6 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
     private static readonly Regex PassFailPattern =
         GenPassFailPattern();
 
-    // Strips markdown JSON fences: ```json ... ``` or ``` ... ```
-    private static readonly Regex JsonFencePattern =
-        GenJsonFencePattern();
-
     private readonly ILogger<JudgeResponseParser> _logger = logger;
 
     /// <summary>
@@ -163,7 +159,7 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
 
     private static string StripMarkdownFences(string text)
     {
-        var match = new Regex("```(json)?(.*)```", RegexOptions.Singleline).Match(text);
+        var match = GenJsonFencePattern().Match(text);
         return match.Success ? match.Groups[2].Value.Trim() : text;
     }
 
@@ -198,6 +194,6 @@ public sealed partial class JudgeResponseParser(ILogger<JudgeResponseParser> log
     private static partial Regex GenFirstNumberPattern();
     [GeneratedRegex(@"\b(?<verdict>PASS|FAIL)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
     private static partial Regex GenPassFailPattern();
-    [GeneratedRegex(@"^```(?:json)?\s*\n?(.*?)\n?```\s*$", RegexOptions.Compiled | RegexOptions.Singleline)]
+    [GeneratedRegex("```(json)?(.*)```", RegexOptions.Singleline)]
     private static partial Regex GenJsonFencePattern();
 }

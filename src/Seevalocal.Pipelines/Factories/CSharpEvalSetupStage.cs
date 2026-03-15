@@ -11,9 +11,10 @@ namespace Seevalocal.Pipelines.Factories;
 /// 1. Copies the template project to a per-item temp directory.
 /// 2. Writes the generated code to Generated.cs (via FileWriterStage).
 /// 3. Optionally copies the item's test file.
-/// 4. Runs dotnet build (CompileStage).
-/// 5. Runs dotnet test (TestStage).
-/// 6. Optionally cleans up the temp directory.
+/// 4. Runs a custom build script if specified in metadata (e.g., "buildScriptPath").
+/// 5. Runs dotnet build (CompileStage).
+/// 6. Runs dotnet test (TestStage).
+/// 7. Optionally cleans up the temp directory.
 /// </para>
 /// <para>This stage is self-contained so that the temp path can use the item ID.</para>
 /// </summary>
@@ -44,6 +45,7 @@ internal sealed class CSharpEvalSetupStage(
         var evalDir = Path.Combine(tempRoot, $"eval-{item.Id}");
         var generatedCsPath = Path.Combine(evalDir, "Generated.cs");
         var testSuiteSource = item.Metadata.TryGetValue("testFilePath", out var tf) ? tf : null!;
+        var buildScriptSource = item.Metadata.TryGetValue("buildScriptPath", out var bs) ? bs : null;
 
         var succeeded = false;
         Dictionary<string, object?> allOutputs = [];
@@ -62,7 +64,31 @@ internal sealed class CSharpEvalSetupStage(
                 File.Copy(testSuiteSource, Path.Combine(destTestsDir, "TestSuite.cs"), overwrite: true);
             }
 
-            // 3. Write generated code
+            // 3. Copy custom build script if specified
+            string? buildScriptPath = null;
+            if (!string.IsNullOrEmpty(buildScriptSource) && File.Exists(buildScriptSource))
+            {
+                buildScriptPath = Path.Combine(evalDir, "build.sh");
+                File.Copy(buildScriptSource, buildScriptPath, overwrite: true);
+                // Make executable on Unix
+                if (!OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        var chmod = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "chmod",
+                            Arguments = $"+x {buildScriptPath}",
+                            UseShellExecute = false,
+                        };
+                        using var p = System.Diagnostics.Process.Start(chmod);
+                        if (p != null) await p.WaitForExitAsync(context.CancellationToken);
+                    }
+                    catch { /* best-effort */ }
+                }
+            }
+
+            // 4. Write generated code
             var fileWriter = new FileWriterStage(_loggerFactory.CreateLogger<FileWriterStage>())
             {
                 OutputFilePathTemplate = generatedCsPath,
@@ -73,7 +99,41 @@ internal sealed class CSharpEvalSetupStage(
                 return writeResult;
             MergeInto(allOutputs, allMetrics, writeResult);
 
-            // 4. CompileStage
+            // 5. Run custom build script if specified
+            if (!string.IsNullOrEmpty(buildScriptPath))
+            {
+                var buildScriptStage = new ExternalProcessStage(_loggerFactory.CreateLogger<ExternalProcessStage>())
+                {
+                    StageName = "CustomBuildStage",
+                    ExecutablePath = OperatingSystem.IsWindows() ? "cmd.exe" : "bash",
+                    Arguments = OperatingSystem.IsWindows() ? $"/c {buildScriptPath}" : buildScriptPath,
+                    WorkingDirectoryPath = evalDir,
+                    TimeoutSeconds = _compileTimeoutSeconds,
+                    MetricExtractors =
+                    [
+                        new MetricExtractorConfig
+                        {
+                            MetricName = "customBuildSucceededBool",
+                            RegexPattern = "(success|SUCCESS|passed|PASSED)",
+                            Type = MetricType.Bool,
+                        },
+                    ],
+                };
+                var buildScriptCtx = context with { StageOutputs = allOutputs };
+                var buildScriptResult = await buildScriptStage.ExecuteAsync(buildScriptCtx);
+                MergeInto(allOutputs, allMetrics, buildScriptResult);
+
+                if (!buildScriptResult.Succeeded)
+                {
+                    return StageResult.Success(allOutputs, allMetrics) with
+                    {
+                        Succeeded = false,
+                        FailureReason = $"Custom build script failed: {buildScriptResult.FailureReason}"
+                    };
+                }
+            }
+
+            // 6. CompileStage
             var compileStage = BuildCompileStage(evalDir);
             var compileCtx = context with { StageOutputs = allOutputs };
             var compileResult = await compileStage.ExecuteAsync(compileCtx);
@@ -88,7 +148,7 @@ internal sealed class CSharpEvalSetupStage(
                 };
             }
 
-            // 5. TestStage
+            // 7. TestStage
             var testStage = BuildTestStage(evalDir);
             var testCtx = context with { StageOutputs = allOutputs };
             var testResult = await testStage.ExecuteAsync(testCtx);

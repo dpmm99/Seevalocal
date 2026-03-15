@@ -55,7 +55,7 @@ public class CheckpointWizardIntegrationTests : IAsyncLifetime
             // Use reflection to call the private PopulateFromCheckpointConfig method
             var method = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            method?.Invoke(wizard, new object[] { checkpointConfig });
+            method?.Invoke(wizard, [checkpointConfig]);
         }
 
         // Assert - validate each step
