@@ -52,21 +52,6 @@ public record EvalGenConfig
     public string? SystemPrompt { get; init; }
 
     /// <summary>
-    /// Maximum number of concurrent category generation requests.
-    /// </summary>
-    public int MaxConcurrentCategoryGenerations { get; init; } = 1;
-
-    /// <summary>
-    /// Maximum number of concurrent problem generation requests per category.
-    /// </summary>
-    public int MaxConcurrentProblemGenerations { get; init; } = 4;
-
-    /// <summary>
-    /// Maximum number of concurrent problem flesh-out requests.
-    /// </summary>
-    public int MaxConcurrentFleshOutGenerations { get; init; } = 4;
-
-    /// <summary>
     /// Whether to continue from a previous checkpoint.
     /// </summary>
     public bool ContinueFromCheckpoint { get; init; }
@@ -75,6 +60,24 @@ public record EvalGenConfig
     /// Path to the checkpoint database for resumption.
     /// </summary>
     public string? CheckpointDatabasePath { get; init; }
+
+    /// <summary>
+    /// Custom prompt template for Phase 1 (category generation).
+    /// Use tags like {TargetCategoryCount}, {DomainPrompt}, {ExistingCategoriesSection}, {ContextPromptSection}.
+    /// </summary>
+    public string? Phase1PromptTemplate { get; init; }
+
+    /// <summary>
+    /// Custom prompt template for Phase 2 (problem generation).
+    /// Use tags like {CategoryName}, {TargetProblemsPerCategory}, {DomainPrompt}, {ExistingProblemsSection}, {ContextPromptSection}.
+    /// </summary>
+    public string? Phase2PromptTemplate { get; init; }
+
+    /// <summary>
+    /// Custom prompt template for Phase 3 (flesh-out).
+    /// Use tags like {OneLineStatement}, {DomainPrompt}, {ContextPromptSection}.
+    /// </summary>
+    public string? Phase3PromptTemplate { get; init; }
 }
 
 /// <summary>

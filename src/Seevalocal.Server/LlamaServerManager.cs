@@ -60,7 +60,7 @@ public sealed partial class LlamaServerManager(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(config);
-        ArgumentNullException.ThrowIfNull(settings);
+        if (config.Manage != false) ArgumentNullException.ThrowIfNull(settings);
 
         // Reset loading state
         _loadingDotCount = 0;
@@ -459,6 +459,7 @@ public sealed partial class LlamaServerManager(
             } while (charsRead > 0);
         }
         catch (ObjectDisposedException) { /* Expected during shutdown */ }
+        catch (OperationCanceledException) { /* Expected during cancellation */ }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error reading llama-server output stream");

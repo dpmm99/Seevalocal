@@ -1,9 +1,7 @@
 using Microsoft.Extensions.Logging;
-using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Server;
 using Seevalocal.Server.Models;
-using Seevalocal.UI.Services;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -14,13 +12,13 @@ namespace Seevalocal.UI.Services;
 /// Implementation of IEvalGenService for agentic evaluation set generation.
 /// Uses the configured judge LLM to generate categories and problems.
 /// </summary>
-public sealed class EvalGenService : IEvalGenService, IDisposable
+public sealed partial class EvalGenService(
+    IServerLifecycleService? serverLifecycle,
+    LlamaServerManager serverManager,
+    ILoggerFactory loggerFactory,
+    HttpClient httpClient,
+    ILogger<EvalGenService> logger) : IEvalGenService, IDisposable
 {
-    private readonly IServerLifecycleService? _serverLifecycle;
-    private readonly LlamaServerManager _serverManager;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<EvalGenService> _logger;
     private EvalGenRun? _currentRun;
     private LlamaServerClient? _managedJudgeClient;
     private bool _disposed;
@@ -30,31 +28,6 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
     private double _judgeTemperature = 0.7;
     private int _judgeMaxTokens = 4096;
     private int _judgeParallelSlotCount = 4;
-
-    // TODO: When adding web search/documentation lookup feature:
-    // - Add IWebSearchService dependency for searching web for problem patterns
-    // - Add IDocumentationLookupService dependency for fetching relevant documentation
-    // - In Phase 1 (category generation), search for "common LLM failure modes",
-    //   "LLM benchmark categories", "AI evaluation datasets" to supplement prompts
-    // - In Phase 2 (problem generation), search for specific problem types within each category
-    // - In Phase 3 (flesh-out), fetch documentation relevant to each problem domain
-    //   to ensure accurate expected outputs
-    // - Store search results in checkpoint DB for resumption
-    // - Add config options: EnableWebSearch, EnableDocumentationLookup, SearchDepth
-
-    public EvalGenService(
-        IServerLifecycleService? serverLifecycle,
-        LlamaServerManager serverManager,
-        ILoggerFactory loggerFactory,
-        HttpClient httpClient,
-        ILogger<EvalGenService> logger)
-    {
-        _serverLifecycle = serverLifecycle;
-        _serverManager = serverManager;
-        _httpClient = httpClient;
-        _loggerFactory = loggerFactory;
-        _logger = logger;
-    }
 
     private void InitializeFromJudgeConfig(JudgeConfig? judgeConfig)
     {
@@ -97,8 +70,80 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             _judgeMaxTokens = 4096;
         }
 
-        _logger.LogInformation("EvalGenService configured: BaseUrl={Url}, Temperature={Temp}, MaxTokens={Tokens}, Slots={Slots}",
+        logger.LogInformation("EvalGenService configured: BaseUrl={Url}, Temperature={Temp}, MaxTokens={Tokens}, Slots={Slots}",
             _judgeBaseUrl, _judgeTemperature, _judgeMaxTokens, _judgeParallelSlotCount);
+    }
+
+    /// <summary>
+    /// Merges two judge configs, with overlayConfig taking precedence over baseConfig.
+    /// Used to overlay checkpoint judge config on top of current settings.
+    /// </summary>
+    private static JudgeConfig MergeJudgeConfigs(JudgeConfig baseConfig, JudgeConfig overlayConfig)
+    {
+        // Start with overlay config (checkpoint - takes precedence)
+        // Fill in any missing values from base config (current settings from files/UI)
+        return overlayConfig with
+        {
+            // Use overlay values, fall back to base for missing fields
+            BaseUrl = overlayConfig.BaseUrl ?? baseConfig.BaseUrl,
+            ServerConfig = overlayConfig.ServerConfig with
+            {
+                // Merge ServerConfig - overlay takes precedence but fill in missing from base
+                Host = overlayConfig.ServerConfig?.Host ?? baseConfig.ServerConfig?.Host ?? "localhost",
+                Port = overlayConfig.ServerConfig?.Port ?? baseConfig.ServerConfig?.Port ?? 8081,
+                ExecutablePath = overlayConfig.ServerConfig?.ExecutablePath ?? baseConfig.ServerConfig?.ExecutablePath,
+                Model = overlayConfig.ServerConfig?.Model ?? baseConfig.ServerConfig?.Model,
+                ApiKey = overlayConfig.ServerConfig?.ApiKey ?? baseConfig.ServerConfig?.ApiKey,
+                ExtraArgs = overlayConfig.ServerConfig?.ExtraArgs ?? baseConfig.ServerConfig?.ExtraArgs ?? [],
+                BaseUrl = overlayConfig.ServerConfig?.BaseUrl ?? baseConfig.ServerConfig?.BaseUrl,
+                Manage = overlayConfig.ServerConfig?.Manage ?? baseConfig.ServerConfig?.Manage
+            },
+            ServerSettings = overlayConfig.ServerSettings with
+            {
+                // Merge ServerSettings - overlay takes precedence but fill in missing from base
+                SamplingTemperature = overlayConfig.ServerSettings?.SamplingTemperature ?? baseConfig.ServerSettings?.SamplingTemperature ?? 0.7,
+                ContextWindowTokens = overlayConfig.ServerSettings?.ContextWindowTokens ?? baseConfig.ServerSettings?.ContextWindowTokens ?? 4096,
+                ParallelSlotCount = overlayConfig.ServerSettings?.ParallelSlotCount ?? baseConfig.ServerSettings?.ParallelSlotCount ?? 4,
+                GpuLayerCount = overlayConfig.ServerSettings?.GpuLayerCount ?? baseConfig.ServerSettings?.GpuLayerCount,
+                ModelAlias = overlayConfig.ServerSettings?.ModelAlias ?? baseConfig.ServerSettings?.ModelAlias,
+                BatchSizeTokens = overlayConfig.ServerSettings?.BatchSizeTokens ?? baseConfig.ServerSettings?.BatchSizeTokens,
+                UbatchSizeTokens = overlayConfig.ServerSettings?.UbatchSizeTokens ?? baseConfig.ServerSettings?.UbatchSizeTokens,
+                EnableContinuousBatching = overlayConfig.ServerSettings?.EnableContinuousBatching ?? baseConfig.ServerSettings?.EnableContinuousBatching,
+                EnableCachePrompt = overlayConfig.ServerSettings?.EnableCachePrompt ?? baseConfig.ServerSettings?.EnableCachePrompt,
+                EnableContextShift = overlayConfig.ServerSettings?.EnableContextShift ?? baseConfig.ServerSettings?.EnableContextShift,
+                SplitMode = overlayConfig.ServerSettings?.SplitMode ?? baseConfig.ServerSettings?.SplitMode,
+                KvCacheTypeK = overlayConfig.ServerSettings?.KvCacheTypeK ?? baseConfig.ServerSettings?.KvCacheTypeK,
+                KvCacheTypeV = overlayConfig.ServerSettings?.KvCacheTypeV ?? baseConfig.ServerSettings?.KvCacheTypeV,
+                EnableKvOffload = overlayConfig.ServerSettings?.EnableKvOffload ?? baseConfig.ServerSettings?.EnableKvOffload,
+                EnableFlashAttention = overlayConfig.ServerSettings?.EnableFlashAttention ?? baseConfig.ServerSettings?.EnableFlashAttention,
+                TopP = overlayConfig.ServerSettings?.TopP ?? baseConfig.ServerSettings?.TopP,
+                TopK = overlayConfig.ServerSettings?.TopK ?? baseConfig.ServerSettings?.TopK,
+                MinP = overlayConfig.ServerSettings?.MinP ?? baseConfig.ServerSettings?.MinP,
+                RepeatPenalty = overlayConfig.ServerSettings?.RepeatPenalty ?? baseConfig.ServerSettings?.RepeatPenalty,
+                RepeatLastNTokens = overlayConfig.ServerSettings?.RepeatLastNTokens ?? baseConfig.ServerSettings?.RepeatLastNTokens,
+                PresencePenalty = overlayConfig.ServerSettings?.PresencePenalty ?? baseConfig.ServerSettings?.PresencePenalty,
+                FrequencyPenalty = overlayConfig.ServerSettings?.FrequencyPenalty ?? baseConfig.ServerSettings?.FrequencyPenalty,
+                Seed = overlayConfig.ServerSettings?.Seed ?? baseConfig.ServerSettings?.Seed,
+                ThreadCount = overlayConfig.ServerSettings?.ThreadCount ?? baseConfig.ServerSettings?.ThreadCount,
+                HttpThreadCount = overlayConfig.ServerSettings?.HttpThreadCount ?? baseConfig.ServerSettings?.HttpThreadCount,
+                ChatTemplate = overlayConfig.ServerSettings?.ChatTemplate ?? baseConfig.ServerSettings?.ChatTemplate,
+                EnableJinja = overlayConfig.ServerSettings?.EnableJinja ?? baseConfig.ServerSettings?.EnableJinja,
+                ReasoningFormat = overlayConfig.ServerSettings?.ReasoningFormat ?? baseConfig.ServerSettings?.ReasoningFormat,
+                LogVerbosity = overlayConfig.ServerSettings?.LogVerbosity ?? baseConfig.ServerSettings?.LogVerbosity,
+                EnableMlock = overlayConfig.ServerSettings?.EnableMlock ?? baseConfig.ServerSettings?.EnableMlock,
+                EnableMmap = overlayConfig.ServerSettings?.EnableMmap ?? baseConfig.ServerSettings?.EnableMmap,
+                ServerTimeoutSeconds = overlayConfig.ServerSettings?.ServerTimeoutSeconds ?? baseConfig.ServerSettings?.ServerTimeoutSeconds,
+                ExtraArgs = overlayConfig.ServerSettings?.ExtraArgs ?? baseConfig.ServerSettings?.ExtraArgs
+            },
+            // Preserve other overlay fields
+            JudgePromptTemplate = overlayConfig.JudgePromptTemplate,
+            ResponseFormat = overlayConfig.ResponseFormat,
+            ScoreMinValue = overlayConfig.ScoreMinValue,
+            ScoreMaxValue = overlayConfig.ScoreMaxValue,
+            JudgeSystemPrompt = overlayConfig.JudgeSystemPrompt,
+            JudgeMaxTokenCount = overlayConfig.JudgeMaxTokenCount,
+            JudgeSamplingTemperature = overlayConfig.JudgeSamplingTemperature
+        };
     }
 
     private static HttpClient CreateHttpClient(ServerInfo serverInfo)
@@ -141,27 +186,75 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         // Create collector first so it can be shared with UI
         var collector = new EvalGenCheckpointCollector(checkpointPath);
 
-        _currentRun = new EvalGenRun(config, async ct => await ExecuteGenerationAsync(config, judgeConfig, ct, checkpointPath, collector));
+        _currentRun = new EvalGenRun(config, async ct => await ExecuteGenerationAsync(config, judgeConfig, collector, ct));
         _currentRun.CheckpointDatabasePath = checkpointPath;
         _currentRun.Collector = collector;
         _currentRun.Start();
         return Task.FromResult(_currentRun);
     }
 
-    private async Task ExecuteGenerationAsync(EvalGenConfig config, JudgeConfig? judgeConfig, CancellationToken cancellationToken, string checkpointPath, EvalGenCheckpointCollector collector)
+    private async Task ExecuteGenerationAsync(EvalGenConfig config, JudgeConfig? judgeConfig, EvalGenCheckpointCollector collector, CancellationToken cancellationToken)
     {
         try
         {
-            // Initialize configuration from judge config
+            logger.LogInformation("Starting eval generation: {RunName}, ContinueFromCheckpoint={ContinueFromCheckpoint}", config.RunName, config.ContinueFromCheckpoint);
+
+            // Ensure output directory exists
+            Directory.CreateDirectory(config.OutputDirectoryPath);
+            var promptsDir = Path.Combine(config.OutputDirectoryPath, "prompts");
+            var expectedDir = Path.Combine(config.OutputDirectoryPath, "expected_outputs");
+            Directory.CreateDirectory(promptsDir);
+            Directory.CreateDirectory(expectedDir);
+
+            // Use provided collector (already created and cached)
+            await collector.InitializeAsync(cancellationToken);
+
+            // Load or save startup parameters - DO THIS FIRST to get judge config for checkpoint resumes
+            var savedParams = await collector.LoadStartupParametersAsync(cancellationToken);
+            if (savedParams != null && config.ContinueFromCheckpoint)
+            {
+                logger.LogInformation("Continuing from checkpoint: {RunName}", savedParams.Value.Config.RunName);
+                logger.LogInformation("Checkpoint JudgeConfig: Manage={Manage}, BaseUrl={BaseUrl}, Model={Model}, ExecutablePath={ExecPath}",
+                    savedParams.Value.JudgeConfig?.Manage,
+                    savedParams.Value.JudgeConfig?.BaseUrl,
+                    savedParams.Value.JudgeConfig?.ServerConfig?.Model?.FilePath,
+                    savedParams.Value.JudgeConfig?.ServerConfig?.ExecutablePath);
+                config = savedParams.Value.Config;
+                // Merge: checkpoint judge config is overlaid ON TOP of current judge config from settings
+                // Checkpoint values take precedence, but missing values are filled from current config
+                if (savedParams.Value.JudgeConfig != null && judgeConfig != null)
+                {
+                    // Overlay checkpoint config on top of current judge config (checkpoint wins)
+                    judgeConfig = MergeJudgeConfigs(baseConfig: judgeConfig, overlayConfig: savedParams.Value.JudgeConfig);
+                }
+                else if (savedParams.Value.JudgeConfig != null)
+                {
+                    // No current judge config, use checkpoint config as-is
+                    judgeConfig = savedParams.Value.JudgeConfig;
+                }
+            }
+            else
+            {
+                await collector.SaveStartupParametersAsync(config, judgeConfig, cancellationToken);
+            }
+
+            // Initialize configuration from judge config (after checkpoint load so we use the saved config)
             InitializeFromJudgeConfig(judgeConfig);
 
-            _logger.LogInformation("Starting eval generation: {RunName}", config.RunName);
+            logger.LogInformation("Judge config for this run: Manage={Manage}, BaseUrl={BaseUrl}, Model={Model}, ExecutablePath={ExecPath}",
+                judgeConfig?.Manage,
+                judgeConfig?.BaseUrl ?? $"{judgeConfig?.ServerConfig?.Host}:{judgeConfig?.ServerConfig?.Port}",
+                judgeConfig?.ServerConfig?.Model?.FilePath,
+                judgeConfig?.ServerConfig?.ExecutablePath);
 
-            // Start managed judge server if configured
+            // Start managed judge server - use != false pattern like TwoPhaseEvalRunViewModel
+            // When resuming from checkpoint, always start the server (don't try to connect to external)
             LlamaServerClient? judgeClientToUse = null;
-            if (judgeConfig is { Manage: true } && _serverLifecycle != null)
+            bool shouldManageServer = judgeConfig is { Manage: not false } || config.ContinueFromCheckpoint;
+            
+            if (shouldManageServer && serverLifecycle != null)
             {
-                _logger.LogInformation("Starting judge llama-server...");
+                logger.LogInformation("Starting judge llama-server (Manage={Manage})...", judgeConfig?.Manage);
                 _currentRun!.UpdateProgress(new EvalGenProgress
                 {
                     CurrentPhase = EvalGenPhase.GeneratingCategories,
@@ -173,28 +266,27 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                     StatusMessage = "Starting judge llama-server..."
                 });
 
-                var judgeServerConfig = judgeConfig.ServerConfig;
-                var judgeServerSettings = judgeConfig.ServerSettings;
+                var judgeServerConfig = judgeConfig?.ServerConfig ?? new ServerConfig { Host = "localhost", Port = 8081 };
+                var judgeServerSettings = judgeConfig?.ServerSettings ?? new LlamaServerSettings();
 
-                var judgeStartResult = await _serverLifecycle.StartAsync(judgeServerConfig, judgeServerSettings, cancellationToken);
+                var judgeStartResult = await serverLifecycle.StartAsync(judgeServerConfig, judgeServerSettings, cancellationToken);
                 if (judgeStartResult.IsFailed)
                     throw new InvalidOperationException($"Failed to start judge llama-server: {judgeStartResult.Errors[0].Message}");
 
                 var judgeServerInfo = judgeStartResult.Value;
-                _logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
+                logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
 
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
-                var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
+                var judgeClientLogger = loggerFactory.CreateLogger<LlamaServerClient>();
                 var maxConcurrent = judgeServerSettings?.ParallelSlotCount ?? _judgeParallelSlotCount;
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
                 await _managedJudgeClient.InitializeSemaphoreFromServerAsync(cancellationToken);
                 judgeClientToUse = _managedJudgeClient;
             }
-            else
+            else if (serverLifecycle != null)
             {
-                // When not managing server, use LlamaServerManager.StartAsync to connect and verify
-                // StartAsync handles both managed (Manage=true) and external (Manage=false) servers
-                _logger.LogInformation("Connecting to judge server at {BaseUrl}...", _judgeBaseUrl);
+                // serverLifecycle is available but Manage is explicitly false - connect to external server
+                logger.LogInformation("Connecting to external judge server at {BaseUrl}...", _judgeBaseUrl);
                 _currentRun!.UpdateProgress(new EvalGenProgress
                 {
                     CurrentPhase = EvalGenPhase.GeneratingCategories,
@@ -212,9 +304,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                     BaseUrl = _judgeBaseUrl
                 };
 
-                // Use LlamaServerManager.StartAsync which includes proper health check with retry
-                // For external servers (Manage=false), it just verifies connectivity
-                var connectResult = await _serverManager.StartAsync(serverConfig, null, cancellationToken);
+                var connectResult = await serverManager.StartAsync(serverConfig, null!, cancellationToken);
                 if (connectResult.IsFailed)
                 {
                     throw new InvalidOperationException(
@@ -223,38 +313,20 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                 }
 
                 var judgeServerInfo = connectResult.Value;
-                _logger.LogInformation("Connected to judge server at {BaseUrl}", judgeServerInfo.BaseUrl);
+                logger.LogInformation("Connected to judge server at {BaseUrl}", judgeServerInfo.BaseUrl);
 
                 var judgeHttpClient = CreateHttpClient(judgeServerInfo);
-                var judgeClientLogger = _loggerFactory.CreateLogger<LlamaServerClient>();
+                var judgeClientLogger = loggerFactory.CreateLogger<LlamaServerClient>();
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, judgeServerInfo.TotalSlots);
                 await _managedJudgeClient.InitializeSemaphoreFromServerAsync(cancellationToken);
                 judgeClientToUse = _managedJudgeClient;
             }
-
-            // Ensure output directory exists
-            Directory.CreateDirectory(config.OutputDirectoryPath);
-            var promptsDir = Path.Combine(config.OutputDirectoryPath, "prompts");
-            var expectedDir = Path.Combine(config.OutputDirectoryPath, "expected_outputs");
-            Directory.CreateDirectory(promptsDir);
-            Directory.CreateDirectory(expectedDir);
-
-            // Use provided collector (already created and cached)
-
-            await collector.InitializeAsync(cancellationToken);
-
-            // Load or save startup parameters
-            var savedParams = await collector.LoadStartupParametersAsync(cancellationToken);
-            if (savedParams != null && config.ContinueFromCheckpoint)
-            {
-                _logger.LogInformation("Continuing from checkpoint: {RunName}", savedParams.Value.Config.RunName);
-                config = savedParams.Value.Config;
-                // Use saved judge config if available, otherwise use provided one
-                judgeConfig = savedParams.Value.JudgeConfig ?? judgeConfig;
-            }
             else
             {
-                await collector.SaveStartupParametersAsync(config, judgeConfig, cancellationToken);
+                // No serverLifecycle available - this shouldn't happen in normal UI usage
+                throw new InvalidOperationException(
+                    "ServerLifecycle service is not available. Cannot start or connect to judge server. " +
+                    "Please ensure the application is properly configured.");
             }
 
             // Load existing progress
@@ -275,7 +347,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             // Phase 1: Generate categories
             if (categories.Count < config.TargetCategoryCount)
             {
-                _logger.LogInformation("Phase 1: Generating categories (have {Have}, need {Need})",
+                logger.LogInformation("Phase 1: Generating categories (have {Have}, need {Need})",
                     categories.Count, config.TargetCategoryCount);
 
                 categories = await GenerateCategoriesAsync(config, categories, collector, cancellationToken);
@@ -296,12 +368,12 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             bool needMoreProblems = categories.Any(c =>
                 (problemsByCategory.GetValueOrDefault(c.Id)?.Count ?? 0) < config.TargetProblemsPerCategory);
 
-            _logger.LogInformation("Phase 2 check: categories={CatCount}, problems={ProbCount}, needMore={NeedMore}",
+            logger.LogInformation("Phase 2 check: categories={CatCount}, problems={ProbCount}, needMore={NeedMore}",
                 categories.Count, allProblems.Count, needMoreProblems);
 
             if (needMoreProblems)
             {
-                _logger.LogInformation("Phase 2: Generating one-line problem statements");
+                logger.LogInformation("Phase 2: Generating one-line problem statements");
 
                 _currentRun.UpdateProgress(_currentRun.Progress with
                 {
@@ -325,7 +397,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             var incompleteProblems = allProblems.Where(p => !p.IsComplete).ToList();
             if (incompleteProblems.Count > 0)
             {
-                _logger.LogInformation("Phase 3: Fleshing out {Count} problems", incompleteProblems.Count);
+                logger.LogInformation("Phase 3: Fleshing out {Count} problems", incompleteProblems.Count);
 
                 _currentRun.UpdateProgress(_currentRun.Progress with
                 {
@@ -353,26 +425,23 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                 StatusMessage = "Generation complete"
             });
 
-            _logger.LogInformation("Eval generation completed: {RunName}", config.RunName);
+            logger.LogInformation("Eval generation completed: {RunName}", config.RunName);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Eval generation cancelled: {RunName}", config.RunName);
+            logger.LogWarning("Eval generation cancelled: {RunName}", config.RunName);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during eval generation: {RunName}", config.RunName);
+            logger.LogError(ex, "Error during eval generation: {RunName}", config.RunName);
             throw;
         }
         finally
         {
             // Cleanup managed judge server
-            if (_managedJudgeClient != null)
-            {
-                _managedJudgeClient.Dispose();
-                _managedJudgeClient = null;
-            }
+            _managedJudgeClient?.Dispose();
+            _managedJudgeClient = null;
         }
     }
 
@@ -383,7 +452,6 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         CancellationToken cancellationToken)
     {
         var categories = new ConcurrentBag<GeneratedCategory>(existingCategories);
-        var semaphore = new SemaphoreSlim(config.MaxConcurrentCategoryGenerations, config.MaxConcurrentCategoryGenerations);
         int iteration = 0;
         int maxIterations = Math.Max(3, config.TargetCategoryCount / 10);
         int emptyIterations = 0; // Track consecutive iterations with no new categories
@@ -395,6 +463,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         // - Include discovered categories in the initial prompt
         // - Pass web search results as additional context to the LLM
 
+        // Purely linear loop, since each generation includes the already-generated categories from the previous as part of the prompt.
         while (categories.Count < config.TargetCategoryCount && iteration < maxIterations && emptyIterations < 5 && consecutiveFailures < 1)
         {
             iteration++;
@@ -402,7 +471,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             await _currentRun!.WaitForResumeAsync(cancellationToken);
 
             int remaining = config.TargetCategoryCount - categories.Count;
-            _logger.LogInformation("Category generation iteration {Iteration}: need {Remaining} more categories",
+            logger.LogInformation("Category generation iteration {Iteration}: need {Remaining} more categories",
                 iteration, remaining);
 
             var existingCategoryNames = categories.Select(c => c.Name).ToList();
@@ -416,9 +485,9 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                     cancellationToken);
                 consecutiveFailures = 0; // Reset on success
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not TaskCanceledException and not OperationCanceledException)
             {
-                _logger.LogError(ex, "Category generation iteration {Iteration} failed", iteration);
+                logger.LogError(ex, "Category generation iteration {Iteration} failed", iteration);
                 consecutiveFailures++;
                 newCategories = [];
 
@@ -426,7 +495,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                 if (_judgeTemperature == 0)
                 {
                     _currentRun!.TotalCategoriesFailed++;
-                    _logger.LogWarning("Temperature is 0, giving up on category generation after failure");
+                    logger.LogWarning("Temperature is 0, giving up on category generation after failure");
                     break;
                 }
                 continue;
@@ -447,13 +516,13 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             if (newCount == 0)
             {
                 emptyIterations++;
-                _logger.LogWarning("Category iteration {Iteration} produced no new categories (empty iteration {Empty})",
+                logger.LogWarning("Category iteration {Iteration} produced no new categories (empty iteration {Empty})",
                     iteration, emptyIterations);
             }
             else
             {
                 emptyIterations = 0; // Reset on success
-                _logger.LogInformation("Category iteration {Iteration} added {NewCount} new categories", iteration, newCount);
+                logger.LogInformation("Category iteration {Iteration} added {NewCount} new categories", iteration, newCount);
             }
 
             _currentRun.UpdateProgress(_currentRun.Progress with
@@ -463,7 +532,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             });
         }
 
-        _logger.LogInformation("Category generation complete: {Count}/{Target} categories generated after {Iterations} iterations",
+        logger.LogInformation("Category generation complete: {Count}/{Target} categories generated after {Iterations} iterations",
             categories.Count, config.TargetCategoryCount, iteration);
 
         return categories.ToList();
@@ -478,7 +547,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         var response = await CallJudgeLLMAsync(prompt, config.SystemPrompt, cancellationToken);
 
         var categories = ParseCategoriesFromResponse(response, existingCategories);
-        _logger.LogInformation("Generated {Count} new categories from LLM response", categories.Count);
+        logger.LogInformation("Generated {Count} new categories from LLM response", categories.Count);
 
         return categories;
     }
@@ -487,27 +556,41 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         EvalGenConfig config,
         List<string> existingCategories)
     {
+        // Use custom template if provided, otherwise use default
+        var template = config.Phase1PromptTemplate ?? DefaultPhase1Prompt;
+        
         var existingSection = existingCategories.Count > 0
             ? $"""
             We already have these categories (do NOT duplicate them):
             {string.Join("\n", existingCategories.Select((c, i) => $"{i + 1}. {c}"))}
             """
-            : "You are starting from scratch.";
+            : "";
 
-        // TODO: When adding web search feature:
-        // var webSearchSection = webResults != null
-        //     ? $"\n\nRelevant information from web search:\n{webResults}"
-        //     : "";
+        var contextPromptSection = config.ContextPrompt != null
+            ? $"Additional context: {config.ContextPrompt}"
+            : "";
 
-        return $"""
+        // Replace template tags with actual values
+        return template
+            .Replace("{TargetCategoryCount}", config.TargetCategoryCount.ToString())
+            .Replace("{DomainPrompt}", config.DomainPrompt ?? "General LLM capabilities")
+            .Replace("{ExistingCategoriesSection}", existingSection)
+            .Replace("{ContextPromptSection}", contextPromptSection);
+    }
+
+    /// <summary>
+    /// Default prompt template for Phase 1 (category generation).
+    /// Use tags like {TargetCategoryCount}, {DomainPrompt}, {ExistingCategoriesSection}, {ContextPromptSection}.
+    /// </summary>
+    public const string DefaultPhase1Prompt = """
         You are an expert at designing evaluation datasets for large language models.
 
-        Task: Generate a total of {config.TargetCategoryCount} NON-OVERLAPPING categories of problems that would challenge an LLM.
+        Task: Generate a total of {TargetCategoryCount} NON-OVERLAPPING categories of problems that would challenge an LLM.
 
         Context:
-        Domain focus: {config.DomainPrompt ?? "General LLM capabilities"}
-        {existingSection}
-        {(config.ContextPrompt != null ? $"Additional context: {config.ContextPrompt}" : "")}
+        Domain focus: {DomainPrompt}
+        {ExistingCategoriesSection}
+        {ContextPromptSection}
 
         Requirements:
         - Categories must be distinct and non-overlapping
@@ -524,14 +607,13 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         - Check for coverage of difficulty gradients within each category. A category with only hard problems or only trivial ones is incomplete. Each category should be stretchy enough to contain a spectrum.
         - Prefer categories that are independently failable. A model can be excellent at one and poor at another. If two categories always co-fail or co-succeed, they're probably the same category.
 
-        Respond with one problem per line inside XML-like <Categories> tags (no actual XML encoding), like this:
+        Respond with one category per line inside XML-like <Categories> tags (no actual XML encoding), like this:
         <Categories>
         Category Name 1
         Category Name 2
         Category Name 3
         </Categories>
         """;
-    }
 
     private List<GeneratedCategory> ParseCategoriesFromResponse(string response, List<string> existingCategories)
     {
@@ -548,7 +630,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             
             if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex)
             {
-                _logger.LogWarning("No <Categories> tags found in LLM response");
+                logger.LogWarning("No <Categories> tags found in LLM response");
                 return categories;
             }
 
@@ -563,7 +645,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                     continue;
 
                 // Remove leading numbers/bullets
-                name = Regex.Replace(name, @"^[\d\.\-\*]+\s*", "").Trim();
+                name = ListItemPrefixRegex().Replace(name, "").Trim();
                 
                 // Skip if too short or looks like XML/instructions
                 if (name.Length < 3 || name.Contains("</") || name.Contains(">/") || 
@@ -584,7 +666,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error parsing categories from LLM response");
+            logger.LogError(ex, "Error parsing categories from LLM response");
         }
 
         return categories;
@@ -604,6 +686,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         int maxIterations = config.TargetCategoryCount * 3; // Prevent infinite loops
         int emptyIterations = 0; // Track consecutive iterations with no new problems
 
+        // Outer loop (iterations) is purely linear, since each generation includes the already-generated problem statements from the past runs *for the current category* as part of the prompt.
         for (int iteration = 0; iteration < maxIterations && emptyIterations < 5; iteration++)
         {
             // Check which categories still need problems (excluding failed ones if temp=0)
@@ -624,15 +707,15 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
 
             if (categoriesNeedingProblems.Count == 0)
             {
-                _logger.LogInformation("Phase 2 complete: all categories have {Target} problems each", config.TargetProblemsPerCategory);
+                logger.LogInformation("Phase 2 complete: all categories have {Target} problems each", config.TargetProblemsPerCategory);
                 break;
             }
 
-            _logger.LogInformation("Phase 2 iteration {Iteration}: {Count} categories still need problems",
+            logger.LogInformation("Phase 2 iteration {Iteration}: {Count} categories still need problems",
                 iteration + 1, categoriesNeedingProblems.Count);
 
             // Generate problems for categories that need them
-            var semaphore = new SemaphoreSlim(config.MaxConcurrentProblemGenerations, config.MaxConcurrentProblemGenerations);
+            var semaphore = new SemaphoreSlim(_managedJudgeClient.CurrentMaxConcurrent, _managedJudgeClient.CurrentMaxConcurrent);
             var tasks = new List<Task>();
             int totalNewProblems = 0;
 
@@ -650,7 +733,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
 
                         var existingStatements = existingProblems.Select(p => p.OneLineStatement).ToList();
 
-                        _logger.LogDebug("Generating problems for category '{Category}': need {Remaining}",
+                        logger.LogDebug("Generating problems for category '{Category}': need {Remaining}",
                             category.Name, remaining);
 
                         var newProblems = await GenerateProblemsForCategoryAsync(
@@ -674,16 +757,16 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                             });
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not TaskCanceledException and not OperationCanceledException)
                     {
-                        _logger.LogError(ex, "Failed to generate problems for category '{Category}'", category.Name);
+                        logger.LogError(ex, "Failed to generate problems for category '{Category}'", category.Name);
 
                         // If temperature is 0, mark this category as failed (won't retry)
                         if (_judgeTemperature == 0)
                         {
                             failedCategories.Add(category.Id);
                             _currentRun!.TotalProblemsFailed++;
-                            _logger.LogWarning("Temperature is 0, skipping category '{Category}' after failure", category.Name);
+                            logger.LogWarning("Temperature is 0, skipping category '{Category}' after failure", category.Name);
                         }
                     }
                     finally
@@ -699,17 +782,17 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             if (totalNewProblems == 0)
             {
                 emptyIterations++;
-                _logger.LogWarning("Phase 2 iteration {Iteration} produced no new problems (empty iteration {Empty})",
+                logger.LogWarning("Phase 2 iteration {Iteration} produced no new problems (empty iteration {Empty})",
                     iteration + 1, emptyIterations);
             }
             else
             {
                 emptyIterations = 0; // Reset on success
-                _logger.LogInformation("Phase 2 iteration {Iteration} added {NewCount} new problems", iteration + 1, totalNewProblems);
+                logger.LogInformation("Phase 2 iteration {Iteration} added {NewCount} new problems", iteration + 1, totalNewProblems);
             }
         }
 
-        _logger.LogInformation("Phase 2 complete: generated {Total} problems after multiple iterations",
+        logger.LogInformation("Phase 2 complete: generated {Total} problems after multiple iterations",
             problemsByCategory.Values.Sum(list => list.Count));
     }
 
@@ -723,7 +806,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         var response = await CallJudgeLLMAsync(prompt, config.SystemPrompt, cancellationToken);
 
         var problems = ParseProblemsFromResponse(response, category.Id, existingProblems);
-        _logger.LogDebug("Generated {Count} problems for category '{Category}'", problems.Count, category.Name);
+        logger.LogDebug("Generated {Count} problems for category '{Category}'", problems.Count, category.Name);
 
         return problems;
     }
@@ -733,28 +816,40 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         GeneratedCategory category,
         List<string> existingProblems)
     {
+        // Use custom template if provided, otherwise use default
+        var template = config.Phase2PromptTemplate ?? DefaultPhase2Prompt;
+
         var existingSection = existingProblems.Count > 0
-            ? $"""
-            We already have these problems for this category (do NOT duplicate):
-            {string.Join("\n", existingProblems.Select((p, i) => $"{i + 1}. {p}"))}
-            """
-            : "You are starting from scratch for this category.";
+            ? string.Join("\n", existingProblems.Select((p, i) => $"{i + 1}. {p}"))
+            : "";
 
-        // TODO: When adding web search feature:
-        // var webSearchSection = webResults != null
-        //     ? $"\n\nSpecific {category.Name} problems discovered from research:\n{webResults}"
-        //     : "";
+        var contextPromptSection = config.ContextPrompt != null
+            ? $"Additional context: {config.ContextPrompt}"
+            : "";
 
-        return $"""
+        // Replace template tags with actual values
+        return template
+            .Replace("{CategoryName}", category.Name)
+            .Replace("{TargetProblemsPerCategory}", config.TargetProblemsPerCategory.ToString())
+            .Replace("{DomainPrompt}", config.DomainPrompt ?? "General LLM capabilities")
+            .Replace("{ExistingProblemsSection}", existingSection)
+            .Replace("{ContextPromptSection}", contextPromptSection);
+    }
+
+    /// <summary>
+    /// Default prompt template for Phase 2 (problem generation).
+    /// Use tags like {CategoryName}, {TargetProblemsPerCategory}, {DomainPrompt}, {ExistingProblemsSection}, {ContextPromptSection}.
+    /// </summary>
+    public const string DefaultPhase2Prompt = """
         You are an expert at designing evaluation problems for large language models.
 
-        Category: {category.Name}
+        Category: {CategoryName}
 
-        Task: Generate a total of {config.TargetProblemsPerCategory} specific, concrete, one-line problem statements for this category.
+        Task: Generate a total of {TargetProblemsPerCategory} specific, concrete, one-line problem statements for this category.
 
-        {existingSection}
-        Domain focus (was used to select categories): {config.DomainPrompt ?? "General LLM capabilities"}
-        {(config.ContextPrompt != null ? $"Additional context: {config.ContextPrompt}" : "")}
+        {ExistingProblemsSection}
+        Domain focus: {DomainPrompt}
+        {ContextPromptSection}
 
         Requirements:
         - Each problem should be specific and concrete (one line)
@@ -763,7 +858,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         - Include variety in difficulty and specific scenarios
         - Problems should be self-contained (no external references)
         - Output ONE problem statement per line
-        
+
         First principles for reasoning:
         - Fix every degree of freedom that isn't being tested. Ambiguity in the setup contaminates the signal. If you're testing reasoning about X, make everything except X fully determined.
         - Vary the "load-bearing detail" location. The key information that changes the answer should sometimes appear early, sometimes late, sometimes buried — because retrieval position is itself a real-world variable.
@@ -771,7 +866,6 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         - Cover the boundary, not just the interior. The most diagnostic problems sit at the edge of the category — where it almost-but-doesn't violate a constraint, where two rules just barely conflict, where an assumption nearly holds.
         - Avoid synthetic problems that only LLMs encounter. Problem statements should feel like something a real person would genuinely send. Artificial constructions reveal artifacts of your benchmark design, not real capability.
         - One problem, one crux. Each example should hinge on a single decision point or insight. Multi-crux problems are useful eventually, but they make failure analysis ambiguous — you can't tell which crux broke.
-        - State what role the model is playing. A problem given to a peer reviewer, a junior assistant, or a domain expert requires different calibration. Leaving role implicit produces inconsistent and uninterpretable responses.
         
         Respond with one problem per line inside XML-like <ProblemStatements> tags (no actual XML encoding), like this:
         <ProblemStatements>
@@ -780,7 +874,6 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         Problem statement 3
         </ProblemStatements>
         """;
-    }
 
     private List<GeneratedProblem> ParseProblemsFromResponse(string response, string categoryId, List<string> existingProblems)
     {
@@ -797,7 +890,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             
             if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex)
             {
-                _logger.LogWarning("No <ProblemStatements> tags found in LLM response");
+                logger.LogWarning("No <ProblemStatements> tags found in LLM response");
                 return problems;
             }
 
@@ -812,8 +905,8 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                     continue;
 
                 // Remove leading numbers/bullets
-                statement = Regex.Replace(statement, @"^[\d\.\-\*]+\s*", "").Trim();
-                
+                statement = ListItemPrefixRegex().Replace(statement, "").Trim();
+
                 // Skip if too short or looks like XML/instructions
                 if (statement.Length < 5 || statement.Contains("</") || statement.Contains(">/") ||
                     statement.StartsWith("Here") || statement.StartsWith("Sure") || statement.StartsWith("Below"))
@@ -834,7 +927,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error parsing problems from LLM response");
+            logger.LogError(ex, "Error parsing problems from LLM response");
         }
 
         return problems;
@@ -860,14 +953,14 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
 
             if (stillIncomplete.Count == 0)
             {
-                _logger.LogInformation("Phase 3 complete: all {Total} problems fleshed out", allProblems.Count);
+                logger.LogInformation("Phase 3 complete: all {Total} problems fleshed out", allProblems.Count);
                 break;
             }
 
-            _logger.LogInformation("Phase 3 iteration {Iteration}: {Count} problems still need fleshing out",
+            logger.LogInformation("Phase 3 iteration {Iteration}: {Count} problems still need fleshing out",
                 iteration + 1, stillIncomplete.Count);
 
-            var semaphore = new SemaphoreSlim(config.MaxConcurrentFleshOutGenerations, config.MaxConcurrentFleshOutGenerations);
+            var semaphore = new SemaphoreSlim(_managedJudgeClient.CurrentMaxConcurrent, _managedJudgeClient.CurrentMaxConcurrent);
             var tasks = new List<Task>();
             int completedThisIteration = 0;
 
@@ -886,7 +979,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                         cancellationToken.ThrowIfCancellationRequested();
                         await _currentRun!.WaitForResumeAsync(cancellationToken);
 
-                        _logger.LogDebug("Fleshing out problem: {Statement}", problem.OneLineStatement);
+                        logger.LogDebug("Fleshing out problem: {Statement}", problem.OneLineStatement);
 
                         var (fullPrompt, expectedOutput) = await FleshOutProblemAsync(
                             config, problem, cancellationToken);
@@ -910,16 +1003,16 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
                             });
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not TaskCanceledException and not OperationCanceledException)
                     {
-                        _logger.LogError(ex, "Failed to flesh out problem: {Statement}", problem.OneLineStatement);
+                        logger.LogError(ex, "Failed to flesh out problem: {Statement}", problem.OneLineStatement);
 
                         // If temperature is 0, mark this problem as failed (won't retry)
                         if (_judgeTemperature == 0)
                         {
                             failedProblems.Add(problem.Id);
                             _currentRun!.TotalFleshOutFailed++;
-                            _logger.LogWarning("Temperature is 0, skipping problem after failure: {Statement}", problem.OneLineStatement);
+                            logger.LogWarning("Temperature is 0, skipping problem after failure: {Statement}", problem.OneLineStatement);
                         }
                     }
                     finally
@@ -935,19 +1028,19 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             if (completedThisIteration == 0)
             {
                 emptyIterations++;
-                _logger.LogWarning("Phase 3 iteration {Iteration} completed no problems (empty iteration {Empty})",
+                logger.LogWarning("Phase 3 iteration {Iteration} completed no problems (empty iteration {Empty})",
                     iteration + 1, emptyIterations);
             }
             else
             {
                 emptyIterations = 0; // Reset on success
-                _logger.LogInformation("Phase 3 iteration {Iteration} fleshed out {Count} problems", iteration + 1, completedThisIteration);
+                logger.LogInformation("Phase 3 iteration {Iteration} fleshed out {Count} problems", iteration + 1, completedThisIteration);
             }
         }
 
         // Final status
         var finalProblems = await collector.LoadProblemsAsync(cancellationToken);
-        _logger.LogInformation("Phase 3 complete: {Complete}/{Total} problems fleshed out",
+        logger.LogInformation("Phase 3 complete: {Complete}/{Total} problems fleshed out",
             finalProblems.Count(p => p.IsComplete), finalProblems.Count);
     }
 
@@ -964,17 +1057,30 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
 
     private string BuildFleshOutPrompt(EvalGenConfig config, GeneratedProblem problem)
     {
-        // TODO: When adding documentation lookup feature:
-        // var docsSection = documentationResults != null
-        //     ? $"\n\nRelevant documentation:\n{documentationResults}"
-        //     : "";
+        // Use custom template if provided, otherwise use default
+        var template = config.Phase3PromptTemplate ?? DefaultPhase3Prompt;
+        
+        var contextPromptSection = config.ContextPrompt != null
+            ? $"Additional context: {config.ContextPrompt}"
+            : "";
 
-        return $"""
+        // Replace template tags with actual values
+        return template
+            .Replace("{OneLineStatement}", problem.OneLineStatement)
+            .Replace("{DomainPrompt}", config.DomainPrompt ?? "General LLM capabilities")
+            .Replace("{ContextPromptSection}", contextPromptSection);
+    }
+
+    /// <summary>
+    /// Default prompt template for Phase 3 (flesh-out).
+    /// Use tags like {OneLineStatement}, {DomainPrompt}, {ContextPromptSection}.
+    /// </summary>
+    public const string DefaultPhase3Prompt = """
         You are an expert at creating evaluation test cases for large language models.
 
-        Problem statement: {problem.OneLineStatement}
-        Domain focus: {config.DomainPrompt ?? "General LLM capabilities"}
-        {(config.ContextPrompt != null ? $"Additional context: {config.ContextPrompt}" : "")}
+        Problem statement: {OneLineStatement}
+        Domain focus: {DomainPrompt}
+        {ContextPromptSection}
 
         Task: Create a complete, self-contained prompt-response pair for this problem.
 
@@ -986,14 +1092,14 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         - For reasoning problems, ensure the logic is sound
 
         First principles for reasoning:
-        - The prompt should be maximally realistic, not maximally clean. Real inputs contain minor irrelevancies, slightly imprecise language, unstated assumptions. Scrubbing all of this makes the benchmark easier than reality and the expected response harder to transfer.
+        - The prompt should be maximally realistic, not maximally clean--like an average user, not an expert. Real inputs contain minor irrelevancies, slightly imprecise language, unstated assumptions. Scrubbing all of this makes the benchmark easier than reality and the expected response harder to transfer.
         - Write the expected response before finalizing the prompt. If the expected response is hard to write, the prompt is probably underspecified or the crux is unclear. The expected response is a forcing function on prompt quality.
         - The expected response must be *correct*, not merely *good-looking*. LLM outputs are fluent by default. The expected response should be graded on whether the crux is resolved correctly, not on whether it sounds authoritative or comprehensive.
         - Specify the failure mode the expected response must avoid. For every example, there is a characteristic wrong answer. The expected response isn't fully defined until you've also specified what it's contrasted against — this is what enables automated or model-based grading.
         - Calibrate length and format to the realistic task, not to thoroughness. If the real answer is two sentences, the expected response shouldn't be six paragraphs. Inflated expected responses bias evaluations toward verbosity and penalize correct concision.
         - Separate "must contain" from "should not contain." The grading criteria for an expected response should specify both required elements (the correct reasoning step, the right conclusion) and disqualifying elements (confident assertions of the wrong answer, hallucinated facts). Both are needed for reliable evaluation.
         - Make implicit knowledge explicit in the expected response, not in the prompt. If solving the problem requires background knowledge, the expected response should demonstrate that knowledge — don't smuggle hints into the problem statement to make it tractable.
-        
+
         Respond with the prompt and response inside XML-like <Prompt> and <Response> tags respectively (no actual XML encoding), like this:
         <Prompt>
         The complete, fleshed-out prompt to give to an LLM
@@ -1002,7 +1108,6 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         The expected high-quality response
         </Response>
         """;
-    }
 
     private (string FullPrompt, string ExpectedOutput) ParseFleshedOutProblem(string response)
     {
@@ -1036,7 +1141,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error parsing fleshed-out problem from LLM response");
+            logger.LogError(ex, "Error parsing fleshed-out problem from LLM response");
             return ("", "");
         }
     }
@@ -1076,7 +1181,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         {
             // Create ad-hoc client using configured base URL
             var serverInfo = new ServerInfo { BaseUrl = _judgeBaseUrl, TotalSlots = _judgeParallelSlotCount };
-            clientToUse = new LlamaServerClient(serverInfo, _httpClient, _loggerFactory.CreateLogger<LlamaServerClient>());
+            clientToUse = new LlamaServerClient(serverInfo, httpClient, loggerFactory.CreateLogger<LlamaServerClient>());
         }
 
         var result = await clientToUse.ChatCompletionAsync(request, cancellationToken);
@@ -1095,7 +1200,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         List<GeneratedProblem> allProblems,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Saving results in SplitDirectories format");
+        logger.LogInformation("Saving results in SplitDirectories format");
 
         var promptsDir = Path.Combine(config.OutputDirectoryPath, "prompts");
         var expectedDir = Path.Combine(config.OutputDirectoryPath, "expected_outputs");
@@ -1133,7 +1238,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
         var manifestJson = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(manifestPath, manifestJson, cancellationToken);
 
-        _logger.LogInformation("Saved {CompleteCount}/{TotalCount} complete problems to {OutputDir}",
+        logger.LogInformation("Saved {CompleteCount}/{TotalCount} complete problems to {OutputDir}",
             allProblems.Count(p => p.IsComplete), allProblems.Count, config.OutputDirectoryPath);
     }
 
@@ -1145,4 +1250,7 @@ public sealed class EvalGenService : IEvalGenService, IDisposable
             _currentRun?.CancellationToken.ThrowIfCancellationRequested();
         }
     }
+
+    [GeneratedRegex(@"^[\d\.\-\*]+\s*")]
+    private static partial Regex ListItemPrefixRegex();
 }

@@ -175,25 +175,26 @@ public partial class App : Application
             var logger = sp.GetRequiredService<ILogger<EvalGenService>>();
             return new EvalGenService(serverLifecycle, serverManager, loggerFactory, httpClient, logger);
         });
-        _ = services.AddSingleton<EvalGenRunViewModel>(sp =>
+        _ = services.AddSingleton(sp =>
         {
             var evalGenService = sp.GetRequiredService<IEvalGenService>();
             var logger = sp.GetRequiredService<ILogger<EvalGenRunViewModel>>();
             return new EvalGenRunViewModel(evalGenService, logger);
         });
-        _ = services.AddSingleton<EvalGenViewModel>(sp =>
+        _ = services.AddSingleton(sp =>
         {
             var evalGenService = sp.GetRequiredService<IEvalGenService>();
             var runViewModel = sp.GetRequiredService<EvalGenRunViewModel>();
             var filePicker = sp.GetService<IFilePickerService>();
             var logger = sp.GetRequiredService<ILogger<EvalGenViewModel>>();
             // Factory function to get judge config from MainWindowViewModel (resolved at call time, avoiding circular dependency)
-            Func<JudgeConfig?> getJudgeConfig = () =>
+            // Uses ResolveCurrentConfigExcludingWizard() to avoid including WizardState settings
+            JudgeConfig? getJudgeConfig()
             {
                 var mainWindowViewModel = sp.GetRequiredService<MainWindowViewModel>();
-                var result = mainWindowViewModel.ResolveCurrentConfig();
+                var result = mainWindowViewModel.ResolveCurrentConfig(false);
                 return result.IsSuccess ? result.Value.Judge : null;
-            };
+            }
             return new EvalGenViewModel(evalGenService, runViewModel, filePicker, logger, getJudgeConfig);
         });
         _ = services.AddSingleton<MainWindowViewModel>();

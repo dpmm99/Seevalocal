@@ -8,6 +8,7 @@ using Seevalocal.Server.Models;
 using Seevalocal.UI.Services;
 using Xunit;
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace Seevalocal.UI.Tests;
 
@@ -197,8 +198,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         // Skip if server didn't start
         if (!_serverStarted || _httpClient == null)
         {
-            _output.WriteLine("Skipping test - server not available");
-            return;
+            throw SkipException.ForSkip("Server or model not available.");
         }
 
         // Act - health check already passed in InitializeAsync
@@ -214,8 +214,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         // Skip if server didn't start
         if (!_serverStarted || _httpClient == null)
         {
-            _output.WriteLine("Skipping test - server not available");
-            return;
+            throw SkipException.ForSkip("Server or model not available.");
         }
 
         // Arrange
@@ -228,9 +227,6 @@ public class EvalGenIntegrationTests : IAsyncLifetime
             TargetCategoryCount = 1,
             TargetProblemsPerCategory = 1,
             DomainPrompt = "Simple test",
-            MaxConcurrentCategoryGenerations = 1,
-            MaxConcurrentProblemGenerations = 1,
-            MaxConcurrentFleshOutGenerations = 1,
             CheckpointDatabasePath = _checkpointDbPath
         };
 
@@ -257,8 +253,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         // Skip if server didn't start
         if (!_serverStarted || _httpClient == null)
         {
-            _output.WriteLine("Skipping test - server not available");
-            return;
+            throw SkipException.ForSkip("Server or model not available.");
         }
 
         // Arrange

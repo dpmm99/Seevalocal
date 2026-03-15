@@ -144,13 +144,10 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
             ('DomainPrompt', @domainPrompt),
             ('ContextPrompt', @contextPrompt),
             ('SystemPrompt', @systemPrompt),
-            ('JudgeBaseUrl', @judgeBaseUrl),
-            ('JudgeTemperature', @judgeTemperature),
-            ('JudgeMaxTokens', @judgeMaxTokens),
-            ('JudgeParallelSlotCount', @judgeParallelSlotCount),
-            ('JudgeManage', @judgeManage),
-            ('JudgeHost', @judgeHost),
-            ('JudgePort', @judgePort)
+            ('Phase1PromptTemplate', @phase1Prompt),
+            ('Phase2PromptTemplate', @phase2Prompt),
+            ('Phase3PromptTemplate', @phase3Prompt),
+            ('JudgeConfigJson', @judgeConfigJson)
             """;
 
         cmd.Parameters.AddWithValue("@id", config.Id);
@@ -161,23 +158,17 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
         cmd.Parameters.AddWithValue("@domainPrompt", config.DomainPrompt ?? "");
         cmd.Parameters.AddWithValue("@contextPrompt", config.ContextPrompt ?? "");
         cmd.Parameters.AddWithValue("@systemPrompt", config.SystemPrompt ?? "");
-        
-        // Judge config parameters
-        var judgeBaseUrl = judgeConfig?.BaseUrl ?? "";
-        var judgeTemperature = judgeConfig?.ServerSettings?.SamplingTemperature ?? 0.7;
-        var judgeMaxTokens = judgeConfig?.ServerSettings?.ContextWindowTokens ?? 4096;
-        var judgeParallelSlotCount = judgeConfig?.ServerSettings?.ParallelSlotCount ?? 4;
-        var judgeManage = judgeConfig?.Manage ?? false;
-        var judgeHost = judgeConfig?.ServerConfig?.Host ?? "localhost";
-        var judgePort = judgeConfig?.ServerConfig?.Port ?? 8081;
-        
-        cmd.Parameters.AddWithValue("@judgeBaseUrl", judgeBaseUrl);
-        cmd.Parameters.AddWithValue("@judgeTemperature", judgeTemperature);
-        cmd.Parameters.AddWithValue("@judgeMaxTokens", judgeMaxTokens);
-        cmd.Parameters.AddWithValue("@judgeParallelSlotCount", judgeParallelSlotCount);
-        cmd.Parameters.AddWithValue("@judgeManage", judgeManage);
-        cmd.Parameters.AddWithValue("@judgeHost", judgeHost);
-        cmd.Parameters.AddWithValue("@judgePort", judgePort);
+        cmd.Parameters.AddWithValue("@phase1Prompt", config.Phase1PromptTemplate ?? EvalGenService.DefaultPhase1Prompt);
+        cmd.Parameters.AddWithValue("@phase2Prompt", config.Phase2PromptTemplate ?? EvalGenService.DefaultPhase2Prompt);
+        cmd.Parameters.AddWithValue("@phase3Prompt", config.Phase3PromptTemplate ?? EvalGenService.DefaultPhase3Prompt);
+
+        // Save complete JudgeConfig as JSON to preserve all settings including model path
+        var judgeConfigJson = JsonSerializer.Serialize(judgeConfig, new JsonSerializerOptions
+        {
+            WriteIndented = false,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        });
+        cmd.Parameters.AddWithValue("@judgeConfigJson", judgeConfigJson);
 
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -218,26 +209,51 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
             DomainPrompt = NullIfEmpty(values.GetValueOrDefault("DomainPrompt", "")),
             ContextPrompt = NullIfEmpty(values.GetValueOrDefault("ContextPrompt", "")),
             SystemPrompt = NullIfEmpty(values.GetValueOrDefault("SystemPrompt", "")),
+            Phase1PromptTemplate = NullIfEmpty(values.GetValueOrDefault("Phase1PromptTemplate", "")),
+            Phase2PromptTemplate = NullIfEmpty(values.GetValueOrDefault("Phase2PromptTemplate", "")),
+            Phase3PromptTemplate = NullIfEmpty(values.GetValueOrDefault("Phase3PromptTemplate", "")),
             ContinueFromCheckpoint = true,
             CheckpointDatabasePath = _connection.DataSource
         };
 
-        var judgeConfig = new JudgeConfig
+        // Load JudgeConfig from JSON (preserves all settings including model path)
+        JudgeConfig? judgeConfig = null;
+        if (values.TryGetValue("JudgeConfigJson", out var judgeConfigJson) && !string.IsNullOrEmpty(judgeConfigJson))
         {
-            BaseUrl = NullIfEmpty(values.GetValueOrDefault("JudgeBaseUrl", "")),
-            Manage = ParseBool(values.GetValueOrDefault("JudgeManage", "false"), false),
-            ServerConfig = new ServerConfig
+            try
             {
-                Host = NullIfEmpty(values.GetValueOrDefault("JudgeHost", "localhost")),
-                Port = ParseInt(values.GetValueOrDefault("JudgePort", "0"), 8081)
-            },
-            ServerSettings = new LlamaServerSettings
-            {
-                SamplingTemperature = ParseDouble(values.GetValueOrDefault("JudgeTemperature", "0.7"), 0.7),
-                ContextWindowTokens = ParseInt(values.GetValueOrDefault("JudgeMaxTokens", "0"), 4096),
-                ParallelSlotCount = ParseInt(values.GetValueOrDefault("JudgeParallelSlotCount", "0"), 4)
+                judgeConfig = JsonSerializer.Deserialize<JudgeConfig>(judgeConfigJson);
+                // Ensure ServerConfig and ServerSettings are not null
+                if (judgeConfig != null)
+                {
+                    judgeConfig = judgeConfig with
+                    {
+                        ServerConfig = judgeConfig.ServerConfig ?? new ServerConfig(),
+                        ServerSettings = judgeConfig.ServerSettings ?? new LlamaServerSettings()
+                    };
+                }
             }
-        };
+            catch
+            {
+                // If JSON deserialization fails, fall back to parsing individual fields (legacy support)
+                judgeConfig = new JudgeConfig
+                {
+                    BaseUrl = NullIfEmpty(values.GetValueOrDefault("JudgeBaseUrl", "")),
+                    Manage = ParseBool(values.GetValueOrDefault("JudgeManage", "false"), false),
+                    ServerConfig = new ServerConfig
+                    {
+                        Host = NullIfEmpty(values.GetValueOrDefault("JudgeHost", "localhost")),
+                        Port = ParseInt(values.GetValueOrDefault("JudgePort", "0"), 8081)
+                    },
+                    ServerSettings = new LlamaServerSettings
+                    {
+                        SamplingTemperature = ParseDouble(values.GetValueOrDefault("JudgeTemperature", "0.7"), 0.7),
+                        ContextWindowTokens = ParseInt(values.GetValueOrDefault("JudgeMaxTokens", "0"), 4096),
+                        ParallelSlotCount = ParseInt(values.GetValueOrDefault("JudgeParallelSlotCount", "0"), 4)
+                    }
+                };
+            }
+        }
 
         return (evalConfig, judgeConfig);
     }

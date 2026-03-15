@@ -10,16 +10,9 @@ namespace Seevalocal.Core.Pipeline.Tests;
 /// <summary>
 /// Tests to verify RawLlmResponse is preserved through checkpoint resumption and judge phase.
 /// </summary>
-public class CheckpointRawLlmResponseTests : IAsyncLifetime
+public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLifetime
 {
-    private readonly ITestOutputHelper _output;
-    private readonly string _dbPath;
-
-    public CheckpointRawLlmResponseTests(ITestOutputHelper output)
-    {
-        _output = output;
-        _dbPath = Path.Combine(Path.GetTempPath(), $"checkpoint_test_{Guid.NewGuid()}.db");
-    }
+    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"checkpoint_test_{Guid.NewGuid()}.db");
 
     public Task InitializeAsync() => Task.CompletedTask;
 
@@ -49,7 +42,7 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
                 ["PromptStage.response"] = "The answer is 42",
                 ["PromptStage.userPrompt"] = "What is 2+2?"
             },
-            Metrics = new List<MetricValue>(),
+            Metrics = [],
             StartedAt = DateTimeOffset.UtcNow,
             DurationSeconds = 1.5
         };
@@ -66,7 +59,7 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
         cmd.Parameters.AddWithValue("@id", "test-item-1");
         var rawResponse = await cmd.ExecuteScalarAsync();
 
-        _output.WriteLine($"RawLlmResponse from DB after CollectAsync: '{rawResponse}'");
+        output.WriteLine($"RawLlmResponse from DB after CollectAsync: '{rawResponse}'");
         Assert.NotNull(rawResponse);
         Assert.Equal("This is the original LLM response from primary phase", rawResponse);
     }
@@ -87,17 +80,17 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
                 ["PromptStage.response"] = "The answer is 42",
                 ["PromptStage.userPrompt"] = "What is 2+2?"
             },
-            Metrics = new List<MetricValue>(),
+            Metrics = [],
             StartedAt = DateTimeOffset.UtcNow,
             DurationSeconds = 1.5
         };
 
         await collector.CollectAsync(primaryResult, default);
-        _output.WriteLine("Primary phase saved");
+        output.WriteLine("Primary phase saved");
 
         // Verify primary phase saved correctly
         var rawResponseBefore = await GetRawLlmResponse("test-item-1");
-        _output.WriteLine($"RawLlmResponse before judge: '{rawResponseBefore}'");
+        output.WriteLine($"RawLlmResponse before judge: '{rawResponseBefore}'");
         Assert.Equal("Original LLM response from primary phase", rawResponseBefore);
 
         // Act - Now save judge phase result (with NULL RawLlmResponse, as judge results typically have)
@@ -121,11 +114,11 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
         };
 
         await collector.CollectJudgeResultAsync(judgeResult, default);
-        _output.WriteLine("Judge phase saved");
+        output.WriteLine("Judge phase saved");
 
         // Assert - RawLlmResponse should still have original value
         var rawResponseAfter = await GetRawLlmResponse("test-item-1");
-        _output.WriteLine($"RawLlmResponse after judge: '{rawResponseAfter}'");
+        output.WriteLine($"RawLlmResponse after judge: '{rawResponseAfter}'");
 
         Assert.NotNull(rawResponseAfter);
         Assert.Equal("Original LLM response from primary phase", rawResponseAfter);
@@ -153,17 +146,17 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
             {
                 ["PromptStage.response"] = "The answer is 42"
             },
-            Metrics = new List<MetricValue>(),
+            Metrics = [],
             StartedAt = DateTimeOffset.UtcNow,
             DurationSeconds = 1.5
         };
 
         await collector.CollectAsync(primaryResult, default);
-        _output.WriteLine("Primary phase saved with NULL RawLlmResponse");
+        output.WriteLine("Primary phase saved with NULL RawLlmResponse");
 
         // Verify primary phase saved correctly (with NULL)
         var rawResponseBefore = await GetRawLlmResponse("test-item-1");
-        _output.WriteLine($"RawLlmResponse before judge: '{rawResponseBefore}'");
+        output.WriteLine($"RawLlmResponse before judge: '{rawResponseBefore}'");
         Assert.Null(rawResponseBefore);
 
         // Act - Now save judge phase result
@@ -177,7 +170,7 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
             {
                 ["JudgeStage.rationale"] = "The answer is correct"
             },
-            Metrics = new List<MetricValue>(),
+            Metrics = [],
             StartedAt = DateTimeOffset.UtcNow,
             DurationSeconds = 2.0
         };
@@ -186,7 +179,7 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
 
         // Assert - RawLlmResponse remains NULL (can't preserve what wasn't there)
         var rawResponseAfter = await GetRawLlmResponse("test-item-1");
-        _output.WriteLine($"RawLlmResponse after judge: '{rawResponseAfter}'");
+        output.WriteLine($"RawLlmResponse after judge: '{rawResponseAfter}'");
         Assert.Null(rawResponseAfter);
     }
 
@@ -219,20 +212,13 @@ public class CheckpointRawLlmResponseTests : IAsyncLifetime
 /// <summary>
 /// Test logger that writes to ITestOutputHelper.
 /// </summary>
-public class TestLogger<T> : ILogger<T>
+public class TestLogger<T>(ITestOutputHelper output) : ILogger<T>
 {
-    private readonly ITestOutputHelper _output;
-
-    public TestLogger(ITestOutputHelper output)
-    {
-        _output = output;
-    }
-
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     public bool IsEnabled(LogLevel logLevel) => true;
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
-        _output.WriteLine($"[{logLevel}] {formatter(state, exception)}");
+        output.WriteLine($"[{logLevel}] {formatter(state, exception)}");
     }
 }

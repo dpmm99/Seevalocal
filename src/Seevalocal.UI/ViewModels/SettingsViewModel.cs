@@ -505,6 +505,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             EnableMlock = Fb("llama.enableMlock"),
             EnableMmap = Fb("llama.enableMmap"),
             ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
+            ExtraArgs = F("llama.extraArgs") is { } ea && !string.IsNullOrWhiteSpace(ea)
+                ? ea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : [],
         };
 
         var judgeServerSettings = new PartialLlamaServerSettings
@@ -541,6 +543,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             EnableMlock = Fb("judge.enableMlock"),
             EnableMmap = Fb("judge.enableMmap"),
             ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
+            ExtraArgs = F("judge.extraArgs") is { } jea && !string.IsNullOrWhiteSpace(jea)
+                ? jea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : [],
         };
 
         return new PartialConfig
@@ -800,6 +804,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "enableMlock" => llama?.EnableMlock?.ToString().ToLowerInvariant(),
         "enableMmap" => llama?.EnableMmap?.ToString().ToLowerInvariant(),
         "serverTimeoutSeconds" => llama?.ServerTimeoutSeconds?.ToString(),
+        "extraArgs" => llama?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
         _ => null
     };
 
@@ -817,6 +822,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "scoreMin" => judge?.ScoreMinValue?.ToString(),
         "scoreMax" => judge?.ScoreMaxValue?.ToString(),
         "executablePath" => judge?.ServerConfig?.ExecutablePath,
+        "extraArgs" => judge?.ServerSettings?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
         _ => null
     };
 
@@ -899,6 +905,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         // Llama Server Settings - Timeouts
         AddField("llama.serverTimeoutSeconds", "Server Timeout", "Llama Server Settings", "", "Server timeout in seconds", true);
 
+        // Llama Server Settings - Extra Args
+        AddField("llama.extraArgs", "Extra Args", "Llama Server Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)", true);
+
         // Output Settings (all default to null/unspecified)
         AddField("output.writePerEvalJson", "Write per-eval JSON", "Output Settings", "", "Write individual JSON for each eval", true);
         AddField("output.writeSummaryJson", "Write summary JSON", "Output Settings", "", "Write summary JSON file", true);
@@ -953,6 +962,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("judge.enableMlock", "Judge Enable Mlock", "Judge Settings", "", "Lock model in memory", true);
         AddField("judge.enableMmap", "Judge Enable Mmap", "Judge Settings", "", "Memory-map model file", true);
         AddField("judge.serverTimeoutSeconds", "Judge Server Timeout", "Judge Settings", "", "Server timeout in seconds", true);
+        AddField("judge.extraArgs", "Judge Extra Args", "Judge Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)", true);
 
         // Run Meta Settings
         AddField("run.name", "Run Name", "Run Meta", "", "Human-readable name for this run", true);

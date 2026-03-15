@@ -1,3 +1,4 @@
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
@@ -36,23 +37,30 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
     // State properties
     private bool _showConfigurationForm = true;
     private bool _showProgress;
-    private bool _showCheckpointOption;
     private bool _isRunning;
     private bool _isPaused;
     private bool _isCompleted;
     private bool _isCancelled;
     private string? _error;
+    private bool _isPhasePromptsExpanded;
+
+    // Phase prompt customization properties
+    private string _phase1Prompt = EvalGenService.DefaultPhase1Prompt;
+    private string _phase2Prompt = EvalGenService.DefaultPhase2Prompt;
+    private string _phase3Prompt = EvalGenService.DefaultPhase3Prompt;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     // Commands
-    public ICommand StartGenerationCommand { get; }
-    public ICommand TogglePauseCommand { get; }
-    public ICommand CancelCommand { get; }
-    public ICommand BrowseOutputDirectoryCommand { get; }
-    public ICommand BrowseCheckpointCommand { get; }
-    public ICommand OpenOutputDirectoryCommand { get; }
-    public ICommand ResetCommand { get; }
+    public RelayCommand StartGenerationCommand { get; }
+    public RelayCommand TogglePauseCommand { get; }
+    public RelayCommand CancelCommand { get; }
+    public RelayCommand BrowseOutputDirectoryCommand { get; }
+    public RelayCommand BrowseCheckpointCommand { get; }
+    public RelayCommand OpenOutputDirectoryCommand { get; }
+    public RelayCommand ResetCommand { get; }
+    public RelayCommand<string> CopyTextCommand { get; }
+    public RelayCommand<GeneratedCategoryViewModel> ToggleCategoryExpandCommand { get; }
 
     // Configuration Properties
     public string DomainPrompt
@@ -97,6 +105,40 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
         set => SetField(ref _checkpointDatabasePath, value);
     }
 
+    // Phase Prompt Customization Properties
+    public string Phase1Prompt
+    {
+        get => _phase1Prompt;
+        set
+        {
+            var newValue = string.IsNullOrWhiteSpace(value) ? EvalGenService.DefaultPhase1Prompt : value;
+            _phase1Prompt = newValue;
+            OnPropertyChanged(nameof(Phase1Prompt)); // Always notify so TextBox re-reads the value
+        }
+    }
+
+    public string Phase2Prompt
+    {
+        get => _phase2Prompt;
+        set
+        {
+            var newValue = string.IsNullOrWhiteSpace(value) ? EvalGenService.DefaultPhase2Prompt : value;
+            _phase2Prompt = newValue;
+            OnPropertyChanged(nameof(Phase2Prompt));
+        }
+    }
+
+    public string Phase3Prompt
+    {
+        get => _phase3Prompt;
+        set
+        {
+            var newValue = string.IsNullOrWhiteSpace(value) ? EvalGenService.DefaultPhase3Prompt : value;
+            _phase3Prompt = newValue;
+            OnPropertyChanged(nameof(Phase3Prompt));
+        }
+    }
+
     // State Properties (delegated to RunViewModel where applicable)
     public bool ShowConfigurationForm
     {
@@ -108,12 +150,6 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _showProgress;
         private set => SetField(ref _showProgress, value);
-    }
-
-    public bool ShowCheckpointOption
-    {
-        get => _showCheckpointOption;
-        set => SetField(ref _showCheckpointOption, value);
     }
 
     public bool IsRunning
@@ -145,6 +181,14 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
         get => _error;
         private set => SetField(ref _error, value);
     }
+
+    public bool IsPhasePromptsExpanded
+    {
+        get => _isPhasePromptsExpanded;
+        set => SetField(ref _isPhasePromptsExpanded, value);
+    }
+
+    public string PauseButtonLabel => _runViewModel.PauseButtonLabel;
 
     // Progress Properties (delegated from RunViewModel)
     public double ProgressPercent => _runViewModel.ProgressPercent;
@@ -181,6 +225,8 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
         BrowseCheckpointCommand = new RelayCommand(BrowseCheckpoint);
         OpenOutputDirectoryCommand = new RelayCommand(OpenOutputDirectory);
         ResetCommand = new RelayCommand(Reset);
+        CopyTextCommand = new RelayCommand<string>(CopyText);
+        ToggleCategoryExpandCommand = new RelayCommand<GeneratedCategoryViewModel>(ToggleCategoryExpand);
 
         // Set default output directory (with fallback if current directory is not writable)
         try
@@ -217,10 +263,13 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
                 ContextPrompt = ContextPrompt,
                 SystemPrompt = SystemPrompt,
                 ContinueFromCheckpoint = !string.IsNullOrEmpty(CheckpointDatabasePath),
-                CheckpointDatabasePath = string.IsNullOrEmpty(CheckpointDatabasePath) ? null : CheckpointDatabasePath
+                CheckpointDatabasePath = string.IsNullOrEmpty(CheckpointDatabasePath) ? null : CheckpointDatabasePath,
+                Phase1PromptTemplate = Phase1Prompt,
+                Phase2PromptTemplate = Phase2Prompt,
+                Phase3PromptTemplate = Phase3Prompt
             };
 
-            // Get judge config from settings (via factory function)
+            // Get judge config from settings (via factory function) - this resolves the full settings stack
             var judgeConfig = _getJudgeConfig();
 
             // Update UI state
@@ -234,7 +283,9 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
             // Start the run
             if (!string.IsNullOrEmpty(CheckpointDatabasePath))
             {
-                await _runViewModel.ContinueFromCheckpointAsync(CheckpointDatabasePath, _runCts.Token);
+                // For checkpoint resume, pass the current judge config from settings
+                // The EvalGenService will merge checkpoint judge config on top of this
+                await _runViewModel.StartAsync(config, judgeConfig, _runCts.Token);
             }
             else
             {
@@ -348,12 +399,19 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
                     break;
                 case nameof(EvalGenRunViewModel.IsRunning):
                     IsRunning = _runViewModel.IsRunning;
+                    StartGenerationCommand.NotifyCanExecuteChanged();
+                    TogglePauseCommand.NotifyCanExecuteChanged();
+                    CancelCommand.NotifyCanExecuteChanged();
                     break;
                 case nameof(EvalGenRunViewModel.IsPaused):
                     IsPaused = _runViewModel.IsPaused;
+                    OnPropertyChanged(nameof(PauseButtonLabel));
                     break;
                 case nameof(EvalGenRunViewModel.IsCompleted):
                     IsCompleted = _runViewModel.IsCompleted;
+                    StartGenerationCommand.NotifyCanExecuteChanged();
+                    TogglePauseCommand.NotifyCanExecuteChanged();
+                    CancelCommand.NotifyCanExecuteChanged();
                     break;
                 case nameof(EvalGenRunViewModel.IsCancelled):
                     IsCancelled = _runViewModel.IsCancelled;
@@ -377,6 +435,28 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnPropertyChanged(string propertyName)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void CopyText(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        try
+        {
+            if (Avalonia.Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.MainWindow?.Clipboard?.SetTextAsync(text);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to copy text to clipboard");
+        }
+    }
+
+    private void ToggleCategoryExpand(GeneratedCategoryViewModel? category)
+    {
+        category?.IsExpanded = !category.IsExpanded;
     }
 
     public async ValueTask DisposeAsync()

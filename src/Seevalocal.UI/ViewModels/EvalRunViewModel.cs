@@ -665,14 +665,8 @@ public sealed class EvalResultViewModel(EvalResult result)
 /// <summary>
 /// Display item for metrics in the UI.
 /// </summary>
-public sealed class MetricDisplayItem
+public sealed class MetricDisplayItem(string name, string value)
 {
-    public string Name { get; }
-    public string Value { get; }
-
-    public MetricDisplayItem(string name, string value)
-    {
-        Name = name;
-        Value = value;
-    }
+    public string Name { get; } = name;
+    public string Value { get; } = value;
 }

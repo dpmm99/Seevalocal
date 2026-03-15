@@ -66,7 +66,7 @@ internal static class TestHelpers
             BaseUrl = "http://localhost:8080",
         },
         LlamaServer = new LlamaServerSettings(),
-        EvalSets = new List<EvalSetConfig>(),
+        EvalSets = [],
     };
 
     public static EvalSetConfig MakeEvalSetConfig(

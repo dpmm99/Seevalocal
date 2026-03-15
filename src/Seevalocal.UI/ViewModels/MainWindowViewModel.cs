@@ -655,7 +655,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>Resolves the current settings stack + wizard state into a <see cref="ResolvedConfig"/>.</summary>
-    public Result<ResolvedConfig> ResolveCurrentConfig()
+    public Result<ResolvedConfig> ResolveCurrentConfig(bool withWizard = true)
     {
         var partials = SettingsLayers
             .Where(static l => l.IsEnabled)
@@ -667,7 +667,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         partials.Add(SettingsViewModel.BuildPartialConfigFromFields());
 
         // Add wizard state as highest priority
-        partials.Add(WizardState.BuildPartialConfig());
+        if (withWizard) partials.Add(WizardState.BuildPartialConfig());
         return _configService.Resolve(partials);
     }
 

@@ -39,21 +39,6 @@ public sealed class EvalGenCommandSettings : CommandSettings
     [CommandOption("--judge-url <URL>")]
     public string? JudgeUrl { get; init; }
 
-    [Description("Maximum concurrent category generations. Default: 1")]
-    [CommandOption("--max-concurrent-categories <COUNT>")]
-    [DefaultValue(1)]
-    public int MaxConcurrentCategoryGenerations { get; init; } = 1;
-
-    [Description("Maximum concurrent problem generations per category. Default: 4")]
-    [CommandOption("--max-concurrent-problems <COUNT>")]
-    [DefaultValue(4)]
-    public int MaxConcurrentProblemGenerations { get; init; } = 4;
-
-    [Description("Maximum concurrent problem flesh-out generations. Default: 4")]
-    [CommandOption("--max-concurrent-fleshout <COUNT>")]
-    [DefaultValue(4)]
-    public int MaxConcurrentFleshOutGenerations { get; init; } = 4;
-
     [Description("Checkpoint database path for resuming a cancelled/failed run.")]
     [CommandOption("--checkpoint <PATH>")]
     public string? CheckpointDatabasePath { get; init; }

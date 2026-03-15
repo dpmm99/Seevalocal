@@ -612,27 +612,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
     /// Gets the available judge template names using reflection from DefaultTemplates class.
     /// Returns kebab-case names (e.g., "standard", "pass-fail").
     /// </summary>
-    public static string[] JudgeTemplateNames { get; } = GetJudgeTemplateNamesStatic();
-
-    private static string[] GetJudgeTemplateNamesStatic()
-    {
-        var templateType = typeof(Core.DefaultTemplates);
-        var constants = templateType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
-            .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
-            .Select(f => f.Name)
-            .Order()
-            .ToArray();
-
-        // Convert PascalCase names to kebab-case for UI (e.g., "PassFail" -> "pass-fail")
-        return constants.Select(name =>
-            System.Text.RegularExpressions.Regex.Replace(name, "(?<!^)([A-Z])", "-$1").ToLowerInvariant()
-        ).ToArray();
-    }
-
-    /// <summary>
-    /// Gets the available judge template names using reflection from DefaultTemplates class.
-    /// Returns kebab-case names (e.g., "standard", "pass-fail").
-    /// </summary>
     private static string[] GetJudgeTemplateNames()
     {
         var templateType = typeof(Core.DefaultTemplates);
@@ -643,9 +622,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
             .ToArray();
 
         // Convert PascalCase names to kebab-case for UI (e.g., "PassFail" -> "pass-fail")
-        return constants.Select(name =>
-            CapitalLetterSplitRegex().Replace(name, "-$1").ToLowerInvariant()
-        ).ToArray();
+        var regex = CapitalLetterSplitRegex();
+        return constants.Select(name => regex.Replace(name, "-$1").ToLowerInvariant()).ToArray();
     }
 
     public double JudgeScoreMin { get => _judgeScoreMin; set => SetField(ref _judgeScoreMin, value); }
@@ -809,11 +787,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
                            _editedFields.Contains(nameof(IncludeRawLlmResponse));
         OutputConfig? output = outputEdited ? new OutputConfig
         {
-            WritePerEvalJson = _editedFields.Contains(nameof(WritePerEvalJson)) ? _writePerEvalJson : true,
-            WriteSummaryJson = _editedFields.Contains(nameof(WriteSummaryJson)) ? _writeSummaryJson : true,
-            WriteSummaryCsv = _editedFields.Contains(nameof(WriteSummaryCsv)) ? _writeSummaryCsv : false,
-            WriteResultsParquet = _editedFields.Contains(nameof(WriteResultsParquet)) ? _writeResultsParquet : false,
-            IncludeRawLlmResponse = _editedFields.Contains(nameof(IncludeRawLlmResponse)) ? _includeRawLlmResponse : true,
+            WritePerEvalJson = !_editedFields.Contains(nameof(WritePerEvalJson)) || _writePerEvalJson,
+            WriteSummaryJson = !_editedFields.Contains(nameof(WriteSummaryJson)) || _writeSummaryJson,
+            WriteSummaryCsv = _editedFields.Contains(nameof(WriteSummaryCsv)) && _writeSummaryCsv,
+            WriteResultsParquet = _editedFields.Contains(nameof(WriteResultsParquet)) && _writeResultsParquet,
+            IncludeRawLlmResponse = !_editedFields.Contains(nameof(IncludeRawLlmResponse)) || _includeRawLlmResponse,
             ShellTarget = _editedFields.Contains(nameof(ShellTarget)) ? ShellTarget : null,
             OutputDir = _editedFields.Contains(nameof(OutputDir)) ? OutputDir : null,
         } : null;
@@ -1154,7 +1132,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
             var configJson = await cmd.ExecuteScalarAsync() as string;
             if (string.IsNullOrEmpty(configJson)) return;
 
-            var config = System.Text.Json.JsonSerializer.Deserialize<Seevalocal.Core.Models.ResolvedConfig>(configJson);
+            var config = System.Text.Json.JsonSerializer.Deserialize<ResolvedConfig>(configJson);
             if (config == null) return;
 
             // Populate wizard fields from the loaded config
@@ -1171,7 +1149,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     /// Populates wizard fields from a loaded checkpoint configuration.
     /// Fields are marked as edited so BuildPartialConfig() includes them.
     /// </summary>
-    private void PopulateFromCheckpointConfig(Seevalocal.Core.Models.ResolvedConfig config)
+    private void PopulateFromCheckpointConfig(ResolvedConfig config)
     {
         // Server configuration
         if (config.Server != null)

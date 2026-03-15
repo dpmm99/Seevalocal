@@ -2,6 +2,7 @@ To-add list:
 I think most errors need to use toasts instead of just logging to the console.
 I need to personally double-check all the messages because I'm sure they're full of lies and can be ten million times clearer.
 Make being informative not an afterthought. Assume the user is a high school dropout. They don't know about statistical significance, so we should explain that when they're setting up the eval inputs. They don't know how attention mechanics tend to be trained to perform, so we should tell them instructions belong at the start/end/both ends of the prompt, especially for the judge. Maybe they don't even know that you can use XML tags to make it easier to refer to large sections of your input in your instructions, or that you should generally spell everything correctly for maximum quality, or that no LLM capability/quality necessarily generalizes outside the test set, or that lower temperature/higher min-P or top-P (which is probably worse than min-P) may improve the chances of correct output.
+	To make a settings file loaded by default, put it in %userprofile%/.Seevalocal/default.yaml or the app directory/Seevalocal.yml
 Then do a major polish pass, like changing the order of the settings. For example, Parallel Slots should be to the right of Context Window, not below Batch Size.
 Various pipeline setups:
 	For the CasualQA pipeline, optimize the prompts and drop the pointless pass/fail part of the judge prompt.
@@ -13,9 +14,11 @@ Various pipeline setups:
 	Also ought to include some simple examples of data that you can run evals on (but real ones, not the minimalist garbage I got from a single Qwen3.5-122B-A10B prompt), with the disclaimer that the more widely posted a problem is, the less you can trust that evaluating an LLM on that problem will generalize to real-world use.
 Add a "copy from wizard" button to the settings screen...if there wasn't already one. Copy only settings the user changed in the wizard.
 Make sure the wizard's reset-to-defaults button actually re-inherits but leaves anything they changed directly in the wizard alone.
+Make the settings show which pipeline each pipeline setting is for
+Verify that each setting is actually hooked up and meaningful (I notice judge log verbosity, judge reasoning format, judge template, and judge split mode don't even have fields, and there shouldn't be a "max concurrent evals" field anymore because that's dictated by the server /slots response)
 
 To-fix list:
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
-Make it clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
+Make the eval run dashboard clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
 
 To-test list:

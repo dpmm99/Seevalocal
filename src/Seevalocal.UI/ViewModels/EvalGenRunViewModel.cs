@@ -41,6 +41,15 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         private set => SetField(ref _isPaused, value);
     }
 
+    private bool _isPausing;  // True when waiting for in-flight items to complete
+    public bool IsPausing
+    {
+        get => _isPausing;
+        private set => SetField(ref _isPausing, value);
+    }
+
+    public string PauseButtonLabel => IsPaused ? "▶️ Resume" : "⏸️ Pause";
+
     private bool _isCompleted;
     public bool IsCompleted
     {
@@ -162,7 +171,7 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         try
         {
-            _logger.LogInformation("Starting eval generation: {RunName}", config.RunName);
+            _logger.LogInformation("Starting eval generation: {RunName}, ContinueFromCheckpoint={ContinueFromCheckpoint}", config.RunName, config.ContinueFromCheckpoint);
 
             _run = await _evalGenService.GenerateAsync(config, judgeConfig, cancellationToken);
 
@@ -186,18 +195,39 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             TargetCategories = config.TargetCategoryCount;
             TargetProblems = config.TargetCategoryCount * config.TargetProblemsPerCategory;
 
+            // Load existing categories and progress from the shared collector
+            if (_run.Collector != null)
+            {
+                LoadCategoriesFromCheckpoint(_run.Collector);
+                
+                // Load progress from checkpoint if resuming
+                if (config.ContinueFromCheckpoint)
+                {
+                    var categories = _run.Collector.GetCategories();
+                    var problems = _run.Collector.GetProblems();
+                    var fleshedOutCount = problems.Count(p => p.IsComplete);
+                    
+                    CategoriesGenerated = categories.Count;
+                    ProblemsGenerated = problems.Count;
+                    ProblemsFleshedOut = fleshedOutCount;
+                    
+                    _logger.LogInformation("Loaded from checkpoint: {Categories} categories, {Problems} problems ({FleshedOut} fleshed out)",
+                        CategoriesGenerated, ProblemsGenerated, ProblemsFleshedOut);
+                    
+                    StatusLine = $"Resumed from checkpoint: {CategoriesGenerated}/{TargetCategories} categories, {ProblemsGenerated}/{TargetProblems} problems";
+                }
+            }
+
             // Notify commands to re-evaluate CanExecute
             ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
             ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
 
-            // Load existing categories from the shared collector
-            if (_run.Collector != null)
-            {
-                LoadCategoriesFromCheckpoint(_run.Collector);
-            }
-
             OnPropertyChanged(nameof(RunName));
             OnPropertyChanged(nameof(Id));
+            OnPropertyChanged(nameof(CategoriesGenerated));
+            OnPropertyChanged(nameof(ProblemsGenerated));
+            OnPropertyChanged(nameof(ProblemsFleshedOut));
+            OnPropertyChanged(nameof(StatusLine));
 
             // Wait for completion
             await _run.WaitAsync();
@@ -224,8 +254,9 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     /// <summary>
     /// Continue a run from checkpoint.
+    /// Returns the loaded config (including phase prompts) for UI display.
     /// </summary>
-    public async Task ContinueFromCheckpointAsync(string checkpointDbPath, CancellationToken cancellationToken)
+    public async Task<EvalGenConfig?> ContinueFromCheckpointAsync(string checkpointDbPath, CancellationToken cancellationToken)
     {
         // Load config from checkpoint
         var collector = new EvalGenCheckpointCollector(checkpointDbPath);
@@ -235,7 +266,7 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             Error = "No checkpoint found at specified path";
             await collector.DisposeAsync();
-            return;
+            return null;
         }
 
         var config = savedParams.Value.Config with
@@ -249,17 +280,19 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         // Use saved judge config if available
         var judgeConfig = savedParams.Value.JudgeConfig;
-        
+
         // Store collector for use after StartAsync
         var checkpointCollector = collector;
 
         await StartAsync(config, judgeConfig, cancellationToken, checkpointCollector);
-        
+
         // Don't dispose collector - it's now owned by the run
+        return config;
     }
 
     /// <summary>
     /// Load categories from checkpoint database.
+    /// Preserves IsExpanded state for existing categories.
     /// </summary>
     private void LoadCategoriesFromCheckpoint(EvalGenCheckpointCollector collector)
     {
@@ -267,19 +300,24 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             // Use GetCategories for fast cache access
             var categories = collector.GetCategories();
-            
+
+            // Preserve IsExpanded state for existing categories
+            var existingExpandedStates = Categories.ToDictionary(c => c.Id, c => c.IsExpanded);
+
             Categories.Clear();
             foreach (var category in categories)
             {
+                var isExpanded = existingExpandedStates.GetValueOrDefault(category.Id, false);
                 Categories.Add(new GeneratedCategoryViewModel
                 {
                     Id = category.Id,
                     Name = category.Name,
                     ProblemCount = category.Problems.Count,
-                    Problems = new System.Collections.ObjectModel.ObservableCollection<GeneratedProblem>(category.Problems)
+                    IsExpanded = isExpanded,
+                    Problems = new ObservableCollection<GeneratedProblem>(category.Problems)
                 });
             }
-            
+
             _logger.LogDebug("Loaded {Count} categories from checkpoint", Categories.Count);
         }
         catch (Exception ex)
@@ -310,6 +348,7 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             _run.Resume();
             IsPaused = false;
+            IsPausing = false;
             StatusLine = "Running";
             _logger.LogInformation("Resuming eval generation");
         }
@@ -317,12 +356,34 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             _run.Pause();
             IsPaused = true;
-            StatusLine = "Paused";
+            IsPausing = true;
+            StatusLine = "Pausing...";
             _logger.LogInformation("Pausing eval generation");
+            
+            // Schedule a check to see if pause has completed
+            // Since eval gen doesn't track in-flight items, we poll the run's pause state
+            CheckPauseCompletedAsync();
         }
 
         OnPropertyChanged(nameof(IsPaused));
+        OnPropertyChanged(nameof(IsPausing));
         OnPropertyChanged(nameof(StatusLine));
+        OnPropertyChanged(nameof(PauseButtonLabel));
+    }
+
+    private async void CheckPauseCompletedAsync()
+    {
+        // Poll until the run confirms it's fully paused
+        while (IsPausing && IsPaused && _run?.IsRunning == true)
+        {
+            await Task.Delay(500);
+            // For eval gen, we consider it paused immediately since there's no in-flight tracking
+            // Just update status to "Paused" after a brief delay
+            IsPausing = false;
+            StatusLine = "Paused";
+            OnPropertyChanged(nameof(StatusLine));
+            OnPropertyChanged(nameof(PauseButtonLabel));
+        }
     }
 
     private void Cancel()
@@ -466,7 +527,8 @@ public sealed class GeneratedCategoryViewModel : INotifyPropertyChanged
 {
     private string _name = "";
     private int _problemCount;
-    private System.Collections.ObjectModel.ObservableCollection<GeneratedProblem> _problems = [];
+    private bool _isExpanded;
+    private ObservableCollection<GeneratedProblem> _problems = [];
 
     public string Id { get; init; } = "";
 
@@ -482,7 +544,13 @@ public sealed class GeneratedCategoryViewModel : INotifyPropertyChanged
         set => SetField(ref _problemCount, value);
     }
 
-    public System.Collections.ObjectModel.ObservableCollection<GeneratedProblem> Problems
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetField(ref _isExpanded, value);
+    }
+
+    public ObservableCollection<GeneratedProblem> Problems
     {
         get => _problems;
         set => SetField(ref _problems, value);
@@ -490,7 +558,7 @@ public sealed class GeneratedCategoryViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void SetField<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (!EqualityComparer<T>.Default.Equals(field, value))
         {

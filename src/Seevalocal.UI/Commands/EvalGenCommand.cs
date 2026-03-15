@@ -42,9 +42,6 @@ public sealed class EvalGenCommand(
                 DomainPrompt = settings.DomainPrompt ?? "",
                 ContextPrompt = settings.ContextPrompt ?? "",
                 SystemPrompt = settings.SystemPrompt ?? "",
-                MaxConcurrentCategoryGenerations = settings.MaxConcurrentCategoryGenerations,
-                MaxConcurrentProblemGenerations = settings.MaxConcurrentProblemGenerations,
-                MaxConcurrentFleshOutGenerations = settings.MaxConcurrentFleshOutGenerations,
                 ContinueFromCheckpoint = settings.ContinueFromCheckpoint,
                 CheckpointDatabasePath = settings.CheckpointDatabasePath
             };

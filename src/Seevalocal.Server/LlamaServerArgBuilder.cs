@@ -70,6 +70,7 @@ public sealed class LlamaServerArgBuilder
         AppendInt(args, settings.ParallelSlotCount, "-np");
         AppendInt(args, settings.GpuLayerCount, "-ngl");
         AppendInt(args, settings.ThreadCount, "-t");
+        AppendInt(args, settings.HttpThreadCount, "-ht");
 
         // ── Boolean feature flags ────────────────────────────────────────────
         AppendBool(args, settings.EnableFlashAttention, "-fa");
@@ -77,6 +78,9 @@ public sealed class LlamaServerArgBuilder
         AppendBoolLong(args, settings.EnableCachePrompt, "--cache-prompt", "--no-cache-prompt");
         AppendBoolLong(args, settings.EnableContextShift, "--context-shift", "--no-context-shift");
         AppendBoolLong(args, settings.EnableJinja, "--jinja", "--no-jinja");
+        AppendBoolLong(args, settings.EnableKvOffload, "--kv-offload", "--no-kv-offload");
+        AppendBoolLong(args, settings.EnableMlock, "--mlock", "--no-mlock");
+        AppendBoolLong(args, settings.EnableMmap, "--mmap", "--no-mmap");
 
         // ── Sampling ─────────────────────────────────────────────────────────
         AppendDouble(args, settings.SamplingTemperature, "--temp");
@@ -84,16 +88,24 @@ public sealed class LlamaServerArgBuilder
         AppendInt(args, settings.TopK, "--top-k");
         AppendDouble(args, settings.MinP, "--min-p");
         AppendDouble(args, settings.RepeatPenalty, "--repeat-penalty");
+        AppendInt(args, settings.RepeatLastNTokens, "--repeat-last-n");
+        AppendDouble(args, settings.PresencePenalty, "--presence-penalty");
+        AppendDouble(args, settings.FrequencyPenalty, "--frequency-penalty");
         AppendInt(args, settings.Seed, "--seed");
 
         // ── KV cache ─────────────────────────────────────────────────────────
         AppendString(args, settings.KvCacheTypeK, "-ctk");
         AppendString(args, settings.KvCacheTypeV, "-ctv");
 
+        // ── GPU / Model ──────────────────────────────────────────────────────
+        AppendString(args, settings.SplitMode, "--split-mode");
+        AppendString(args, settings.ModelAlias, "--model-alias");
+
         // ── Misc ─────────────────────────────────────────────────────────────
         AppendInt(args, settings.LogVerbosity, "-lv");
         AppendString(args, settings.ChatTemplate, "--chat-template");
         AppendString(args, settings.ReasoningFormat, "--reasoning-format");
+        AppendDouble(args, settings.ServerTimeoutSeconds, "--timeout");
 
         // ── Extra args (verbatim) ─────────────────────────────────────────────
         if (serverConfig.ExtraArgs.Count > 0)

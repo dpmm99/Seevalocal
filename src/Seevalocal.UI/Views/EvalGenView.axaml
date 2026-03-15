@@ -95,6 +95,29 @@
         <StackPanel>
           <!-- Configuration Form -->
           <StackPanel IsVisible="{Binding ShowConfigurationForm}">
+
+            <!-- Continue from Checkpoint -->
+            <Border Classes="formSection">
+              <StackPanel>
+                <TextBlock Text="Continue from Checkpoint" Classes="sectionHeader"/>
+
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <TextBlock Text="Checkpoint Database (optional)" Classes="formLabel"/>
+                    <TextBox Text="{Binding CheckpointDatabasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Classes="formInput"
+                             Watermark="Leave empty to start a new generation"/>
+                    <TextBlock Text="If provided, will continue from a previous cancelled/failed run" Classes="hintText"/>
+                  </StackPanel>
+
+                  <Button Grid.Column="1" Content="Browse" Classes="secondary"
+                          Command="{Binding BrowseCheckpointCommand}"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,0,12"
+                          Padding="16,8"/>
+                </Grid>
+              </StackPanel>
+            </Border>
             
             <!-- Domain Prompt -->
             <Border Classes="formSection">
@@ -167,26 +190,56 @@
               </StackPanel>
             </Border>
 
-            <!-- Continue from Checkpoint -->
-            <Border Classes="formSection" IsVisible="{Binding ShowCheckpointOption}">
+            <!-- Phase Prompt Customization -->
+            <Border Classes="formSection">
               <StackPanel>
-                <TextBlock Text="Continue from Checkpoint" Classes="sectionHeader"/>
-                
-                <Grid ColumnDefinitions="*,Auto">
-                  <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                    <TextBlock Text="Checkpoint Database (optional)" Classes="formLabel"/>
-                    <TextBox Text="{Binding CheckpointDatabasePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                             Classes="formInput"
-                             Watermark="Leave empty to start a new generation"/>
-                    <TextBlock Text="If provided, will continue from a previous cancelled/failed run" Classes="hintText"/>
+                <Expander IsExpanded="{Binding IsPhasePromptsExpanded, Mode=TwoWay}">
+                  <Expander.Header>
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Phase Prompts (Advanced)" Classes="sectionHeader" Margin="0"/>
+                      <TextBlock Grid.Column="1" Text="Customize the prompts used for each generation phase" Foreground="#6C7086" FontSize="12" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                    </Grid>
+                  </Expander.Header>
+                  <StackPanel Margin="0,12,0,0">
+                    <TextBlock Text="Use the tags below to insert dynamic values." Classes="hintText" Margin="0,0,0,8"/>
+
+                    <!-- Phase 1 Prompt -->
+                    <TextBlock Text="Phase 1: Category Generation Prompt" Classes="formLabel" Margin="0,12,0,4"/>
+                    <TextBlock Classes="hintText" Margin="0,4,0,8">
+                      <Run Text="Available tags: "/>
+                      <Run Text="{}{TargetCategoryCount}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{DomainPrompt}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{ExistingCategoriesSection}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{ContextPromptSection}" FontWeight="SemiBold" Foreground="#89B4FA"/>
+                    </TextBlock>
+                    <TextBox x:Name="Phase1PromptBox" Classes="formInput multiline" MinHeight="150"
+                             Text="{Binding Phase1Prompt, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+
+					  <!-- Phase 2 Prompt -->
+                    <TextBlock Text="Phase 2: Problem Generation Prompt" Classes="formLabel" Margin="0,12,0,4"/>
+                    <TextBlock Classes="hintText" Margin="0,4,0,8">
+                      <Run Text="Available tags: "/>
+                      <Run Text="{}{CategoryName}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{TargetProblemsPerCategory}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{DomainPrompt}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{ExistingProblemsSection}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{ContextPromptSection}" FontWeight="SemiBold" Foreground="#89B4FA"/>
+                    </TextBlock>
+                    <TextBox x:Name="Phase2PromptBox" Classes="formInput multiline" MinHeight="150"
+                             Text="{Binding Phase2Prompt, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
+
+					  <!-- Phase 3 Prompt -->
+                    <TextBlock Text="Phase 3: Flesh-Out Prompt" Classes="formLabel" Margin="0,12,0,4"/>
+                    <TextBlock Classes="hintText" Margin="0,4,0,8">
+                      <Run Text="Available tags: "/>
+                      <Run Text="{}{OneLineStatement}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{DomainPrompt}" FontWeight="SemiBold" Foreground="#89B4FA"/>,
+                      <Run Text="{}{ContextPromptSection}" FontWeight="SemiBold" Foreground="#89B4FA"/>
+                    </TextBlock>
+                    <TextBox x:Name="Phase3PromptBox" Classes="formInput multiline" MinHeight="150"
+                             Text="{Binding Phase3Prompt, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
                   </StackPanel>
-                  
-                  <Button Grid.Column="1" Content="Browse" Classes="secondary" 
-                          Command="{Binding BrowseCheckpointCommand}"
-                          VerticalAlignment="Bottom"
-                          Margin="0,0,0,12"
-                          Padding="16,8"/>
-                </Grid>
+                </Expander>
               </StackPanel>
             </Border>
 
@@ -195,7 +248,7 @@
                     Command="{Binding StartGenerationCommand}"
                     HorizontalAlignment="Stretch"/>
             
-            <TextBlock Text="The generation will use your LLM-As-Judge server and model configuration and run in 3 phases: 1) Generate problem categories, 2) Generate one-line example problem statements, 3) Flesh out full prompt-response pairs." 
+            <TextBlock Text="The generation will use your LLM-As-Judge server and model configuration and run in 3 phases:&#10;1) Generate problem categories&#10;2) Generate one-line example problem statements&#10;3) Flesh out full prompt-response pairs." 
                        Classes="hintText" TextAlignment="Center" Margin="0,8,0,0"/>
           </StackPanel>
 
@@ -210,7 +263,7 @@
                 <TextBlock Text="📁 Phase 1: Generating Categories"/>
               </Border>
               <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.GeneratingProblems}}">
-                <TextBlock Text="📝 Phase 2: Generating Problems"/>
+                <TextBlock Text="📝 Phase 2: Generating Problem Statements"/>
               </Border>
               <Border Classes="phaseBadge" IsVisible="{Binding CurrentPhase, Converter={x:Static converters:IsEqualConverter.Instance}, ConverterParameter={x:Static models:EvalGenPhase.FleshingOutProblems}}">
                 <TextBlock Text="✍️ Phase 3: Fleshing Out Problems"/>
@@ -256,7 +309,7 @@
 
             <!-- Control Buttons -->
             <Grid ColumnDefinitions="*,*" Margin="0,16">
-              <Button Content="⏸️ Pause" Classes="secondary"
+              <Button Content="{Binding PauseButtonLabel}" Classes="secondary"
                       Command="{Binding TogglePauseCommand}"
                       IsVisible="{Binding IsRunning}"
                       HorizontalAlignment="Right"
@@ -273,7 +326,7 @@
             <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8">
               <StackPanel>
                 <TextBlock Text="Generated Categories" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                
+
                 <ScrollViewer MinHeight="200" MaxHeight="400" HorizontalScrollBarVisibility="Disabled">
                   <ItemsControl ItemsSource="{Binding Categories}">
                     <ItemsControl.ItemsPanel>
@@ -284,11 +337,105 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
                         <Border Background="#1E1E2E" CornerRadius="4" Padding="8">
-                          <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="{Binding Name}" TextWrapping="Wrap"/>
-                            <TextBlock Grid.Column="1" Text="{Binding ProblemCount, StringFormat={}{0} problems}" 
-                                       Foreground="#6C7086" FontSize="12"/>
-                          </Grid>
+                          <StackPanel Spacing="8">
+                            <!-- Header Row - clickable to expand/collapse -->
+                            <Button x:Name="categoryHeaderBtn"
+                              Command="{Binding $parent[ItemsControl].DataContext.ToggleCategoryExpandCommand}"
+                              CommandParameter="{Binding .}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch">
+                             <Grid ColumnDefinitions="Auto,*,Auto">
+                              <!-- Expand/Collapse Arrow -->
+                              <PathIcon Grid.Column="0"
+                                  Data="{Binding IsExpanded, Converter={x:Static converters:BoolStringConverter.Instance}, ConverterParameter='M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6-6-6 1.41-1.41z|M13.41,15.41L18,10.83l-4.59-4.58L12,4.83l-6,6 4.59,4.58L12,16.83z'}"
+                                  Width="16" Height="16"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"
+                                  Foreground="#7F849C"/>
+
+                              <!-- Category Name -->
+                              <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="#CDD6F4">
+                                <TextBlock.ContextMenu>
+                                  <ContextMenu>
+                                    <MenuItem Header="Copy Category Name"
+                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                        CommandParameter="{Binding Name}"/>
+                                  </ContextMenu>
+                                </TextBlock.ContextMenu>
+                              </TextBlock>
+
+                              <!-- Problem Count -->
+                              <TextBlock Grid.Column="2" Text="{Binding ProblemCount, StringFormat={}{0} problems}"
+                                   Foreground="#6C7086" FontSize="12" VerticalAlignment="Center"/>
+                             </Grid>
+                            </Button>
+
+                            <!-- Problems List (expanded) -->
+                            <StackPanel Spacing="4" IsVisible="{Binding IsExpanded}">
+                              <ItemsControl ItemsSource="{Binding Problems}">
+                                <ItemsControl.ItemsPanel>
+                                  <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" Spacing="2"/>
+                                  </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate>
+                                    <Border Background="#1A1A2E" CornerRadius="3" Padding="8,6">
+                                      <StackPanel Spacing="4">
+                                        <!-- Problem Statement -->
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#A6ADC8"
+                                                   Cursor="Hand">
+                                          <Run Text="Problem: " FontWeight="SemiBold" Foreground="#7F849C"/>
+                                          <Run Text="{Binding OneLineStatement}"/>
+                                          <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                              <MenuItem Header="Copy Problem"
+                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                                        CommandParameter="{Binding OneLineStatement}"/>
+                                            </ContextMenu>
+                                          </TextBlock.ContextMenu>
+                                        </TextBlock>
+
+                                        <!-- Full Prompt (if available) -->
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#CDD6F4"
+                                                   IsVisible="{Binding FullPrompt, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Cursor="Hand">
+                                          <Run Text="Prompt: " FontWeight="SemiBold" Foreground="#7F849C"/>
+                                          <Run Text="{Binding FullPrompt}"/>
+                                          <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                              <MenuItem Header="Copy Prompt"
+                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                                        CommandParameter="{Binding FullPrompt}"/>
+                                            </ContextMenu>
+                                          </TextBlock.ContextMenu>
+                                        </TextBlock>
+
+                                        <!-- Expected Output (if available) -->
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#A6E3A1"
+                                                   IsVisible="{Binding ExpectedOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Cursor="Hand">
+                                          <Run Text="Expected: " FontWeight="SemiBold" Foreground="#7F849C"/>
+                                          <Run Text="{Binding ExpectedOutput}"/>
+                                          <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                              <MenuItem Header="Copy Expected Output"
+                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                                        CommandParameter="{Binding ExpectedOutput}"/>
+                                            </ContextMenu>
+                                          </TextBlock.ContextMenu>
+                                        </TextBlock>
+                                      </StackPanel>
+                                    </Border>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </StackPanel>
+                          </StackPanel>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>

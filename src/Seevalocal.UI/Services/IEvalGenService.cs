@@ -35,19 +35,23 @@ public interface IEvalGenService
 /// Represents an active or completed eval generation run.
 /// Provides progress tracking and control methods.
 /// </summary>
-public sealed class EvalGenRun
+/// <remarks>
+/// Constructs an EvalGenRun without starting execution.
+/// Call <see cref="StartAsync"/> to begin execution.
+/// </remarks>
+public sealed class EvalGenRun(EvalGenConfig config, Func<CancellationToken, Task> executionFunc)
 {
-    private readonly CancellationTokenSource _cts;
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private Task? _executionTask;
     private bool _isPaused;
     private readonly object _pauseLock = new();
     private TaskCompletionSource? _pauseResumeTcs;
 
-    public string Id { get; }
-    public string RunName { get; }
-    public EvalGenConfig Config { get; }
+    public string Id { get; } = config.Id;
+    public string RunName { get; } = config.RunName;
+    public EvalGenConfig Config { get; } = config;
     public string CheckpointDatabasePath { get; set; } = "";
-    public DateTimeOffset StartedAt { get; }
+    public DateTimeOffset StartedAt { get; } = DateTimeOffset.Now;
     public EvalGenCheckpointCollector? Collector { get; set; }
 
     public EvalGenProgress Progress { get; private set; } = new()
@@ -87,22 +91,6 @@ public sealed class EvalGenRun
     public event Action? RunCompleted;
 
     /// <summary>
-    /// Constructs an EvalGenRun without starting execution.
-    /// Call <see cref="StartAsync"/> to begin execution.
-    /// </summary>
-    public EvalGenRun(EvalGenConfig config, Func<CancellationToken, Task> executionFunc)
-    {
-        Id = config.Id;
-        RunName = config.RunName;
-        Config = config;
-        StartedAt = DateTimeOffset.Now;
-        _cts = new CancellationTokenSource();
-        _executionFunc = executionFunc;
-    }
-
-    private readonly Func<CancellationToken, Task> _executionFunc;
-
-    /// <summary>
     /// Starts the execution task. Must be called after construction.
     /// </summary>
     public void Start()
@@ -111,7 +99,7 @@ public sealed class EvalGenRun
             throw new InvalidOperationException("Execution already started");
 
         IsRunning = true;
-        _executionTask = _executionFunc(_cts.Token).ContinueWith(t =>
+        _executionTask = executionFunc(_cts.Token).ContinueWith(t =>
         {
             IsRunning = false;
             if (t.IsFaulted)
