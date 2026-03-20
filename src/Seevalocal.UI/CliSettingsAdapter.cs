@@ -52,7 +52,6 @@ public static class CliSettingsAdapter
                 Port = s.Port,
                 ApiKey = s.ApiKey,
                 BaseUrl = s.ServerUrl,
-                ExtraArgs = s.ExtraArgs?.ToList()
             }
             : null;
 
@@ -77,7 +76,8 @@ public static class CliSettingsAdapter
                 Seed = s.Seed,
                 ChatTemplate = s.ChatTemplate,
                 ReasoningFormat = s.ReasoningFormat,
-                LogVerbosity = s.LogVerbosity
+                LogVerbosity = s.LogVerbosity,
+                ExtraArgs = s.ExtraArgs != null && s.ExtraArgs.Length > 0 ? [.. s.ExtraArgs] : null
             }
             : null;
 
@@ -93,8 +93,6 @@ public static class CliSettingsAdapter
                 },
                 BaseUrl = s.JudgeUrl,
                 JudgePromptTemplate = s.JudgeTemplate ?? "standard",
-                ScoreMinValue = s.JudgeScoreMin ?? 0,
-                ScoreMaxValue = s.JudgeScoreMax ?? 10,
                 ServerSettings = s.JudgeModelFilePath != null || s.JudgeHfRepo != null
                     ? new PartialLlamaServerSettings
                     {
@@ -154,7 +152,7 @@ public static class CliSettingsAdapter
         || s.EnableCachePrompt != null || s.EnableContextShift != null || s.KvTypeK != null
         || s.KvTypeV != null || s.ThreadCount != null || s.SamplingTemperature != null
         || s.TopP != null || s.TopK != null || s.MinP != null || s.Seed != null
-        || s.ChatTemplate != null || s.ReasoningFormat != null || s.LogVerbosity != null;
+        || s.ChatTemplate != null || s.ReasoningFormat != null || s.LogVerbosity != null || s.ExtraArgs != null;
 
     private static bool HasAnyEvalSettings(RunCommandSettings s) =>
         s.PipelineName != null || s.PromptDir != null || s.ExpectedDir != null

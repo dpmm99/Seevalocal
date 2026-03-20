@@ -293,7 +293,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         var gpuDetector = new GpuDetector(NullLogger<GpuDetector>.Instance);
         var downloader = new LlamaServerDownloader(_httpClient, NullLogger<LlamaServerDownloader>.Instance);
         var serverManager = new LlamaServerManager(downloader, gpuDetector, _httpClient, _loggerFactory.CreateLogger<LlamaServerManager>());
-        return new EvalGenService(null, serverManager, _loggerFactory, _httpClient, _loggerFactory.CreateLogger<EvalGenService>());
+        return new EvalGenService(serverManager, downloader, gpuDetector, _loggerFactory, _httpClient, _loggerFactory.CreateLogger<EvalGenService>());
     }
 
     /// <summary>

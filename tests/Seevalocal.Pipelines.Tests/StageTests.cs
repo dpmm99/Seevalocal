@@ -1,52 +1,8 @@
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline.Stages;
-using Seevalocal.Judge;
 using Xunit;
 
 namespace Seevalocal.Pipelines.Tests;
-
-public sealed class JudgeResponseParserTests
-{
-    [Theory]
-    [InlineData("8", 10, 0.8, true)]
-    [InlineData("6", 10, 0.6, true)]
-    [InlineData("5", 10, 0.5, false)]
-    [InlineData("10", 10, 1.0, true)]
-    [InlineData("0", 10, 0.0, false)]
-    [InlineData("7.5", 10, 0.75, true)]
-    public void ParseScore_ExtractsCorrectRatioAndPassedFlag(
-        string raw, int maxScore, double expectedRatio, bool expectedPassed)
-    {
-        var result = JudgeStage.ParseScore(raw, maxScore, passThreshold: 0.6);
-        Assert.NotNull(result);
-        Assert.Equal(expectedRatio, result!.ScoreRatio, precision: 5);
-        Assert.Equal(expectedPassed, result.Passed);
-    }
-
-    [Theory]
-    [InlineData("Score: 8 out of 10")]
-    [InlineData("I'd give this a 7.")]
-    [InlineData("The translation is good. 9")]
-    public void ParseScore_ExtractsFirstNumber_FromNarrativeResponse(string raw)
-    {
-        var result = JudgeStage.ParseScore(raw, maxScore: 10, passThreshold: 0.6);
-        Assert.NotNull(result);
-    }
-
-    [Fact]
-    public void ParseScore_NoNumber_ReturnsNull()
-    {
-        var result = JudgeStage.ParseScore("The answer is great!", maxScore: 10, passThreshold: 0.6);
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void ParseScore_EmptyString_ReturnsNull()
-    {
-        var result = JudgeStage.ParseScore("", maxScore: 10, passThreshold: 0.6);
-        Assert.Null(result);
-    }
-}
 
 public sealed class ExactMatchStageTests
 {

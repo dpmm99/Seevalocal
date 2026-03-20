@@ -1,6 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Markup.Xaml;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Seevalocal.Core.Models;
 using Seevalocal.UI.ViewModels;
 using System.ComponentModel;
 
@@ -39,6 +42,56 @@ public partial class EvalGenView : UserControl
             case nameof(EvalGenViewModel.Phase3Prompt):
                 Dispatcher.UIThread.Post(() => Phase3PromptBox.Text = _viewModel.Phase3Prompt);
                 break;
+        }
+    }
+
+    // Context menu click handlers - use Click instead of Command to avoid scrolling issues
+    private void CopyCategoryNameMenuItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is GeneratedCategoryViewModel category)
+        {
+            CopyToClipboard(category.Name);
+        }
+    }
+
+    private void CopyProblemMenuItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is GeneratedProblem problem)
+        {
+            CopyToClipboard(problem.OneLineStatement);
+        }
+    }
+
+    private void CopyPromptMenuItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is GeneratedProblem problem && !string.IsNullOrEmpty(problem.FullPrompt))
+        {
+            CopyToClipboard(problem.FullPrompt);
+        }
+    }
+
+    private void CopyExpectedOutputMenuItem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.DataContext is GeneratedProblem problem && !string.IsNullOrEmpty(problem.ExpectedOutput))
+        {
+            CopyToClipboard(problem.ExpectedOutput);
+        }
+    }
+
+    private void CopyToClipboard(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        try
+        {
+            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            {
+                desktop.MainWindow?.Clipboard?.SetTextAsync(text);
+            }
+        }
+        catch
+        {
+            // Silently fail - clipboard access may not be available
         }
     }
 }

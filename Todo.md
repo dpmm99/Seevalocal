@@ -20,5 +20,14 @@ Verify that each setting is actually hooked up and meaningful (I notice judge lo
 To-fix list:
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
 Make the eval run dashboard clean up properly when the run fails--status text should update and the pause/cancel buttons should go back to being disabled.
+Things scrolling on their own is annoying. When the window comes into focus, it scrolls to whatever interactable element you last clicked on. When right-clicking something, it scrolls... elsewhere.
+Let the user know they can inject their per-item languages via curly brackets like "{sourceLanguage}" in their custom prompt, similar to EvalGenView.
+TranslationPipelineFactory.EnsurePrerequisites should check that the data source is set up right, not for presence of those specific paths. Or maybe check nothing because that's already checked elsewhere?
+In fact, I don't think the PipelineRegistry is used at all...
+Translation judge prompt needs the language(s) listed in it, so the judge stage needs a way to pass them in.
+When continuing an eval from a checkpoint, the Run Dashboard and Results Viewer both need to include the data (StageOutputs and Metrics) from the checkpoint DB that were generated in past runs.
+
 
 To-test list:
+Fleshed-out problems have quit showing up in the GenEval view
+Add running average tokens per second to eval gen view (like "Tokens/sec" at the top of the Run Dashboard view).

@@ -148,7 +148,7 @@
                            IsChecked="{Binding ManageServer}"
                            GroupName="serverMode" Margin="0,4"/>
               <RadioButton Content="Connect to existing server"
-                           IsChecked="{Binding !ManageServer}"
+                           IsChecked="{Binding ManageServer, Converter={x:Static convert:BoolNegationConverter.Instance}}"
                            GroupName="serverMode" Margin="0,4"/>
             </StackPanel>
 
@@ -158,7 +158,7 @@
                 <TextBlock Text="Specify a local llama-server executable to use (optional). If not specified, the app will search for llama-server in standard locations."
                            Foreground="#7F849C" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
                 <Grid ColumnDefinitions="*,Auto">
-                  <TextBox Grid.Column="0" Text="{Binding LlamaServerExecutablePath}" Watermark="Path to llama-server executable (optional)..."/>
+                  <TextBox Grid.Column="0" Text="{Binding LlamaServerExecutablePath, UpdateSourceTrigger=PropertyChanged}" Watermark="Path to llama-server executable (optional)..."/>
                   <Button Grid.Column="1" Content="Browse..." Margin="8,0,0,0" Padding="16,6"
                           Command="{Binding BrowseLocalModelCommand}" CommandParameter="executable"/>
                 </Grid>
@@ -175,8 +175,8 @@
                             Command="{Binding BrowseLocalModelCommand}"/>
                   </StackPanel>
 
-                  <RadioButton Content="Download from HuggingFace" IsChecked="{Binding !UseLocalFile}" GroupName="modelSource" Margin="0,8,0,0"/>
-                  <StackPanel IsVisible="{Binding !UseLocalFile}" Margin="20,4,0,0" Spacing="8">
+                  <RadioButton Content="Download from HuggingFace" IsChecked="{Binding UseLocalFile, Converter={x:Static convert:BoolNegationConverter.Instance}}" GroupName="modelSource" Margin="0,8,0,0"/>
+                  <StackPanel IsVisible="{Binding UseLocalFile, Converter={x:Static convert:BoolNegationConverter.Instance}}" Margin="20,4,0,0" Spacing="8">
                     <TextBlock Text="HuggingFace Repo" Classes="label"/>
                     <TextBox Text="{Binding HfRepo}" Watermark="e.g., TheBloke/Mistral-7B-Instruct-v0.1-GGUF"/>
                     <TextBlock Text="Quantization (optional)" Classes="label" Margin="0,8,0,0"/>
@@ -188,7 +188,7 @@
               </StackPanel>
             </Border>
 
-            <Border IsVisible="{Binding !ManageServer}" Background="#181825" CornerRadius="6" Padding="16" Margin="0,8">
+            <Border IsVisible="{Binding ManageServer, Converter={x:Static convert:BoolNegationConverter.Instance}}" Background="#181825" CornerRadius="6" Padding="16" Margin="0,8">
               <StackPanel Spacing="12">
                 <TextBlock Text="Server Connection" Classes="sectionHeader"/>
                 <TextBlock Text="Server URL" Classes="label"/>
@@ -215,16 +215,16 @@
                     <TextBox Text="{Binding ContextWindowTokens}" Watermark="e.g., 4096"/>
                   </StackPanel>
                   <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                    <TextBlock Text="Parallel Slots" Classes="label"/>
+                    <TextBox Text="{Binding ParallelSlotCount}" Watermark="e.g., 4"/>
+                  </StackPanel>
+                  <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Batch Size (tokens)" Classes="label"/>
                     <TextBox Text="{Binding BatchSizeTokens}" Watermark="e.g., 512"/>
                   </StackPanel>
-                  <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Micro-Batch Size (tokens)" Classes="label"/>
                     <TextBox Text="{Binding UbatchSizeTokens}" Watermark="e.g., 64"/>
-                  </StackPanel>
-                  <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
-                    <TextBlock Text="Parallel Slots" Classes="label"/>
-                    <TextBox Text="{Binding ParallelSlotCount}" Watermark="e.g., 4"/>
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <CheckBox Content="Enable Continuous Batching" IsChecked="{Binding EnableContinuousBatching}"/>
@@ -421,7 +421,7 @@
                 <TextBlock Text="Data Source" Classes="sectionHeader"/>
                 <StackPanel Spacing="8">
                   <RadioButton Content="Single data file (JSON/JSONL/YAML/CSV/Parquet)"
-                               IsChecked="{Binding UseSingleFileDataSource}"
+                               IsChecked="{Binding UseSingleFileDataSource, Mode=TwoWay}"
                                GroupName="dataSource"/>
                   <StackPanel IsVisible="{Binding UseSingleFileDataSource}" Margin="20,4,0,0" Spacing="8">
                     <TextBox Text="{Binding DataFilePath}" Watermark="Select a data file..."/>
@@ -430,9 +430,9 @@
                   </StackPanel>
 
                   <RadioButton Content="Prompt/Expected directories"
-                               IsChecked="{Binding UseSingleFileDataSource, Converter={x:Static convert:BoolNegationConverter.Instance}}"
+                               IsChecked="{Binding UseDirectoryDataSource, Mode=TwoWay}"
                                GroupName="dataSource" Margin="0,8,0,0"/>
-                  <StackPanel IsVisible="{Binding UseSingleFileDataSource, Converter={x:Static convert:BoolNegationConverter.Instance}}" Margin="20,4,0,0" Spacing="8">
+                  <StackPanel IsVisible="{Binding UseDirectoryDataSource}" Margin="20,4,0,0" Spacing="8">
                     <TextBox Text="{Binding PromptDir}" Watermark="Prompt directory path..."/>
                     <Button Content="Browse..." HorizontalAlignment="Left" Padding="16,6"
                             Command="{Binding BrowsePromptDirCommand}"/>
@@ -454,29 +454,59 @@
             <Border Background="#181825" CornerRadius="6" Padding="16">
               <StackPanel Spacing="12">
                 <TextBlock Text="Standard Field Mappings" Classes="sectionHeader"/>
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,8">
+                <TextBlock TextWrapping="Wrap" Margin="0,0,0,12">
+                  <Run Text="Select or type field names from your data file. " Foreground="#A6ADC8"/>
+                  <Run Text="Fields are auto-detected when you select a file." Foreground="#6C7086" FontStyle="Italic"/>
+                </TextBlock>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,8">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="ID Field:" Classes="label" VerticalAlignment="Center"/>
-                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FieldMappingId}" Watermark="Field name for item ID (optional)" Margin="12,0,0,0"/>
-                  
+                  <ComboBox Grid.Row="0" Grid.Column="1" 
+                            Text="{Binding FieldMappingId}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,0,0,0"
+                            IsEditable="True">
+                    <ComboBox.Tag>Field name for item ID (optional)</ComboBox.Tag>
+                  </ComboBox>
+
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="User Prompt Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FieldMappingUserPrompt}" Watermark="Field name for user prompt" Margin="12,8,0,0"/>
-                  
+                  <ComboBox Grid.Row="1" Grid.Column="1" 
+                            Text="{Binding FieldMappingUserPrompt}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"/>
+
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="Expected Output Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding FieldMappingExpectedOutput}" Watermark="Field name for expected output" Margin="12,8,0,0"/>
-                  
+                  <ComboBox Grid.Row="2" Grid.Column="1" 
+                            Text="{Binding FieldMappingExpectedOutput}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"/>
+
                   <TextBlock Grid.Row="3" Grid.Column="0" Text="System Prompt Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding FieldMappingSystemPrompt}" Watermark="Field name for system prompt (optional)" Margin="12,8,0,0"/>
-                </Grid>
+                  <ComboBox Grid.Row="3" Grid.Column="1" 
+                            Text="{Binding FieldMappingSystemPrompt}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"/>
 
-                <Separator Background="#45475A" Margin="0,16"/>
+                  <!-- Translation pipeline per-item language fields -->
+                  <TextBlock Grid.Row="4" Grid.Column="0" Text="Source Language Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"
+                             IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}"/>
+                  <ComboBox Grid.Row="4" Grid.Column="1" 
+                            Text="{Binding FieldMappingSourceLanguage}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"
+                            IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}"/>
 
-                <TextBlock Text="Pipeline-Specific Fields" Classes="sectionHeader"/>
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,8">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Test File Field:" Classes="label" VerticalAlignment="Center"/>
-                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FieldMappingTestFile}" Watermark="Field name for test file path (C# coding pipeline)" Margin="12,0,0,0"/>
-                  
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Build Script Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FieldMappingBuildScript}" Watermark="Field name for build script path (C# coding pipeline)" Margin="12,8,0,0"/>
+                  <TextBlock Grid.Row="5" Grid.Column="0" Text="Target Language Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"
+                             IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}"/>
+                  <ComboBox Grid.Row="5" Grid.Column="1" 
+                            Text="{Binding FieldMappingTargetLanguage}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"
+                            IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}"/>
                 </Grid>
               </StackPanel>
             </Border>
@@ -489,30 +519,54 @@
                        Classes="helpText" Margin="0,0,0,16"/>
 
             <!-- Translation Pipeline Config -->
-            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}" 
-                    Background="#181825" CornerRadius="6" Padding="16">
-              <StackPanel Spacing="12">
-                <TextBlock Text="Translation Settings" Classes="sectionHeader"/>
-                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8">
-                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Language:" Classes="label" VerticalAlignment="Center"/>
-                  <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TranslationSourceLanguage}" Watermark="e.g., English" Margin="12,0,0,0"/>
-                  
-                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Language:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TranslationTargetLanguage}" Watermark="e.g., French" Margin="12,8,0,0"/>
-                  
-                  <TextBlock Grid.Row="2" Grid.Column="0" Text="System Prompt:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                  <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TranslationSystemPrompt}" 
-                           Watermark="Custom system prompt for translation (optional)" 
-                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="12,8,0,0"/>
-                </Grid>
-              </StackPanel>
+            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=Translation}">
+              <Border IsVisible="{Binding ShouldHideGlobalTranslationSettings, Converter={x:Static convert:BoolNegationConverter.Instance}}"
+                      Background="#181825" CornerRadius="6" Padding="16">
+                <StackPanel Spacing="12">
+                  <TextBlock Text="Translation Settings" Classes="sectionHeader"/>
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" Margin="0,8">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Source Language:" Classes="label" VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding TranslationSourceLanguage}" Watermark="e.g., English" Margin="12,0,0,0"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Language:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TranslationTargetLanguage}" Watermark="e.g., French" Margin="12,8,0,0"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="System Prompt:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TranslationSystemPrompt}"
+                             Watermark="Custom system prompt for translation (optional)"
+                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" Margin="12,8,0,0"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
             </Border>
 
             <!-- C# Coding Pipeline Config -->
-            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CSharpCoding}" 
+            <Border IsVisible="{Binding PipelineName, Converter={x:Static convert:IsEqualConverter.Instance}, ConverterParameter=CSharpCoding}"
                     Background="#181825" CornerRadius="6" Padding="16">
               <StackPanel Spacing="12">
                 <TextBlock Text="C# Coding Settings" Classes="sectionHeader"/>
+                
+                <TextBlock Text="Field Mappings" Classes="subSectionHeader" Margin="0,8,0,4"/>
+                <TextBlock Text="Specify the field names in your data file that contain test file and build script paths."
+                           Foreground="#7F849C" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,8">
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="Test File Field:" Classes="label" VerticalAlignment="Center"/>
+                  <ComboBox Grid.Row="0" Grid.Column="1" 
+                            Text="{Binding FieldMappingTestFile}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,0,0,0"
+                            IsEditable="True"/>
+
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="Build Script Field:" Classes="label" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                  <ComboBox Grid.Row="1" Grid.Column="1" 
+                            Text="{Binding FieldMappingBuildScript}" 
+                            ItemsSource="{Binding DetectedFields}"
+                            Margin="12,8,0,0"
+                            IsEditable="True"/>
+                </Grid>
+
+                <Separator Background="#45475A" Margin="0,16"/>
+
                 <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto" Margin="0,8">
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="Build Script:" Classes="label" VerticalAlignment="Center"/>
                   <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="*,Auto" Margin="12,0,0,0">
@@ -541,7 +595,7 @@
             <TextBlock Text="Configure LLM-as-judge for automated scoring of evaluation results."
                        Classes="helpText" Margin="0,0,0,16"/>
 
-            <CheckBox Content="Enable LLM-as-Judge" IsChecked="{Binding EnableJudge}" Margin="0,8"/>
+            <CheckBox Content="Enable LLM-as-Judge" IsChecked="{Binding EnableJudge, Mode=TwoWay}" Margin="0,8"/>
 
             <Border IsVisible="{Binding EnableJudge}" Background="#181825" CornerRadius="6" Padding="16">
               <StackPanel Spacing="12">
@@ -554,7 +608,7 @@
                                IsChecked="{Binding JudgeManageServer}"
                                GroupName="judgeServerMode" Margin="0,4"/>
                   <RadioButton Content="Connect to existing judge server"
-                               IsChecked="{Binding !JudgeManageServer}"
+                               IsChecked="{Binding JudgeManageServer, Converter={x:Static convert:BoolNegationConverter.Instance}}"
                                GroupName="judgeServerMode" Margin="0,4"/>
                 </StackPanel>
 
@@ -581,8 +635,8 @@
                                 Command="{Binding BrowseJudgeModelCommand}"/>
                       </StackPanel>
 
-                      <RadioButton Content="Download from HuggingFace" IsChecked="{Binding !JudgeUseLocalFile}" GroupName="judgeModelSource" Margin="0,8,0,0"/>
-                      <StackPanel IsVisible="{Binding !JudgeUseLocalFile}" Margin="20,4,0,0" Spacing="8">
+                      <RadioButton Content="Download from HuggingFace" IsChecked="{Binding JudgeUseLocalFile, Converter={x:Static convert:BoolNegationConverter.Instance}}" GroupName="judgeModelSource" Margin="0,8,0,0"/>
+                      <StackPanel IsVisible="{Binding JudgeUseLocalFile, Converter={x:Static convert:BoolNegationConverter.Instance}}" Margin="20,4,0,0" Spacing="8">
                         <TextBlock Text="HuggingFace Repo" Classes="label"/>
                         <TextBox Text="{Binding JudgeHfRepo}" Watermark="e.g., TheBloke/Mistral-7B-Instruct-v0.1-GGUF"/>
                         <TextBlock Text="HuggingFace Token (optional)" Classes="label" Margin="0,8,0,0"/>
@@ -597,7 +651,7 @@
                     <Border Background="#181825" CornerRadius="6" Padding="12" Margin="0,4">
                       <StackPanel Spacing="8">
                         <TextBlock Text="Context &amp; Batching" Classes="label"/>
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Context Window (tokens)" Classes="label"/>
                             <TextBox Text="{Binding JudgeContextWindowTokens}" Watermark="e.g., 4096"/>
@@ -607,12 +661,17 @@
                             <TextBox Text="{Binding JudgeParallelSlotCount}" Watermark="e.g., 2"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
-                            <TextBlock Text="GPU Layers" Classes="label"/>
-                            <TextBox Text="{Binding JudgeGpuLayerCount}" Watermark="e.g., 32"/>
-                          </StackPanel>
-                          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Batch Size (tokens)" Classes="label"/>
                             <TextBox Text="{Binding JudgeBatchSizeTokens}" Watermark="e.g., 512"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Micro-Batch Size (tokens)" Classes="label"/>
+                            <TextBox Text="{Binding JudgeUbatchSizeTokens}" Watermark="e.g., 64"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                            <CheckBox Content="Enable Continuous Batching" IsChecked="{Binding JudgeEnableContinuousBatching}"/>
+                            <CheckBox Content="Cache Prompt Processing" IsChecked="{Binding JudgeEnableCachePrompt}"/>
+                            <CheckBox Content="Enable Context Shift" IsChecked="{Binding JudgeEnableContextShift}"/>
                           </StackPanel>
                         </Grid>
                       </StackPanel>
@@ -622,8 +681,12 @@
                     <Border Background="#181825" CornerRadius="6" Padding="12" Margin="0,4">
                       <StackPanel Spacing="8">
                         <TextBlock Text="GPU Acceleration" Classes="label"/>
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="GPU Layers" Classes="label"/>
+                            <TextBox Text="{Binding JudgeGpuLayerCount}" Watermark="e.g., 32"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Split Mode" Classes="label"/>
                             <ComboBox SelectedItem="{Binding JudgeSplitMode}" HorizontalAlignment="Left" MinWidth="150">
                               <ComboBoxItem Content="none"/>
@@ -631,17 +694,17 @@
                               <ComboBoxItem Content="row"/>
                             </ComboBox>
                           </StackPanel>
-                          <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                          <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                             <TextBlock Text="KV Cache Type K" Classes="label"/>
                             <TextBox Text="{Binding JudgeKvCacheTypeK}" Watermark="e.g., f16, q8_0"/>
                           </StackPanel>
-                          <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                             <TextBlock Text="KV Cache Type V" Classes="label"/>
                             <TextBox Text="{Binding JudgeKvCacheTypeV}" Watermark="e.g., f16, q8_0"/>
                           </StackPanel>
-                          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Enable Flash Attention" Classes="label"/>
-                            <CheckBox IsChecked="{Binding JudgeEnableFlashAttention}"/>
+                          <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                            <CheckBox Content="Enable KV Offload to GPU" IsChecked="{Binding JudgeEnableKvOffload}"/>
+                            <CheckBox Content="Enable Flash Attention" IsChecked="{Binding JudgeEnableFlashAttention}"/>
                           </StackPanel>
                         </Grid>
                       </StackPanel>
@@ -651,7 +714,7 @@
                     <Border Background="#181825" CornerRadius="6" Padding="12" Margin="0,4">
                       <StackPanel Spacing="8">
                         <TextBlock Text="Sampling Parameters" Classes="label"/>
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Temperature" Classes="label"/>
                             <TextBox Text="{Binding JudgeSamplingTemperature}" Watermark="e.g., 0.7"/>
@@ -673,7 +736,19 @@
                             <TextBox Text="{Binding JudgeRepeatPenalty}" Watermark="e.g., 1.1"/>
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Seed (-1 for random)" Classes="label"/>
+                            <TextBlock Text="Repeat Last N" Classes="label"/>
+                            <TextBox Text="{Binding JudgeRepeatLastNTokens}" Watermark="e.g., 64"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="3" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Presence Penalty" Classes="label"/>
+                            <TextBox Text="{Binding JudgePresencePenalty}" Watermark="e.g., 0.0"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Frequency Penalty" Classes="label"/>
+                            <TextBox Text="{Binding JudgeFrequencyPenalty}" Watermark="e.g., 0.0"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                            <TextBlock Text="Random Seed (-1 for random)" Classes="label"/>
                             <TextBox Text="{Binding JudgeSeed}" Watermark="e.g., -1"/>
                           </StackPanel>
                         </Grid>
@@ -705,16 +780,24 @@
                     <Border Background="#181825" CornerRadius="6" Padding="12" Margin="0,4">
                       <StackPanel Spacing="8">
                         <TextBlock Text="Model Behavior &amp; Logging" Classes="label"/>
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Chat Template" Classes="label"/>
                             <TextBox Text="{Binding JudgeChatTemplate}" Watermark="e.g., llama-2"/>
                           </StackPanel>
                           <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Model Alias" Classes="label"/>
+                            <TextBox Text="{Binding JudgeModelAlias}" Watermark="e.g., my-model"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Reasoning Format" Classes="label"/>
+                            <TextBox Text="{Binding JudgeReasoningFormat}" Watermark="e.g., chain-of-thought"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Log Verbosity (0-3)" Classes="label"/>
                             <TextBox Text="{Binding JudgeLogVerbosity}" Watermark="e.g., 2"/>
                           </StackPanel>
-                          <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                          <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <CheckBox Content="Enable Jinja Template Processing" IsChecked="{Binding JudgeEnableJinja}"/>
                             <TextBlock Text="Server Timeout (seconds)" Classes="label" Margin="0,8,0,0"/>
                             <TextBox Text="{Binding JudgeServerTimeoutSeconds}" Watermark="e.g., 300"/>
@@ -748,17 +831,6 @@
                   <ComboBoxItem Content="structured-json"/>
                   <ComboBoxItem Content="translation-judge-template"/>
                 </ComboBox>
-
-                <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
-                  <StackPanel Grid.Column="0" Spacing="4">
-                    <TextBlock Text="Min Score" Classes="label"/>
-                    <TextBox Text="{Binding JudgeScoreMin}" HorizontalAlignment="Left" Width="100"/>
-                  </StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="4">
-                    <TextBlock Text="Max Score" Classes="label"/>
-                    <TextBox Text="{Binding JudgeScoreMax}" HorizontalAlignment="Left" Width="100"/>
-                  </StackPanel>
-                </Grid>
               </StackPanel>
             </Border>
           </StackPanel>

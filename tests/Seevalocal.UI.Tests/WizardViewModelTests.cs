@@ -46,8 +46,6 @@ public sealed class WizardViewModelTests
         _ = vm.RepeatLastNTokens.Should().BeNull();
         _ = vm.SplitMode.Should().BeNull();
         _ = vm.JudgeTemplate.Should().Be("standard");
-        _ = vm.JudgeScoreMin.Should().Be(0);
-        _ = vm.JudgeScoreMax.Should().Be(10);
     }
 
     [Fact]
@@ -452,8 +450,6 @@ public sealed class WizardViewModelTests
         vm.JudgeUseLocalFile = true;
         vm.JudgeLocalModelPath = "/path/to/judge.gguf";
         vm.JudgeTemplate = "pass-fail";
-        vm.JudgeScoreMin = 0;
-        vm.JudgeScoreMax = 1;
 
         // Act
         var config = vm.BuildPartialConfig();
@@ -464,8 +460,7 @@ public sealed class WizardViewModelTests
         _ = config.Judge.ServerConfig!.Model!.Kind.Should().Be(ModelSourceKind.LocalFile);
         _ = config.Judge.ServerConfig.Model.FilePath.Should().Be("/path/to/judge.gguf");
         _ = config.Judge.JudgePromptTemplate.Should().Be("pass-fail");
-        _ = config.Judge.ScoreMinValue.Should().Be(0);
-        _ = config.Judge.ScoreMaxValue.Should().Be(1);
+        // Note: ScoreMin/ScoreMax have been removed as they are not used by the field-agnostic judge
     }
 
     [Fact]
@@ -719,6 +714,161 @@ public sealed class WizardViewModelTests
 
         // Assert
         _ = propertyChanged.Should().Contain(nameof(WizardViewModel.CanGoForward));
+    }
+
+    #endregion
+
+    #region Checkpoint Loading
+
+    [Fact]
+    public void LoadCheckpoint_Populates_FieldMappings()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        
+        // Create a mock ResolvedConfig with field mappings
+        var config = new ResolvedConfig
+        {
+            Run = new RunMeta
+            {
+                RunName = "TestRun",
+                OutputDirectoryPath = "./test_output"
+            },
+            Server = new ServerConfig
+            {
+                Manage = true,
+                Host = "localhost",
+                Port = 8080
+            },
+            LlamaServer = new LlamaServerSettings
+            {
+                ContextWindowTokens = 4096
+            },
+            EvalSets =
+            [
+                new EvalSetConfig
+                {
+                    Id = "test-eval-set",
+                    Name = "Test Eval Set",
+                    PipelineName = "CasualQA",
+                    DataSource = new DataSourceConfig
+                    {
+                        Kind = DataSourceKind.SingleFile,
+                        FilePath = "./test_data.json",
+                        FieldMapping = new FieldMapping
+                        {
+                            IdField = "id",
+                            UserPromptField = "prompt",
+                            ExpectedOutputField = "expected",
+                            SystemPromptField = "system_prompt"
+                        }
+                    }
+                }
+            ]
+        };
+
+        // Act - directly call the population method using reflection
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        
+        // Verify method was found
+        _ = methodInfo.Should().NotBeNull("PopulateFromCheckpointConfig method should exist");
+        methodInfo!.Invoke(vm, [config]);
+
+        // Assert - field mappings should be populated
+        _ = vm.FieldMappingId.Should().Be("id", "IdField should be populated from checkpoint");
+        _ = vm.FieldMappingUserPrompt.Should().Be("prompt", "UserPromptField should be populated from checkpoint");
+        _ = vm.FieldMappingExpectedOutput.Should().Be("expected", "ExpectedOutputField should be populated from checkpoint");
+        _ = vm.FieldMappingSystemPrompt.Should().Be("system_prompt", "SystemPromptField should be populated from checkpoint");
+    }
+
+    [Fact]
+    public void LoadCheckpoint_With_Translation_Pipeline_Populates_Language_Fields()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        
+        var config = new ResolvedConfig
+        {
+            Run = new RunMeta { RunName = "TranslationRun" },
+            Server = new ServerConfig { Manage = true },
+            LlamaServer = new LlamaServerSettings(),
+            EvalSets =
+            [
+                new EvalSetConfig
+                {
+                    PipelineName = "Translation",
+                    DataSource = new DataSourceConfig
+                    {
+                        Kind = DataSourceKind.SingleFile,
+                        FilePath = "./translation_data.json",
+                        FieldMapping = new FieldMapping
+                        {
+                            IdField = "id",
+                            UserPromptField = "input",
+                            ExpectedOutputField = "output",
+                            SourceLanguageField = "source_lang",
+                            TargetLanguageField = "target_lang"
+                        }
+                    }
+                }
+            ]
+        };
+
+        // Act
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        methodInfo!.Invoke(vm, [config]);
+
+        // Assert - translation-specific field mappings should be populated
+        _ = vm.FieldMappingSourceLanguage.Should().Be("source_lang");
+        _ = vm.FieldMappingTargetLanguage.Should().Be("target_lang");
+    }
+
+    [Fact]
+    public void LoadCheckpoint_Populates_SplitDirectories_FieldMappings()
+    {
+        // Arrange
+        var vm = new WizardViewModel(_filePicker, _toastService);
+        
+        var config = new ResolvedConfig
+        {
+            Run = new RunMeta { RunName = "DirRun" },
+            Server = new ServerConfig { Manage = true },
+            LlamaServer = new LlamaServerSettings(),
+            EvalSets =
+            [
+                new EvalSetConfig
+                {
+                    PipelineName = "CasualQA",
+                    DataSource = new DataSourceConfig
+                    {
+                        Kind = DataSourceKind.SplitDirectories,
+                        PromptDirectoryPath = "./prompts",
+                        ExpectedOutputDirectoryPath = "./expected",
+                        FieldMapping = new FieldMapping
+                        {
+                            IdField = "test_id",
+                            UserPromptField = "user_prompt",
+                            ExpectedOutputField = "expected_output"
+                        }
+                    }
+                }
+            ]
+        };
+
+        // Act
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        methodInfo!.Invoke(vm, [config]);
+
+        // Assert - should use directory mode and populate field mappings
+        _ = vm.UseSingleFileDataSource.Should().BeFalse();
+        _ = vm.PromptDir.Should().Be("./prompts");
+        _ = vm.ExpectedDir.Should().Be("./expected");
+        _ = vm.FieldMappingId.Should().Be("test_id");
+        _ = vm.FieldMappingUserPrompt.Should().Be("user_prompt");
+        _ = vm.FieldMappingExpectedOutput.Should().Be("expected_output");
     }
 
     #endregion

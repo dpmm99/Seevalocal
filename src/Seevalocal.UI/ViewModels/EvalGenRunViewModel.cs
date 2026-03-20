@@ -113,6 +113,13 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         private set => SetField(ref _statusLine, value);
     }
 
+    private double _averageTokensPerSecond;
+    public double AverageTokensPerSecond
+    {
+        get => _averageTokensPerSecond;
+        private set => SetField(ref _averageTokensPerSecond, value);
+    }
+
     private string? _error;
     public string? Error
     {
@@ -404,6 +411,7 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             // Track old values to detect changes
             var oldCategoriesGenerated = CategoriesGenerated;
             var oldProblemsGenerated = ProblemsGenerated;
+            var oldProblemsFleshedOut = ProblemsFleshedOut;
             var oldPhase = CurrentPhase;
 
             ProgressPercent = progress.OverallProgressPercent;
@@ -414,10 +422,13 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             ProblemsFleshedOut = progress.ProblemsFleshedOut;
             CurrentPhase = progress.CurrentPhase;
             StatusLine = progress.StatusMessage;
+            AverageTokensPerSecond = _run?.AverageTokensPerSecond ?? 0;
 
-            // Update categories list when category count changes or when phase changes
+            // Update categories list when category count changes, problem count changes,
+            // problems are fleshed out, or when phase changes
             if (progress.CategoriesGenerated != oldCategoriesGenerated ||
                 progress.ProblemsGenerated != oldProblemsGenerated ||
+                progress.ProblemsFleshedOut != oldProblemsFleshedOut ||
                 progress.CurrentPhase != oldPhase)
             {
                 // Reload categories from the run's shared collector
@@ -433,13 +444,14 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             ((RelayCommand)CancelCommand).NotifyCanExecuteChanged();
 
             _logger.LogDebug(
-                "Progress: Phase={Phase}, Categories={CatGen}/{CatTarget}, Problems={ProbGen}/{ProbTarget}, FleshedOut={FleshedOut}",
+                "Progress: Phase={Phase}, Categories={CatGen}/{CatTarget}, Problems={ProbGen}/{ProbTarget}, FleshedOut={FleshedOut}, TokensSec={TokensSec:F1}",
                 progress.CurrentPhase,
                 progress.CategoriesGenerated,
                 progress.TargetCategories,
                 progress.ProblemsGenerated,
                 progress.TargetProblems,
-                progress.ProblemsFleshedOut);
+                progress.ProblemsFleshedOut,
+                AverageTokensPerSecond);
         });
     }
 

@@ -9,7 +9,7 @@ public enum JudgeResponseFormat
     PassFail,
 
     /// <summary>
-    /// Judge outputs JSON: {"rationale": "...", "score": 7.5, "passed": true}
+    /// Judge outputs JSON: {"rationale": "...", "score": 7.5 }
     /// This is the most robust format and is recommended over NumericScore/PassFail.
     /// </summary>
     StructuredJson,

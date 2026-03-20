@@ -17,7 +17,6 @@ public sealed class EvalGenCommand(
 {
     private readonly ILogger<EvalGenCommand> _logger = logger;
     private readonly IAnsiConsole _console = console;
-    private readonly IEvalGenService _evalGenService = evalGenService;
 
     public override Task<int> ExecuteAsync(CommandContext context, EvalGenCommandSettings settings, CancellationToken cancellationToken)
     {
@@ -65,7 +64,7 @@ public sealed class EvalGenCommand(
             _console.WriteLine();
 
             // Start the generation
-            var run = await _evalGenService.GenerateAsync(config, judgeConfig, cancellationToken);
+            var run = await evalGenService.GenerateAsync(config, judgeConfig, cancellationToken);
 
             // Subscribe to progress updates
             var progressTask = DisplayProgressAsync(run, cancellationToken);

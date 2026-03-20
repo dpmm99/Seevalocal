@@ -123,7 +123,7 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
             ? (response.Timings.PromptMs + response.Timings.PredictedMs) / 1000.0
             : wallClockSeconds;
 
-        metrics.Add(new MetricValue { Name = "llmLatencySeconds", Value = new MetricScalar.DoubleMetric(latencySeconds) });
+        metrics.Add(new MetricValue { Name = "llmLatencySeconds", Value = new MetricScalar.DoubleMetric(Math.Round(latencySeconds, 2)) });
 
         if (latencySeconds > 0)
         {
@@ -137,8 +137,8 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
                     ? completionTokenCount / latencySeconds
                     : 0.0;
 
-            metrics.Add(new MetricValue { Name = "promptTokensPerSecond", Value = new MetricScalar.DoubleMetric(promptTps) });
-            metrics.Add(new MetricValue { Name = "completionTokensPerSecond", Value = new MetricScalar.DoubleMetric(completionTps) });
+            metrics.Add(new MetricValue { Name = "promptTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(promptTps, 2)) });
+            metrics.Add(new MetricValue { Name = "completionTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(completionTps, 2)) });
         }
 
         return metrics;

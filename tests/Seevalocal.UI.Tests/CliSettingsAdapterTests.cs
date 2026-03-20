@@ -122,10 +122,10 @@ public sealed class CliSettingsAdapterTests
         settings.Manage = true;
         config = CliSettingsAdapter.ToPartialConfig(settings);
         
-        _ = config.Server!.ExtraArgs.Should().HaveCount(3);
-        _ = config.Server.ExtraArgs![0].Should().Be("--arg1");
-        _ = config.Server.ExtraArgs[1].Should().Be("--arg2");
-        _ = config.Server.ExtraArgs[2].Should().Be("value");
+        _ = config.LlamaServer!.ExtraArgs.Should().HaveCount(3);
+        _ = config.LlamaServer.ExtraArgs![0].Should().Be("--arg1");
+        _ = config.LlamaServer.ExtraArgs[1].Should().Be("--arg2");
+        _ = config.LlamaServer.ExtraArgs[2].Should().Be("value");
     }
 
     #endregion
@@ -488,25 +488,7 @@ public sealed class CliSettingsAdapterTests
         // Assert
         _ = config.Judge!.JudgePromptTemplate.Should().Be("pass-fail");
     }
-
-    [Fact]
-    public void ToPartialConfig_JudgeScoreMin_And_Max_Sets_Correctly()
-    {
-        // Arrange
-        var settings = new RunCommandSettings
-        {
-            JudgeUrl = "http://localhost:8081",
-            JudgeScoreMin = 0,
-            JudgeScoreMax = 5
-        };
-
-        // Act
-        var config = CliSettingsAdapter.ToPartialConfig(settings);
-
-        // Assert
-        _ = config.Judge!.ScoreMinValue.Should().Be(0);
-        _ = config.Judge.ScoreMaxValue.Should().Be(5);
-    }
+    // Note: ScoreMin/ScoreMax settings have been removed as they are not used by the field-agnostic judge
 
     #endregion
 
@@ -796,8 +778,6 @@ public sealed class CliSettingsAdapterTests
             // Judge
             JudgeUrl = "http://localhost:8081",
             JudgeTemplate = "pass-fail",
-            JudgeScoreMin = 0,
-            JudgeScoreMax = 1,
 
             // Output
             OutputDir = "/results",

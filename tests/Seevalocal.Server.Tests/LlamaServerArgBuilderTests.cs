@@ -252,8 +252,8 @@ public sealed class LlamaServerArgBuilderTests
     [Fact]
     public void Build_ExtraArgs_AppendedVerbatim()
     {
-        var config = DefaultServerConfig() with { ExtraArgs = ["--lora", "/loras/my.bin"] };
-        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
+        var config = DefaultServerConfig();
+        var args = LlamaServerArgBuilder.Build(new LlamaServerSettings() { ExtraArgs = ["--lora", "/loras/my.bin"] }, config);
 
         var list = args.ToList();
         var loraIdx = list.IndexOf("--lora");

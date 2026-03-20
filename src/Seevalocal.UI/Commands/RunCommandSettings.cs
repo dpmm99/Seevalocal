@@ -189,14 +189,6 @@ public class RunCommandSettings : CommandSettings
     [Description("Judge prompt template (standard, pass-fail, json)")]
     public string? JudgeTemplate { get; set; }
 
-    [CommandOption("--judge-score-min")]
-    [Description("Minimum score value (default: 0)")]
-    public double? JudgeScoreMin { get; set; }
-
-    [CommandOption("--judge-score-max")]
-    [Description("Maximum score value (default: 10)")]
-    public double? JudgeScoreMax { get; set; }
-
     // ─── Output options ───────────────────────────────────────────────────────
 
     [CommandOption("--output-dir")]

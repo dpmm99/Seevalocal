@@ -15,14 +15,10 @@ public enum GpuKind { Cuda, Vulkan, Metal, CpuOnly }
 /// <summary>
 /// All llama-server tuning knobs. All fields are nullable — null means omit
 /// from CLI args and let llama-server use its own default.
+/// Network/API settings (Host, Port, ApiKey, ExtraArgs) are in ServerConfig.
 /// </summary>
 public record LlamaServerSettings
 {
-    // Network
-    public string? Host { get; init; }
-    public int? Port { get; init; }
-    public string? ApiKey { get; init; }
-
     // Context / batching
     public int? ContextWindowTokens { get; init; }
     public int? BatchSizeTokens { get; init; }
@@ -100,6 +96,8 @@ public record FieldMapping
     public string? UserPromptField { get; init; }
     public string? ExpectedOutputField { get; init; }
     public string? SystemPromptField { get; init; }
+    public string? SourceLanguageField { get; init; }
+    public string? TargetLanguageField { get; init; }
 }
 
 public record DataSourceConfig
@@ -333,7 +331,6 @@ public record ServerConfig
     public string? Host { get; init; }
     public int? Port { get; init; }
     public string? ApiKey { get; init; }
-    public IReadOnlyList<string> ExtraArgs { get; init; } = [];
     public string? BaseUrl { get; init; }
 }
 
@@ -413,7 +410,6 @@ public record PartialServerConfig
     public string? Host { get; init; }
     public int? Port { get; init; }
     public string? ApiKey { get; init; }
-    public List<string>? ExtraArgs { get; init; }
     public string? BaseUrl { get; init; }
 }
 

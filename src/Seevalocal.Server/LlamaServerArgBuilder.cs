@@ -48,15 +48,16 @@ public sealed class LlamaServerArgBuilder
         }
 
         // ── Network ──────────────────────────────────────────────────────────
-        var host = settings.Host ?? serverConfig.Host;
+        // Network settings come from serverConfig only (not from settings)
+        var host = serverConfig.Host ?? "127.0.0.1";
         args.Add("--host");
-        args.Add(host ?? "127.0.0.1");
+        args.Add(host);
 
-        var port = settings.Port ?? serverConfig.Port;
+        var port = serverConfig.Port ?? 8080;
         args.Add("--port");
-        args.Add(port?.ToString() ?? "8080");
+        args.Add(port.ToString());
 
-        var apiKey = settings.ApiKey ?? serverConfig.ApiKey;
+        var apiKey = serverConfig.ApiKey;
         if (apiKey is not null)
         {
             args.Add("--api-key");
@@ -108,8 +109,8 @@ public sealed class LlamaServerArgBuilder
         AppendDouble(args, settings.ServerTimeoutSeconds, "--timeout");
 
         // ── Extra args (verbatim) ─────────────────────────────────────────────
-        if (serverConfig.ExtraArgs.Count > 0)
-            args.AddRange(serverConfig.ExtraArgs);
+        if (settings.ExtraArgs.Count > 0)
+            args.AddRange(settings.ExtraArgs);
 
         return [.. args];
     }

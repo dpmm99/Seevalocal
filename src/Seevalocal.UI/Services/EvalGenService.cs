@@ -13,8 +13,9 @@ namespace Seevalocal.UI.Services;
 /// Uses the configured judge LLM to generate categories and problems.
 /// </summary>
 public sealed partial class EvalGenService(
-    IServerLifecycleService? serverLifecycle,
     LlamaServerManager serverManager,
+    LlamaServerDownloader downloader,
+    GpuDetector gpuDetector,
     ILoggerFactory loggerFactory,
     HttpClient httpClient,
     ILogger<EvalGenService> logger) : IEvalGenService, IDisposable
@@ -94,7 +95,6 @@ public sealed partial class EvalGenService(
                 ExecutablePath = overlayConfig.ServerConfig?.ExecutablePath ?? baseConfig.ServerConfig?.ExecutablePath,
                 Model = overlayConfig.ServerConfig?.Model ?? baseConfig.ServerConfig?.Model,
                 ApiKey = overlayConfig.ServerConfig?.ApiKey ?? baseConfig.ServerConfig?.ApiKey,
-                ExtraArgs = overlayConfig.ServerConfig?.ExtraArgs ?? baseConfig.ServerConfig?.ExtraArgs ?? [],
                 BaseUrl = overlayConfig.ServerConfig?.BaseUrl ?? baseConfig.ServerConfig?.BaseUrl,
                 Manage = overlayConfig.ServerConfig?.Manage ?? baseConfig.ServerConfig?.Manage
             },
@@ -247,12 +247,13 @@ public sealed partial class EvalGenService(
                 judgeConfig?.ServerConfig?.Model?.FilePath,
                 judgeConfig?.ServerConfig?.ExecutablePath);
 
-            // Start managed judge server - use != false pattern like TwoPhaseEvalRunViewModel
+            // Start managed judge server - create a new LlamaServerManager for this run
             // When resuming from checkpoint, always start the server (don't try to connect to external)
             LlamaServerClient? judgeClientToUse = null;
+            LlamaServerManager? judgeServerManager = null;
             bool shouldManageServer = judgeConfig is { Manage: not false } || config.ContinueFromCheckpoint;
-            
-            if (shouldManageServer && serverLifecycle != null)
+
+            if (shouldManageServer)
             {
                 logger.LogInformation("Starting judge llama-server (Manage={Manage})...", judgeConfig?.Manage);
                 _currentRun!.UpdateProgress(new EvalGenProgress
@@ -266,12 +267,30 @@ public sealed partial class EvalGenService(
                     StatusMessage = "Starting judge llama-server..."
                 });
 
-                var judgeServerConfig = judgeConfig?.ServerConfig ?? new ServerConfig { Host = "localhost", Port = 8081 };
+                // Build judge server config, ensuring ExtraArgs are included from either ServerConfig or ServerSettings
+                var baseServerConfig = judgeConfig?.ServerConfig;
+                var judgeServerConfig = new ServerConfig
+                {
+                    Manage = baseServerConfig?.Manage ?? true,
+                    ExecutablePath = baseServerConfig?.ExecutablePath,
+                    Model = baseServerConfig?.Model,
+                    Host = baseServerConfig?.Host ?? "localhost",
+                    Port = baseServerConfig?.Port ?? 8081,
+                    ApiKey = baseServerConfig?.ApiKey,
+                    BaseUrl = baseServerConfig?.BaseUrl,
+                };
                 var judgeServerSettings = judgeConfig?.ServerSettings ?? new LlamaServerSettings();
 
-                var judgeStartResult = await serverLifecycle.StartAsync(judgeServerConfig, judgeServerSettings, cancellationToken);
+                // Create a new manager for this run (singleton manager is for single-use, so we create a new instance)
+                var managerLogger = loggerFactory.CreateLogger<LlamaServerManager>();
+                judgeServerManager = new LlamaServerManager(downloader, gpuDetector, httpClient, managerLogger);
+
+                var judgeStartResult = await judgeServerManager.StartAsync(judgeServerConfig, judgeServerSettings, cancellationToken);
                 if (judgeStartResult.IsFailed)
+                {
+                    await judgeServerManager.DisposeAsync();
                     throw new InvalidOperationException($"Failed to start judge llama-server: {judgeStartResult.Errors[0].Message}");
+                }
 
                 var judgeServerInfo = judgeStartResult.Value;
                 logger.LogInformation("Judge llama-server started at {BaseUrl}", judgeServerInfo.BaseUrl);
@@ -282,10 +301,13 @@ public sealed partial class EvalGenService(
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, maxConcurrent);
                 await _managedJudgeClient.InitializeSemaphoreFromServerAsync(cancellationToken);
                 judgeClientToUse = _managedJudgeClient;
+
+                // Store the manager in the run for disposal when the run completes
+                _currentRun.JudgeServerManager = judgeServerManager;
             }
-            else if (serverLifecycle != null)
+            else
             {
-                // serverLifecycle is available but Manage is explicitly false - connect to external server
+                // Connect to external judge server
                 logger.LogInformation("Connecting to external judge server at {BaseUrl}...", _judgeBaseUrl);
                 _currentRun!.UpdateProgress(new EvalGenProgress
                 {
@@ -320,13 +342,6 @@ public sealed partial class EvalGenService(
                 _managedJudgeClient = new LlamaServerClient(judgeServerInfo, judgeHttpClient, judgeClientLogger, judgeServerInfo.TotalSlots);
                 await _managedJudgeClient.InitializeSemaphoreFromServerAsync(cancellationToken);
                 judgeClientToUse = _managedJudgeClient;
-            }
-            else
-            {
-                // No serverLifecycle available - this shouldn't happen in normal UI usage
-                throw new InvalidOperationException(
-                    "ServerLifecycle service is not available. Cannot start or connect to judge server. " +
-                    "Please ensure the application is properly configured.");
             }
 
             // Load existing progress
@@ -439,9 +454,24 @@ public sealed partial class EvalGenService(
         }
         finally
         {
-            // Cleanup managed judge server
+            // Cleanup managed judge server client
             _managedJudgeClient?.Dispose();
             _managedJudgeClient = null;
+
+            // Dispose the judge server manager to shut down llama-server
+            // The manager is stored in the run for proper cleanup on completion/cancellation
+            if (_currentRun?.JudgeServerManager != null)
+            {
+                try
+                {
+                    await _currentRun.JudgeServerManager.DisposeAsync();
+                    logger.LogInformation("Judge llama-server shut down");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error shutting down judge llama-server");
+                }
+            }
         }
     }
 
@@ -867,7 +897,7 @@ public sealed partial class EvalGenService(
         - Avoid synthetic problems that only LLMs encounter. Problem statements should feel like something a real person would genuinely send. Artificial constructions reveal artifacts of your benchmark design, not real capability.
         - One problem, one crux. Each example should hinge on a single decision point or insight. Multi-crux problems are useful eventually, but they make failure analysis ambiguous — you can't tell which crux broke.
         
-        Respond with one problem per line inside XML-like <ProblemStatements> tags (no actual XML encoding), like this:
+        Respond with one problem per line (1-3 sentences each) inside XML-like <ProblemStatements> tags (no actual XML encoding), like this:
         <ProblemStatements>
         Problem statement 1
         Problem statement 2
@@ -996,10 +1026,11 @@ public sealed partial class EvalGenService(
                             await collector.SaveProblemAsync(updatedProblem, cancellationToken);
                             completedThisIteration++;
 
+                            var newFleshedOutCount = _currentRun.Progress.ProblemsFleshedOut + 1;
                             _currentRun.UpdateProgress(_currentRun.Progress with
                             {
-                                ProblemsFleshedOut = _currentRun.Progress.ProblemsFleshedOut + 1,
-                                StatusMessage = $"Fleshed out {_currentRun.Progress.ProblemsFleshedOut} problems"
+                                ProblemsFleshedOut = newFleshedOutCount,
+                                StatusMessage = $"Fleshed out {newFleshedOutCount} problems"
                             });
                         }
                     }
@@ -1184,14 +1215,32 @@ public sealed partial class EvalGenService(
             clientToUse = new LlamaServerClient(serverInfo, httpClient, loggerFactory.CreateLogger<LlamaServerClient>());
         }
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var result = await clientToUse.ChatCompletionAsync(request, cancellationToken);
+        stopwatch.Stop();
 
         if (!result.IsSuccess)
         {
             throw new InvalidOperationException($"Judge LLM call failed: {result.Errors.FirstOrDefault()?.Message ?? "Unknown error"}");
         }
 
-        return result.Value.Choices.FirstOrDefault()?.Message?.Content ?? "";
+        // Track tokens and timing
+        var responseContent = result.Value.Choices.FirstOrDefault()?.Message?.Content ?? "";
+        var usage = result.Value.Usage;
+        if (usage != null)
+        {
+            var totalTokens = usage.PromptTokens + usage.CompletionTokens;
+            _currentRun!.TotalTokensUsed += totalTokens;
+            
+            // Calculate average tokens/sec
+            var elapsedSeconds = (_currentRun.StartedAt - DateTimeOffset.Now).TotalSeconds;
+            if (elapsedSeconds > 0)
+            {
+                _currentRun.AverageTokensPerSecond = _currentRun.TotalTokensUsed / Math.Abs(elapsedSeconds);
+            }
+        }
+
+        return responseContent;
     }
 
     private async Task SaveResultsAsync(

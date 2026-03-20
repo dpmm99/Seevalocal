@@ -1,4 +1,5 @@
 using Seevalocal.Core.Models;
+using Seevalocal.Server;
 
 namespace Seevalocal.UI.Services;
 
@@ -37,7 +38,7 @@ public interface IEvalGenService
 /// </summary>
 /// <remarks>
 /// Constructs an EvalGenRun without starting execution.
-/// Call <see cref="StartAsync"/> to begin execution.
+/// Call <see cref="Start"/> to begin execution.
 /// </remarks>
 public sealed class EvalGenRun(EvalGenConfig config, Func<CancellationToken, Task> executionFunc)
 {
@@ -53,6 +54,12 @@ public sealed class EvalGenRun(EvalGenConfig config, Func<CancellationToken, Tas
     public string CheckpointDatabasePath { get; set; } = "";
     public DateTimeOffset StartedAt { get; } = DateTimeOffset.Now;
     public EvalGenCheckpointCollector? Collector { get; set; }
+
+    /// <summary>
+    /// Gets or sets the judge server manager used by this run.
+    /// This is disposed when the run completes or is cancelled.
+    /// </summary>
+    public LlamaServerManager? JudgeServerManager { get; set; }
 
     public EvalGenProgress Progress { get; private set; } = new()
     {
@@ -86,6 +93,16 @@ public sealed class EvalGenRun(EvalGenConfig config, Func<CancellationToken, Tas
     public int TotalCategoriesFailed { get; set; }
     public int TotalProblemsFailed { get; set; }
     public int TotalFleshOutFailed { get; set; }
+    
+    /// <summary>
+    /// Total tokens used across all LLM calls.
+    /// </summary>
+    public int TotalTokensUsed { get; set; }
+    
+    /// <summary>
+    /// Average tokens per second across all LLM calls.
+    /// </summary>
+    public double AverageTokensPerSecond { get; set; }
 
     public event Action<EvalGenProgress>? ProgressChanged;
     public event Action? RunCompleted;

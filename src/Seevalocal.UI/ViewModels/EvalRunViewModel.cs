@@ -113,11 +113,12 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         TotalCount = progress.TotalCount;
         ProgressPercent = progress.TotalCount > 0 ? (double)progress.CompletedCount / progress.TotalCount * 100 : 0;
         EstimatedRemainingSeconds = progress.EstimatedRemainingSeconds;
-        
+
         // Calculate moving average tokens/sec from last 10 completed items
         AverageTokensPerSecond = CalculateMovingAverageTokensPerSecond();
 
-        OnPropertyChanged(nameof(EarlyCompletions));
+        // Update EarlyCompletions collection (will notify via ObservableCollection)
+        UpdateEarlyCompletions();
         OnPropertyChanged(nameof(RecentActivitySummary));
 
         // Refresh results from collector's in-memory cache on each progress update (on UI thread)
@@ -138,7 +139,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
                 _logger.LogInformation(
                     "[{Status}] Item {Id}: \"{Prompt}\" => \"{Response}\"",
-                    recentResult.Status,
+                    recentResult.Succeeded,
                     recentResult.Id,
                     promptPreview,
                     responsePreview);
@@ -195,9 +196,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             Results.Add(new EvalResultViewModel(result));
         }
 
+        // Update EarlyCompletions to match
+        UpdateEarlyCompletions();
+
         // Notify UI of changes
         OnPropertyChanged(nameof(Results));
-        OnPropertyChanged(nameof(EarlyCompletions));
         OnPropertyChanged(nameof(HasMoreEarlyCompletions));
         OnPropertyChanged(nameof(RecentActivitySummary));
         OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
@@ -227,9 +230,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                 Results.Add(new EvalResultViewModel(result));
             }
 
+            // Update EarlyCompletions to match
+            UpdateEarlyCompletions();
+
             // Notify UI of changes
             OnPropertyChanged(nameof(Results));
-            OnPropertyChanged(nameof(EarlyCompletions));
             OnPropertyChanged(nameof(HasMoreEarlyCompletions));
             OnPropertyChanged(nameof(RecentActivitySummary));
             OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
@@ -342,6 +347,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     }
 
     public ObservableCollection<EvalResultViewModel> Results { get; } = [];
+    public ObservableCollection<EvalResultViewModel> EarlyCompletions { get; } = [];
 
     public int EarlyCompletionsLimit
     {
@@ -350,15 +356,39 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         {
             if (SetField(ref _earlyCompletionsLimit, value))
             {
-                OnPropertyChanged(nameof(EarlyCompletions));
+                UpdateEarlyCompletions();
+                OnPropertyChanged(nameof(HasMoreEarlyCompletions));
                 OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
             }
         }
     }
 
-    public IEnumerable<EvalResultViewModel> EarlyCompletions => Results.Take(EarlyCompletionsLimit);
-
     public bool HasMoreEarlyCompletions => Results.Count > EarlyCompletionsLimit;
+
+    /// <summary>
+    /// Updates the EarlyCompletions collection to contain the first N results.
+    /// Called when Results or EarlyCompletionsLimit changes.
+    /// </summary>
+    private void UpdateEarlyCompletions()
+    {
+        // Sync EarlyCompletions with first N items from Results
+        var newEarlyCompletions = Results.Take(EarlyCompletionsLimit).ToList();
+        
+        // Remove items that are no longer in the first N
+        for (int i = EarlyCompletions.Count - 1; i >= 0; i--)
+        {
+            if (i >= newEarlyCompletions.Count || EarlyCompletions[i] != newEarlyCompletions[i])
+            {
+                EarlyCompletions.RemoveAt(i);
+            }
+        }
+        
+        // Add new items
+        for (int i = EarlyCompletions.Count; i < newEarlyCompletions.Count; i++)
+        {
+            EarlyCompletions.Add(newEarlyCompletions[i]);
+        }
+    }
 
     public string RecentActivitySummary
     {
@@ -371,7 +401,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             var promptPreview = lastResult.UserPrompt?.Length > 40
                 ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
                 : lastResult.UserPrompt ?? "N/A";
-            return $"Last: {lastResult.Status} - {promptPreview}";
+            return $"Last: {promptPreview}";
         }
     }
 
@@ -386,7 +416,17 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         IsRunning = true;
         IsPaused = false;
         Results.Clear();
-        CompletedCount = 0;
+
+        // Initialize CompletedCount from checkpoint if resuming
+        CompletedCount = Config.Run?.ContinueFromCheckpoint == true && _collector != null
+            ? await GetCheckpointCompletedCountAsync()
+            : 0;
+
+        // Load existing results from checkpoint if resuming
+        if (Config.Run?.ContinueFromCheckpoint == true && _collector != null)
+        {
+            await LoadResultsFromCheckpointAsync();
+        }
 
         // Notify commands that their CanExecute state has changed
         ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
@@ -572,6 +612,52 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
     // ─── IAsyncDisposable & IDisposable ───────────────────────────────────────
 
+    /// <summary>
+    /// Gets the count of already-completed items from checkpoint database.
+    /// </summary>
+    private async Task<int> GetCheckpointCompletedCountAsync()
+    {
+        if (_collector is not PersistentResultCollector persistentCollector)
+            return 0;
+
+        try
+        {
+            var completedIds = await persistentCollector.GetCompletedItemIdsAsync(_evalSet.Id, "primary", default);
+            _logger.LogInformation("Checkpoint loaded: {Count} already-completed items", completedIds.Count);
+            return completedIds.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load checkpoint completed count");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Loads existing results from checkpoint database.
+    /// </summary>
+    private async Task LoadResultsFromCheckpointAsync()
+    {
+        if (_collector is not PersistentResultCollector persistentCollector)
+            return;
+
+        try
+        {
+            // Populate the collector's in-memory cache with checkpoint data
+            // This ensures RefreshResultsFromCache() will display checkpoint completions
+            await persistentCollector.PopulateCacheFromCheckpointAsync(_evalSet.Id, default);
+            
+            // Refresh the UI from the cache (same as live completions)
+            RefreshResultsFromCache();
+
+            _logger.LogInformation("Checkpoint loaded: {Count} results from cache", Results.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load checkpoint results");
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
@@ -630,11 +716,29 @@ public sealed class EvalResultViewModel(EvalResult result)
     public string Id => _result.EvalItemId;
     public string EvalSetId => _result.EvalSetId;
     public bool Succeeded => _result.Succeeded;
-    public string Status => _result.Succeeded ? "Pass" : "Fail";
+    public bool IsPassFailFormat => CheckIsPassFailFormat();
+    
+    /// <summary>
+    /// Pipeline execution status: "Pending", "Succeeded", or "Failed".
+    /// </summary>
+    public string PipelineStatus => _result.Succeeded ? "Succeeded" : (_result.StartedAt == default ? "Pending" : "Failed");
+    
     public string? FailureReason => _result.FailureReason;
     public double DurationSeconds => _result.DurationSeconds;
     public DateTimeOffset StartedAt => _result.StartedAt;
     public string? RawResponse => _result.RawLlmResponse;
+
+    /// <summary>
+    /// Checks if the judge is using pass/fail format (vs numeric score).
+    /// </summary>
+    private bool CheckIsPassFailFormat()
+    {
+        // Check if there's a numeric score metric - if so, it's not pass/fail
+        var hasNumericScore = _result.Metrics.Any(m => 
+            m.Name.Contains("Score", StringComparison.OrdinalIgnoreCase) && 
+            m.Value is MetricScalar.DoubleMetric);
+        return !hasNumericScore;
+    }
 
     /// <summary>
     /// Exposes the underlying metrics for programmatic access (e.g., calculating tokens/sec).

@@ -187,19 +187,7 @@ public sealed class CliArgumentParserTests
         _ = config.Judge!.BaseUrl.Should().Be("http://localhost:8081");
     }
 
-    [Fact]
-    public void JudgeScoreMin_Max_Set_Correctly()
-    {
-        var config = Adapt(static s =>
-        {
-            s.JudgeUrl = "http://localhost:8081";
-            s.JudgeScoreMin = 1;
-            s.JudgeScoreMax = 5;
-            s.DataFilePath = "/d.json";
-        });
-        _ = config.Judge!.ScoreMinValue.Should().Be(1);
-        _ = config.Judge.ScoreMaxValue.Should().Be(5);
-    }
+    // Note: ScoreMin/ScoreMax settings have been removed as they are not used by the field-agnostic judge
 
     // ─── Output flags ─────────────────────────────────────────────────────────
 

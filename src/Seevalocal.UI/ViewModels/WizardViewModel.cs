@@ -119,6 +119,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private int? _judgeParallelSlotCount;
     private int? _judgeGpuLayerCount;
     private int? _judgeBatchSizeTokens;
+    private int? _judgeUbatchSizeTokens;
+    private bool? _judgeEnableContinuousBatching;
+    private bool? _judgeEnableCachePrompt;
+    private bool? _judgeEnableContextShift;
+    private bool? _judgeEnableKvOffload;
     private string? _judgeSplitMode;
     private string? _judgeKvCacheTypeK;
     private string? _judgeKvCacheTypeV;
@@ -128,6 +133,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private int? _judgeTopK;
     private double? _judgeMinP;
     private double? _judgeRepeatPenalty;
+    private int? _judgeRepeatLastNTokens;
+    private double? _judgePresencePenalty;
+    private double? _judgeFrequencyPenalty;
     private int? _judgeSeed;
     private int? _judgeThreadCount;
     private int? _judgeHttpThreadCount;
@@ -135,11 +143,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private bool? _judgeEnableMmap;
     private string? _judgeChatTemplate;
     private bool? _judgeEnableJinja;
+    private string? _judgeReasoningFormat;
+    private string? _judgeModelAlias;
     private int? _judgeLogVerbosity;
     private double? _judgeServerTimeoutSeconds;
     private string _judgeTemplate = "standard";
-    private double _judgeScoreMin = 0;
-    private double _judgeScoreMax = 10;
 
     // Output
     private string _outputDir = "./results";
@@ -164,8 +172,31 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private string? _fieldMappingUserPrompt;
     private string? _fieldMappingExpectedOutput;
     private string? _fieldMappingSystemPrompt;
+    private string? _fieldMappingSourceLanguage;  // For Translation pipeline (per-item)
+    private string? _fieldMappingTargetLanguage;  // For Translation pipeline (per-item)
     private string? _fieldMappingTestFile;      // For C# coding pipeline
     private string? _fieldMappingBuildScript;   // For C# coding pipeline
+
+    // Detected fields from data file (for ComboBox suggestions)
+    private List<string>? _detectedFields;
+
+    /// <summary>
+    /// List of field names detected in the selected data file.
+    /// Used to populate ComboBox suggestions for field mappings.
+    /// </summary>
+    public List<string>? DetectedFields
+    {
+        get => _detectedFields;
+        private set => SetField(ref _detectedFields, value);
+    }
+
+    /// <summary>
+    /// Returns true if translation pipeline is selected AND per-item language fields are provided.
+    /// In this case, global translation settings should be hidden.
+    /// </summary>
+    public bool ShouldHideGlobalTranslationSettings =>
+        PipelineName == "Translation" &&
+        (!string.IsNullOrEmpty(FieldMappingSourceLanguage) || !string.IsNullOrEmpty(FieldMappingTargetLanguage));
 
     // Pipeline-specific configuration
     private string? _translationSourceLanguage = "English";
@@ -498,6 +529,15 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 SetField(ref _pipelineName, newName);
                 OnPropertyChanged(nameof(PipelineName));
                 OnPropertyChanged(nameof(SelectedPipelineIndex));
+
+                // Auto-select translation judge template for Translation pipeline
+                // Only auto-select if template hasn't been manually changed from default
+                if (newName == "Translation" && (_judgeTemplate == "standard" || string.IsNullOrEmpty(_judgeTemplate)))
+                {
+                    _judgeTemplate = "translation-judge-template";
+                    OnPropertyChanged(nameof(JudgeTemplate));
+                    OnPropertyChanged(nameof(SelectedJudgeTemplateIndex));
+                }
             }
         }
     }
@@ -509,11 +549,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         set
         {
             if (SetField(ref _useSingleFileDataSource, value))
-            {
                 OnPropertyChanged(nameof(UseDirectoryDataSource));
-                // Note: We do NOT clear path fields when switching modes
-                // This allows users to switch back and forth without losing their paths
-            }
         }
     }
 
@@ -523,22 +559,33 @@ public sealed partial class WizardViewModel : IWizardViewModel
         get => !_useSingleFileDataSource;
         set
         {
-            if (SetField(ref _useSingleFileDataSource, !value))
-            {
-                OnPropertyChanged(nameof(UseSingleFileDataSource));
-                // Note: We do NOT clear path fields when switching modes
-                // This allows users to switch back and forth without losing their paths
-            }
+            if (SetField(ref _useSingleFileDataSource, !value, nameof(UseSingleFileDataSource)))
+                OnPropertyChanged(nameof(UseDirectoryDataSource));
         }
     }
 
-    public string? DataFilePath { get => _dataFilePath; set => SetField(ref _dataFilePath, value); }
+    public string? DataFilePath
+    {
+        get => _dataFilePath;
+        set
+        {
+            if (SetField(ref _dataFilePath, value))
+            {
+                // Detect fields from the selected file
+                DetectFieldsFromDataFile(value);
+            }
+        }
+    }
     public string? PromptDir { get => _promptDir; set => SetField(ref _promptDir, value); }
     public string? ExpectedDir { get => _expectedDir; set => SetField(ref _expectedDir, value); }
 
     // ─── Step 4: Scoring ─────────────────────────────────────────────────────
 
-    public bool EnableJudge { get => _enableJudge; set => SetField(ref _enableJudge, value); }
+    public bool EnableJudge
+    {
+        get => _enableJudge;
+        set => SetField(ref _enableJudge, value);
+    }
 
     // Judge server management
     public bool JudgeManageServer { get => _judgeManageServer; set => SetField(ref _judgeManageServer, value); }
@@ -555,6 +602,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
     // Judge performance settings - FULL FEATURE PARITY WITH MAIN SERVER
     public int? JudgeContextWindowTokens { get => _judgeContextWindowTokens; set => SetField(ref _judgeContextWindowTokens, value); }
     public int? JudgeBatchSizeTokens { get => _judgeBatchSizeTokens; set => SetField(ref _judgeBatchSizeTokens, value); }
+    public int? JudgeUbatchSizeTokens { get => _judgeUbatchSizeTokens; set => SetField(ref _judgeUbatchSizeTokens, value); }
+    public bool? JudgeEnableContinuousBatching { get => _judgeEnableContinuousBatching; set => SetField(ref _judgeEnableContinuousBatching, value); }
+    public bool? JudgeEnableCachePrompt { get => _judgeEnableCachePrompt; set => SetField(ref _judgeEnableCachePrompt, value); }
+    public bool? JudgeEnableContextShift { get => _judgeEnableContextShift; set => SetField(ref _judgeEnableContextShift, value); }
+    public bool? JudgeEnableKvOffload { get => _judgeEnableKvOffload; set => SetField(ref _judgeEnableKvOffload, value); }
     public int? JudgeParallelSlotCount { get => _judgeParallelSlotCount; set => SetField(ref _judgeParallelSlotCount, value); }
     public string? JudgeSplitMode { get => _judgeSplitMode; set => SetField(ref _judgeSplitMode, value); }
     public string? JudgeKvCacheTypeK { get => _judgeKvCacheTypeK; set => SetField(ref _judgeKvCacheTypeK, value); }
@@ -567,6 +619,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public int? JudgeTopK { get => _judgeTopK; set => SetField(ref _judgeTopK, value); }
     public double? JudgeMinP { get => _judgeMinP; set => SetField(ref _judgeMinP, value); }
     public double? JudgeRepeatPenalty { get => _judgeRepeatPenalty; set => SetField(ref _judgeRepeatPenalty, value); }
+    public int? JudgeRepeatLastNTokens { get => _judgeRepeatLastNTokens; set => SetField(ref _judgeRepeatLastNTokens, value); }
+    public double? JudgePresencePenalty { get => _judgePresencePenalty; set => SetField(ref _judgePresencePenalty, value); }
+    public double? JudgeFrequencyPenalty { get => _judgeFrequencyPenalty; set => SetField(ref _judgeFrequencyPenalty, value); }
     public int? JudgeSeed { get => _judgeSeed; set => SetField(ref _judgeSeed, value); }
 
     // Judge threading & memory
@@ -579,6 +634,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
     // Judge model behavior & logging
     public string? JudgeChatTemplate { get => _judgeChatTemplate; set => SetField(ref _judgeChatTemplate, value); }
     public bool? JudgeEnableJinja { get => _judgeEnableJinja; set => SetField(ref _judgeEnableJinja, value); }
+    public string? JudgeReasoningFormat { get => _judgeReasoningFormat; set => SetField(ref _judgeReasoningFormat, value); }
+    public string? JudgeModelAlias { get => _judgeModelAlias; set => SetField(ref _judgeModelAlias, value); }
     public int? JudgeLogVerbosity { get => _judgeLogVerbosity; set => SetField(ref _judgeLogVerbosity, value); }
     public double? JudgeServerTimeoutSeconds { get => _judgeServerTimeoutSeconds; set => SetField(ref _judgeServerTimeoutSeconds, value); }
 
@@ -626,14 +683,45 @@ public sealed partial class WizardViewModel : IWizardViewModel
         return constants.Select(name => regex.Replace(name, "-$1").ToLowerInvariant()).ToArray();
     }
 
-    public double JudgeScoreMin { get => _judgeScoreMin; set => SetField(ref _judgeScoreMin, value); }
-    public double JudgeScoreMax { get => _judgeScoreMax; set => SetField(ref _judgeScoreMax, value); }
-
     // ─── Step 5: Output ───────────────────────────────────────────────────────
 
     public string? CheckpointDatabasePath { get => _checkpointDatabasePath; set => SetField(ref _checkpointDatabasePath, value); }
     public string OutputDir { get => _outputDir; set => SetField(ref _outputDir, value); }
-    public string? RunName { get => _runName; set => SetField(ref _runName, value); }
+    public string? RunName
+    {
+        get => _runName;
+        set
+        {
+            if (SetField(ref _runName, value))
+            {
+                // If continuing from checkpoint and run name changed, clone the database file
+                if (_continueFromCheckpoint && !string.IsNullOrEmpty(_checkpointDatabasePath) && !string.IsNullOrEmpty(value))
+                {
+                    try
+                    {
+                        var newDbPath = System.IO.Path.Combine(
+                            System.IO.Path.GetDirectoryName(_checkpointDatabasePath) ?? ".",
+                            $"{value}_checkpoint.db");
+
+                        if (_checkpointDatabasePath != newDbPath && File.Exists(_checkpointDatabasePath))
+                        {
+                            File.Copy(_checkpointDatabasePath, newDbPath, overwrite: true);
+                            _checkpointDatabasePath = newDbPath;
+                            OnPropertyChanged(nameof(CheckpointDatabasePath));
+
+                            // Also update the checkpoint path in the edited fields so it gets saved
+                            _editedFields.Add(nameof(CheckpointDatabasePath));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // If cloning fails, continue with original checkpoint path
+                        _logger?.LogWarning(ex, "Failed to clone checkpoint database for new run name");
+                    }
+                }
+            }
+        }
+    }
     public ShellTarget? ShellTarget { get => _shellTarget; set => SetField(ref _shellTarget, value); }
 
     // Output settings (from Settings screen)
@@ -654,6 +742,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public string? FieldMappingUserPrompt { get => _fieldMappingUserPrompt; set => SetField(ref _fieldMappingUserPrompt, value); }
     public string? FieldMappingExpectedOutput { get => _fieldMappingExpectedOutput; set => SetField(ref _fieldMappingExpectedOutput, value); }
     public string? FieldMappingSystemPrompt { get => _fieldMappingSystemPrompt; set => SetField(ref _fieldMappingSystemPrompt, value); }
+    public string? FieldMappingSourceLanguage { get => _fieldMappingSourceLanguage; set => SetField(ref _fieldMappingSourceLanguage, value); }
+    public string? FieldMappingTargetLanguage { get => _fieldMappingTargetLanguage; set => SetField(ref _fieldMappingTargetLanguage, value); }
     public string? FieldMappingTestFile { get => _fieldMappingTestFile; set => SetField(ref _fieldMappingTestFile, value); }
     public string? FieldMappingBuildScript { get => _fieldMappingBuildScript; set => SetField(ref _fieldMappingBuildScript, value); }
 
@@ -697,7 +787,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 Port = _editedFields.Contains(nameof(Port)) && ManageServer ? Port : null,
                 ApiKey = _editedFields.Contains(nameof(ApiKey)) ? ApiKey : null,
                 ExecutablePath = _editedFields.Contains(nameof(LlamaServerExecutablePath)) ? _llamaServerExecutablePath : null,
-                BaseUrl = _editedFields.Contains(nameof(ServerUrl)) && !ManageServer ? ServerUrl : null
+                BaseUrl = _editedFields.Contains(nameof(ServerUrl)) && !ManageServer ? ServerUrl : null,
             }
             : null;
 
@@ -711,8 +801,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
                             _editedFields.Contains(nameof(EnableJudge)) || _editedFields.Contains(nameof(JudgeManageServer)) ||
                             _editedFields.Contains(nameof(JudgeLocalModelPath)) || _editedFields.Contains(nameof(JudgeHfRepo)) ||
                             _editedFields.Contains(nameof(JudgeApiKey)) || _editedFields.Contains(nameof(JudgeServerUrl)) ||
-                            _editedFields.Contains(nameof(SelectedJudgeTemplateIndex)) || _editedFields.Contains(nameof(JudgeScoreMin)) ||
-                            _editedFields.Contains(nameof(JudgeScoreMax));
+                            _editedFields.Contains(nameof(SelectedJudgeTemplateIndex));
         var judge = hasJudgeField
             ? (EnableJudge ? BuildJudgeConfig() : new PartialJudgeConfig { Enable = false })
             : null;
@@ -739,7 +828,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
                     UserPromptField = FieldMappingUserPrompt,
                     ExpectedOutputField = FieldMappingExpectedOutput,
                     SystemPromptField = FieldMappingSystemPrompt,
-                }
+                    SourceLanguageField = string.IsNullOrEmpty(FieldMappingSourceLanguage) ? null : FieldMappingSourceLanguage,
+                    TargetLanguageField = string.IsNullOrEmpty(FieldMappingTargetLanguage) ? null : FieldMappingTargetLanguage,
+                },
+                // For translation pipeline: if no per-item system prompt field, use global source/target language
+                DefaultSystemPrompt = PipelineName == "Translation" && string.IsNullOrEmpty(FieldMappingSystemPrompt)
+                    ? $"You are a professional translator. Translate the following text from {TranslationSourceLanguage ?? "English"} to {TranslationTargetLanguage ?? "French"} accurately and naturally. Output only the translation, with no explanation or preamble."
+                    : null
             } :
             new DataSourceConfig
             {
@@ -752,7 +847,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
                     UserPromptField = FieldMappingUserPrompt,
                     ExpectedOutputField = FieldMappingExpectedOutput,
                     SystemPromptField = FieldMappingSystemPrompt,
-                }
+                    SourceLanguageField = string.IsNullOrEmpty(FieldMappingSourceLanguage) ? null : FieldMappingSourceLanguage,
+                    TargetLanguageField = string.IsNullOrEmpty(FieldMappingTargetLanguage) ? null : FieldMappingTargetLanguage,
+                },
+                // For translation pipeline: if no per-item system prompt field, use global source/target language
+                DefaultSystemPrompt = PipelineName == "Translation" && string.IsNullOrEmpty(FieldMappingSystemPrompt)
+                    ? $"You are a professional translator. Translate the following text from {TranslationSourceLanguage ?? "English"} to {TranslationTargetLanguage ?? "French"} accurately and naturally. Output only the translation, with no explanation or preamble."
+                    : null
             }) : null;
 
         var evalSet = dataSource != null || _editedFields.Contains(nameof(PipelineName))
@@ -887,10 +988,23 @@ public sealed partial class WizardViewModel : IWizardViewModel
         {
             case "Translation":
                 // Translation pipeline options
-                if (!string.IsNullOrEmpty(TranslationSourceLanguage))
-                    options["sourceLanguage"] = TranslationSourceLanguage;
-                if (!string.IsNullOrEmpty(TranslationTargetLanguage))
-                    options["targetLanguage"] = TranslationTargetLanguage;
+                // Per-item language fields are mutually exclusive with pipeline-level settings
+                if (!string.IsNullOrEmpty(FieldMappingSourceLanguage) || !string.IsNullOrEmpty(FieldMappingTargetLanguage))
+                {
+                    // Using per-item language fields - don't include pipeline-level settings
+                    if (!string.IsNullOrEmpty(FieldMappingSourceLanguage))
+                        options["sourceLanguageField"] = FieldMappingSourceLanguage;
+                    if (!string.IsNullOrEmpty(FieldMappingTargetLanguage))
+                        options["targetLanguageField"] = FieldMappingTargetLanguage;
+                }
+                else
+                {
+                    // Using pipeline-level settings
+                    if (!string.IsNullOrEmpty(TranslationSourceLanguage))
+                        options["sourceLanguage"] = TranslationSourceLanguage;
+                    if (!string.IsNullOrEmpty(TranslationTargetLanguage))
+                        options["targetLanguage"] = TranslationTargetLanguage;
+                }
                 if (!string.IsNullOrEmpty(TranslationSystemPrompt))
                     options["systemPrompt"] = TranslationSystemPrompt;
                 break;
@@ -944,9 +1058,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
             },
             ServerSettings = judgeServerSettings,
             BaseUrl = _editedFields.Contains(nameof(JudgeServerUrl)) && !JudgeManageServer ? JudgeServerUrl : null,
-            JudgePromptTemplate = _editedFields.Contains(nameof(JudgeTemplate)) ? JudgeTemplate : null,
-            ScoreMinValue = _editedFields.Contains(nameof(JudgeScoreMin)) ? JudgeScoreMin : 0,
-            ScoreMaxValue = _editedFields.Contains(nameof(JudgeScoreMax)) ? JudgeScoreMax : 10
+            JudgePromptTemplate = _editedFields.Contains(nameof(JudgeTemplate)) ? JudgeTemplate : null
         };
     }
 
@@ -954,16 +1066,21 @@ public sealed partial class WizardViewModel : IWizardViewModel
     {
         // Only include fields that were explicitly edited
         var hasAnyValue = _editedFields.Contains(nameof(JudgeContextWindowTokens)) || _editedFields.Contains(nameof(JudgeBatchSizeTokens)) ||
-            _editedFields.Contains(nameof(JudgeParallelSlotCount)) || _editedFields.Contains(nameof(JudgeSplitMode)) ||
-            _editedFields.Contains(nameof(JudgeKvCacheTypeK)) || _editedFields.Contains(nameof(JudgeKvCacheTypeV)) ||
+            _editedFields.Contains(nameof(JudgeUbatchSizeTokens)) || _editedFields.Contains(nameof(JudgeParallelSlotCount)) ||
+            _editedFields.Contains(nameof(JudgeEnableContinuousBatching)) || _editedFields.Contains(nameof(JudgeEnableCachePrompt)) ||
+            _editedFields.Contains(nameof(JudgeEnableContextShift)) || _editedFields.Contains(nameof(JudgeGpuLayerCount)) ||
+            _editedFields.Contains(nameof(JudgeSplitMode)) || _editedFields.Contains(nameof(JudgeKvCacheTypeK)) ||
+            _editedFields.Contains(nameof(JudgeKvCacheTypeV)) || _editedFields.Contains(nameof(JudgeEnableKvOffload)) ||
             _editedFields.Contains(nameof(JudgeEnableFlashAttention)) || _editedFields.Contains(nameof(JudgeSamplingTemperature)) ||
             _editedFields.Contains(nameof(JudgeTopP)) || _editedFields.Contains(nameof(JudgeTopK)) ||
             _editedFields.Contains(nameof(JudgeMinP)) || _editedFields.Contains(nameof(JudgeRepeatPenalty)) ||
-            _editedFields.Contains(nameof(JudgeSeed)) || _editedFields.Contains(nameof(JudgeThreadCount)) ||
-            _editedFields.Contains(nameof(JudgeHttpThreadCount)) || _editedFields.Contains(nameof(JudgeChatTemplate)) ||
-            _editedFields.Contains(nameof(JudgeEnableJinja)) || _editedFields.Contains(nameof(JudgeLogVerbosity)) ||
-            _editedFields.Contains(nameof(JudgeEnableMlock)) || _editedFields.Contains(nameof(JudgeEnableMmap)) ||
-            _editedFields.Contains(nameof(JudgeServerTimeoutSeconds));
+            _editedFields.Contains(nameof(JudgeRepeatLastNTokens)) || _editedFields.Contains(nameof(JudgePresencePenalty)) ||
+            _editedFields.Contains(nameof(JudgeFrequencyPenalty)) || _editedFields.Contains(nameof(JudgeSeed)) ||
+            _editedFields.Contains(nameof(JudgeThreadCount)) || _editedFields.Contains(nameof(JudgeHttpThreadCount)) ||
+            _editedFields.Contains(nameof(JudgeChatTemplate)) || _editedFields.Contains(nameof(JudgeEnableJinja)) ||
+            _editedFields.Contains(nameof(JudgeReasoningFormat)) || _editedFields.Contains(nameof(JudgeModelAlias)) ||
+            _editedFields.Contains(nameof(JudgeLogVerbosity)) || _editedFields.Contains(nameof(JudgeEnableMlock)) ||
+            _editedFields.Contains(nameof(JudgeEnableMmap)) || _editedFields.Contains(nameof(JudgeServerTimeoutSeconds));
 
         if (!hasAnyValue) return null;
 
@@ -971,21 +1088,32 @@ public sealed partial class WizardViewModel : IWizardViewModel
         {
             ContextWindowTokens = _editedFields.Contains(nameof(JudgeContextWindowTokens)) ? JudgeContextWindowTokens : null,
             BatchSizeTokens = _editedFields.Contains(nameof(JudgeBatchSizeTokens)) ? JudgeBatchSizeTokens : null,
+            UbatchSizeTokens = _editedFields.Contains(nameof(JudgeUbatchSizeTokens)) ? JudgeUbatchSizeTokens : null,
             ParallelSlotCount = _editedFields.Contains(nameof(JudgeParallelSlotCount)) ? JudgeParallelSlotCount : null,
+            EnableContinuousBatching = _editedFields.Contains(nameof(JudgeEnableContinuousBatching)) ? JudgeEnableContinuousBatching : null,
+            EnableCachePrompt = _editedFields.Contains(nameof(JudgeEnableCachePrompt)) ? JudgeEnableCachePrompt : null,
+            EnableContextShift = _editedFields.Contains(nameof(JudgeEnableContextShift)) ? JudgeEnableContextShift : null,
+            GpuLayerCount = _editedFields.Contains(nameof(JudgeGpuLayerCount)) ? JudgeGpuLayerCount : null,
             SplitMode = _editedFields.Contains(nameof(JudgeSplitMode)) ? JudgeSplitMode : null,
             KvCacheTypeK = _editedFields.Contains(nameof(JudgeKvCacheTypeK)) ? JudgeKvCacheTypeK : null,
             KvCacheTypeV = _editedFields.Contains(nameof(JudgeKvCacheTypeV)) ? JudgeKvCacheTypeV : null,
+            EnableKvOffload = _editedFields.Contains(nameof(JudgeEnableKvOffload)) ? JudgeEnableKvOffload : null,
             EnableFlashAttention = _editedFields.Contains(nameof(JudgeEnableFlashAttention)) ? JudgeEnableFlashAttention : null,
             SamplingTemperature = _editedFields.Contains(nameof(JudgeSamplingTemperature)) ? JudgeSamplingTemperature : null,
             TopP = _editedFields.Contains(nameof(JudgeTopP)) ? JudgeTopP : null,
             TopK = _editedFields.Contains(nameof(JudgeTopK)) ? JudgeTopK : null,
             MinP = _editedFields.Contains(nameof(JudgeMinP)) ? JudgeMinP : null,
             RepeatPenalty = _editedFields.Contains(nameof(JudgeRepeatPenalty)) ? JudgeRepeatPenalty : null,
+            RepeatLastNTokens = _editedFields.Contains(nameof(JudgeRepeatLastNTokens)) ? JudgeRepeatLastNTokens : null,
+            PresencePenalty = _editedFields.Contains(nameof(JudgePresencePenalty)) ? JudgePresencePenalty : null,
+            FrequencyPenalty = _editedFields.Contains(nameof(JudgeFrequencyPenalty)) ? JudgeFrequencyPenalty : null,
             Seed = _editedFields.Contains(nameof(JudgeSeed)) ? JudgeSeed : null,
             ThreadCount = _editedFields.Contains(nameof(JudgeThreadCount)) ? JudgeThreadCount : null,
             HttpThreadCount = _editedFields.Contains(nameof(JudgeHttpThreadCount)) ? JudgeHttpThreadCount : null,
             ChatTemplate = _editedFields.Contains(nameof(JudgeChatTemplate)) ? JudgeChatTemplate : null,
             EnableJinja = _editedFields.Contains(nameof(JudgeEnableJinja)) ? JudgeEnableJinja : null,
+            ReasoningFormat = _editedFields.Contains(nameof(JudgeReasoningFormat)) ? JudgeReasoningFormat : null,
+            ModelAlias = _editedFields.Contains(nameof(JudgeModelAlias)) ? JudgeModelAlias : null,
             LogVerbosity = _editedFields.Contains(nameof(JudgeLogVerbosity)) ? JudgeLogVerbosity : null,
             EnableMlock = _editedFields.Contains(nameof(JudgeEnableMlock)) ? JudgeEnableMlock : null,
             EnableMmap = _editedFields.Contains(nameof(JudgeEnableMmap)) ? JudgeEnableMmap : null,
@@ -1028,6 +1156,80 @@ public sealed partial class WizardViewModel : IWizardViewModel
         if (path != null)
         {
             DataFilePath = path;
+        }
+    }
+
+    /// <summary>
+    /// Detects field names from a data file (JSON, CSV, etc.) and populates DetectedFields.
+    /// </summary>
+    private void DetectFieldsFromDataFile(string? filePath)
+    {
+        DetectedFields = null;
+
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            return;
+
+        try
+        {
+            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+            var fields = new HashSet<string>();
+
+            if (ext == ".json" || ext == ".jsonl")
+            {
+                // Read first line/object to detect fields
+                var content = File.ReadAllText(filePath);
+                if (ext == ".jsonl")
+                {
+                    // JSONL - read first line
+                    using var reader = new StreamReader(filePath);
+                    var firstLine = reader.ReadLine();
+                    if (!string.IsNullOrEmpty(firstLine))
+                        content = firstLine;
+                }
+
+                using var doc = System.Text.Json.JsonDocument.Parse(content);
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                {
+                    foreach (var prop in doc.RootElement[0].EnumerateObject())
+                        fields.Add(prop.Name);
+                }
+                else if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    foreach (var prop in doc.RootElement.EnumerateObject())
+                        fields.Add(prop.Name);
+                }
+            }
+            else if (ext == ".csv")
+            {
+                // Read header line
+                var headerLine = File.ReadLines(filePath).FirstOrDefault();
+                if (!string.IsNullOrEmpty(headerLine))
+                {
+                    foreach (var field in headerLine.Split(','))
+                        fields.Add(field.Trim());
+                }
+            }
+            else if (ext == ".yaml" || ext == ".yml")
+            {
+                // Simple YAML parsing - read first few lines to find top-level keys
+                var lines = File.ReadLines(filePath).Take(250);
+                foreach (var line in lines)
+                {
+                    if (line.Trim().Length > 0 && !line.StartsWith(" ") && !line.StartsWith("-") && line.Contains(":"))
+                    {
+                        var fieldName = line.Split(':')[0].Trim();
+                        if (!string.IsNullOrEmpty(fieldName))
+                            fields.Add(fieldName);
+                    }
+                }
+            }
+
+            if (fields.Count > 0)
+                DetectedFields = [.. fields.OrderBy(f => f)];
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Failed to detect fields from {FilePath}", filePath);
         }
     }
 
@@ -1130,18 +1332,95 @@ public sealed partial class WizardViewModel : IWizardViewModel
             cmd.Parameters.AddWithValue("@key", "startup_config");
 
             var configJson = await cmd.ExecuteScalarAsync() as string;
-            if (string.IsNullOrEmpty(configJson)) return;
 
-            var config = System.Text.Json.JsonSerializer.Deserialize<ResolvedConfig>(configJson);
-            if (config == null) return;
+            // Try loading as ResolvedConfig first (for regular runs)
+            if (!string.IsNullOrEmpty(configJson))
+            {
+                var config = System.Text.Json.JsonSerializer.Deserialize<ResolvedConfig>(configJson);
+                if (config != null)
+                {
+                    // Populate wizard fields from the loaded config
+                    PopulateFromCheckpointConfig(config);
+                    return;
+                }
+            }
 
-            // Populate wizard fields from the loaded config
-            PopulateFromCheckpointConfig(config);
+            // Fallback: Try loading EvalGen-style checkpoint (individual fields)
+            cmd.Parameters.Clear();
+            cmd.CommandText = "SELECT Key, Value FROM StartupParameters";
+            using var reader = await cmd.ExecuteReaderAsync();
+            var values = new Dictionary<string, string>();
+
+            while (await reader.ReadAsync())
+            {
+                values[reader.GetString(0)] = reader.GetString(1);
+            }
+
+            if (values.Count > 0)
+            {
+                PopulateFromEvalGenCheckpoint(values);
+            }
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Failed to load checkpoint configuration from {DbPath}", dbPath);
             OnShowNotification?.Invoke($"Warning: Could not load checkpoint configuration: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Populates wizard fields from an EvalGen-style checkpoint (individual fields).
+    /// </summary>
+    private void PopulateFromEvalGenCheckpoint(Dictionary<string, string> values)
+    {
+        // Load run name
+        if (values.TryGetValue("RunName", out var runName) && !string.IsNullOrEmpty(runName))
+        {
+            _runName = runName;
+            _editedFields.Add(nameof(RunName));
+        }
+
+        // Load output directory
+        if (values.TryGetValue("OutputDirectoryPath", out var outputDir) && !string.IsNullOrEmpty(outputDir))
+        {
+            _outputDir = outputDir;
+            _editedFields.Add(nameof(OutputDir));
+        }
+
+        // Load judge config from JSON
+        if (values.TryGetValue("JudgeConfigJson", out var judgeConfigJson) && !string.IsNullOrEmpty(judgeConfigJson))
+        {
+            try
+            {
+                var judgeConfig = System.Text.Json.JsonSerializer.Deserialize<JudgeConfig>(judgeConfigJson);
+                if (judgeConfig != null)
+                {
+                    _judgeManageServer = judgeConfig.Manage;
+                    _editedFields.Add(nameof(JudgeManageServer));
+
+                    if (judgeConfig.ServerConfig != null)
+                    {
+                        if (!string.IsNullOrEmpty(judgeConfig.ServerConfig.ExecutablePath))
+                        {
+                            _judgeExecutablePath = judgeConfig.ServerConfig.ExecutablePath;
+                            _editedFields.Add(nameof(JudgeExecutablePath));
+                        }
+                        if (judgeConfig.ServerConfig.Model != null && judgeConfig.ServerConfig.Model.Kind == ModelSourceKind.LocalFile)
+                        {
+                            _judgeUseLocalFile = true;
+                            _judgeLocalModelPath = judgeConfig.ServerConfig.Model.FilePath;
+                            _editedFields.Add(nameof(JudgeUseLocalFile));
+                            _editedFields.Add(nameof(JudgeLocalModelPath));
+                        }
+                    }
+                    if (judgeConfig.ServerSettings != null && judgeConfig.ServerSettings.ContextWindowTokens.HasValue)
+                    {
+                        _judgeContextWindowTokens = judgeConfig.ServerSettings.ContextWindowTokens;
+                        _editedFields.Add(nameof(JudgeContextWindowTokens));
+                    }
+                }
+            }
+            catch { /* Ignore JSON errors */ }
         }
     }
 
@@ -1243,11 +1522,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
             if (ls.EnableMlock.HasValue) { _enableMlock = ls.EnableMlock; _editedFields.Add(nameof(EnableMlock)); }
             if (ls.EnableMmap.HasValue) { _enableMmap = ls.EnableMmap; _editedFields.Add(nameof(EnableMmap)); }
             if (ls.ServerTimeoutSeconds.HasValue) { _serverTimeoutSeconds = ls.ServerTimeoutSeconds; _editedFields.Add(nameof(ServerTimeoutSeconds)); }
-            if (ls.ExtraArgs?.Count > 0)
-            {
-                _extraLlamaArgs = string.Join(" ", ls.ExtraArgs);
-                _editedFields.Add(nameof(ExtraLlamaArgs));
-            }
+        }
+
+        // Load ExtraArgs from ServerConfig (not LlamaServerSettings)
+        if (config.LlamaServer?.ExtraArgs is { Count: > 0 } serverExtraArgs)
+        {
+            _extraLlamaArgs = string.Join(" ", serverExtraArgs);
+            _editedFields.Add(nameof(ExtraLlamaArgs));
         }
 
         // Judge configuration
@@ -1302,8 +1583,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 var js = judge.ServerSettings;
                 if (js.ContextWindowTokens.HasValue) { _judgeContextWindowTokens = js.ContextWindowTokens; _editedFields.Add(nameof(JudgeContextWindowTokens)); }
                 if (js.BatchSizeTokens.HasValue) { _judgeBatchSizeTokens = js.BatchSizeTokens; _editedFields.Add(nameof(JudgeBatchSizeTokens)); }
+                if (js.UbatchSizeTokens.HasValue) { _judgeUbatchSizeTokens = js.UbatchSizeTokens; _editedFields.Add(nameof(JudgeUbatchSizeTokens)); }
                 if (js.ParallelSlotCount.HasValue) { _judgeParallelSlotCount = js.ParallelSlotCount; _editedFields.Add(nameof(JudgeParallelSlotCount)); }
+                if (js.EnableContinuousBatching.HasValue) { _judgeEnableContinuousBatching = js.EnableContinuousBatching; _editedFields.Add(nameof(JudgeEnableContinuousBatching)); }
+                if (js.EnableCachePrompt.HasValue) { _judgeEnableCachePrompt = js.EnableCachePrompt; _editedFields.Add(nameof(JudgeEnableCachePrompt)); }
+                if (js.EnableContextShift.HasValue) { _judgeEnableContextShift = js.EnableContextShift; _editedFields.Add(nameof(JudgeEnableContextShift)); }
                 if (js.GpuLayerCount.HasValue) { _judgeGpuLayerCount = js.GpuLayerCount; _editedFields.Add(nameof(JudgeGpuLayerCount)); }
+                if (js.EnableKvOffload.HasValue) { _judgeEnableKvOffload = js.EnableKvOffload; _editedFields.Add(nameof(JudgeEnableKvOffload)); }
                 if (!string.IsNullOrEmpty(js.SplitMode)) { _judgeSplitMode = js.SplitMode; _editedFields.Add(nameof(JudgeSplitMode)); }
                 if (!string.IsNullOrEmpty(js.KvCacheTypeK)) { _judgeKvCacheTypeK = js.KvCacheTypeK; _editedFields.Add(nameof(JudgeKvCacheTypeK)); }
                 if (!string.IsNullOrEmpty(js.KvCacheTypeV)) { _judgeKvCacheTypeV = js.KvCacheTypeV; _editedFields.Add(nameof(JudgeKvCacheTypeV)); }
@@ -1313,11 +1599,16 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 if (js.TopK.HasValue) { _judgeTopK = js.TopK; _editedFields.Add(nameof(JudgeTopK)); }
                 if (js.MinP.HasValue) { _judgeMinP = js.MinP; _editedFields.Add(nameof(JudgeMinP)); }
                 if (js.RepeatPenalty.HasValue) { _judgeRepeatPenalty = js.RepeatPenalty; _editedFields.Add(nameof(JudgeRepeatPenalty)); }
+                if (js.RepeatLastNTokens.HasValue) { _judgeRepeatLastNTokens = js.RepeatLastNTokens; _editedFields.Add(nameof(JudgeRepeatLastNTokens)); }
+                if (js.PresencePenalty.HasValue) { _judgePresencePenalty = js.PresencePenalty; _editedFields.Add(nameof(JudgePresencePenalty)); }
+                if (js.FrequencyPenalty.HasValue) { _judgeFrequencyPenalty = js.FrequencyPenalty; _editedFields.Add(nameof(JudgeFrequencyPenalty)); }
                 if (js.Seed.HasValue) { _judgeSeed = js.Seed; _editedFields.Add(nameof(JudgeSeed)); }
                 if (js.ThreadCount.HasValue) { _judgeThreadCount = js.ThreadCount; _editedFields.Add(nameof(JudgeThreadCount)); }
                 if (js.HttpThreadCount.HasValue) { _judgeHttpThreadCount = js.HttpThreadCount; _editedFields.Add(nameof(JudgeHttpThreadCount)); }
                 if (!string.IsNullOrEmpty(js.ChatTemplate)) { _judgeChatTemplate = js.ChatTemplate; _editedFields.Add(nameof(JudgeChatTemplate)); }
                 if (js.EnableJinja.HasValue) { _judgeEnableJinja = js.EnableJinja; _editedFields.Add(nameof(JudgeEnableJinja)); }
+                if (!string.IsNullOrEmpty(js.ReasoningFormat)) { _judgeReasoningFormat = js.ReasoningFormat; _editedFields.Add(nameof(JudgeReasoningFormat)); }
+                if (!string.IsNullOrEmpty(js.ModelAlias)) { _judgeModelAlias = js.ModelAlias; _editedFields.Add(nameof(JudgeModelAlias)); }
                 if (js.LogVerbosity.HasValue) { _judgeLogVerbosity = js.LogVerbosity; _editedFields.Add(nameof(JudgeLogVerbosity)); }
                 if (js.EnableMlock.HasValue) { _judgeEnableMlock = js.EnableMlock; _editedFields.Add(nameof(JudgeEnableMlock)); }
                 if (js.EnableMmap.HasValue) { _judgeEnableMmap = js.EnableMmap; _editedFields.Add(nameof(JudgeEnableMmap)); }
@@ -1327,16 +1618,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
             {
                 _judgeTemplate = judge.JudgePromptTemplate;
                 _editedFields.Add(nameof(JudgeTemplate));
-            }
-            if (judge.ScoreMinValue != 0)
-            {
-                _judgeScoreMin = judge.ScoreMinValue;
-                _editedFields.Add(nameof(JudgeScoreMin));
-            }
-            if (judge.ScoreMaxValue != 10)
-            {
-                _judgeScoreMax = judge.ScoreMaxValue;
-                _editedFields.Add(nameof(JudgeScoreMax));
             }
         }
 
@@ -1394,6 +1675,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
             }
 
             var ds = evalSet.DataSource;
+
+            // Handle single file data sources
             if (ds.Kind is DataSourceKind.SingleFile or
                 DataSourceKind.JsonFile or
                 DataSourceKind.YamlFile or
@@ -1401,43 +1684,93 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 DataSourceKind.ParquetFile or
                 DataSourceKind.File)
             {
-                _useSingleFileDataSource = true;
-                _dataFilePath = ds.FilePath;
+                UseSingleFileDataSource = true;
+                DataFilePath = ds.FilePath;
                 _editedFields.Add(nameof(UseSingleFileDataSource));
                 _editedFields.Add(nameof(DataFilePath));
 
-                // Load field mapping
-                if (!string.IsNullOrEmpty(ds.FieldMapping.IdField))
+                // Load field mapping - check if FieldMapping object exists
+                var fm = ds.FieldMapping;
+                if (fm != null)
                 {
-                    _fieldMappingId = ds.FieldMapping.IdField;
-                    _editedFields.Add(nameof(FieldMappingId));
-                }
-                if (!string.IsNullOrEmpty(ds.FieldMapping.UserPromptField))
-                {
-                    _fieldMappingUserPrompt = ds.FieldMapping.UserPromptField;
-                    _editedFields.Add(nameof(FieldMappingUserPrompt));
-                }
-                if (!string.IsNullOrEmpty(ds.FieldMapping.ExpectedOutputField))
-                {
-                    _fieldMappingExpectedOutput = ds.FieldMapping.ExpectedOutputField;
-                    _editedFields.Add(nameof(FieldMappingExpectedOutput));
-                }
-                if (!string.IsNullOrEmpty(ds.FieldMapping.SystemPromptField))
-                {
-                    _fieldMappingSystemPrompt = ds.FieldMapping.SystemPromptField;
-                    _editedFields.Add(nameof(FieldMappingSystemPrompt));
+                    if (!string.IsNullOrEmpty(fm.IdField))
+                    {
+                        FieldMappingId = fm.IdField;
+                        _editedFields.Add(nameof(FieldMappingId));
+                    }
+                    if (!string.IsNullOrEmpty(fm.UserPromptField))
+                    {
+                        FieldMappingUserPrompt = fm.UserPromptField;
+                        _editedFields.Add(nameof(FieldMappingUserPrompt));
+                    }
+                    if (!string.IsNullOrEmpty(fm.ExpectedOutputField))
+                    {
+                        FieldMappingExpectedOutput = fm.ExpectedOutputField;
+                        _editedFields.Add(nameof(FieldMappingExpectedOutput));
+                    }
+                    if (!string.IsNullOrEmpty(fm.SystemPromptField))
+                    {
+                        FieldMappingSystemPrompt = fm.SystemPromptField;
+                        _editedFields.Add(nameof(FieldMappingSystemPrompt));
+                    }
+                    if (!string.IsNullOrEmpty(fm.SourceLanguageField))
+                    {
+                        FieldMappingSourceLanguage = fm.SourceLanguageField;
+                        _editedFields.Add(nameof(FieldMappingSourceLanguage));
+                    }
+                    if (!string.IsNullOrEmpty(fm.TargetLanguageField))
+                    {
+                        FieldMappingTargetLanguage = fm.TargetLanguageField;
+                        _editedFields.Add(nameof(FieldMappingTargetLanguage));
+                    }
                 }
             }
             else if (ds.Kind is DataSourceKind.SplitDirectories or
                      DataSourceKind.DirectoryPair or
                      DataSourceKind.Directory)
             {
-                _useSingleFileDataSource = false;
-                _promptDir = ds.PromptDirectoryPath;
-                _expectedDir = ds.ExpectedOutputDirectoryPath;
+                UseSingleFileDataSource = false;
+                PromptDir = ds.PromptDirectoryPath;
+                ExpectedDir = ds.ExpectedOutputDirectoryPath;
                 _editedFields.Add(nameof(UseSingleFileDataSource));
                 _editedFields.Add(nameof(PromptDir));
                 _editedFields.Add(nameof(ExpectedDir));
+
+                // Split directories can also have field mappings
+                var fm = ds.FieldMapping;
+                if (fm != null)
+                {
+                    if (!string.IsNullOrEmpty(fm.IdField))
+                    {
+                        FieldMappingId = fm.IdField;
+                        _editedFields.Add(nameof(FieldMappingId));
+                    }
+                    if (!string.IsNullOrEmpty(fm.UserPromptField))
+                    {
+                        FieldMappingUserPrompt = fm.UserPromptField;
+                        _editedFields.Add(nameof(FieldMappingUserPrompt));
+                    }
+                    if (!string.IsNullOrEmpty(fm.ExpectedOutputField))
+                    {
+                        FieldMappingExpectedOutput = fm.ExpectedOutputField;
+                        _editedFields.Add(nameof(FieldMappingExpectedOutput));
+                    }
+                    if (!string.IsNullOrEmpty(fm.SystemPromptField))
+                    {
+                        FieldMappingSystemPrompt = fm.SystemPromptField;
+                        _editedFields.Add(nameof(FieldMappingSystemPrompt));
+                    }
+                    if (!string.IsNullOrEmpty(fm.SourceLanguageField))
+                    {
+                        FieldMappingSourceLanguage = fm.SourceLanguageField;
+                        _editedFields.Add(nameof(FieldMappingSourceLanguage));
+                    }
+                    if (!string.IsNullOrEmpty(fm.TargetLanguageField))
+                    {
+                        FieldMappingTargetLanguage = fm.TargetLanguageField;
+                        _editedFields.Add(nameof(FieldMappingTargetLanguage));
+                    }
+                }
             }
 
             // Load pipeline-specific options
@@ -1480,105 +1813,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         }
 
         // Notify UI of all changes
-        OnPropertyChanged(nameof(ManageServer));
-        OnPropertyChanged(nameof(UseLocalFile));
-        OnPropertyChanged(nameof(LocalModelPath));
-        OnPropertyChanged(nameof(HfRepo));
-        OnPropertyChanged(nameof(HfToken));
-        OnPropertyChanged(nameof(ServerUrl));
-        OnPropertyChanged(nameof(Host));
-        OnPropertyChanged(nameof(Port));
-        OnPropertyChanged(nameof(ApiKey));
-        OnPropertyChanged(nameof(LlamaServerExecutablePath));
-
-        OnPropertyChanged(nameof(ContextWindowTokens));
-        OnPropertyChanged(nameof(BatchSizeTokens));
-        OnPropertyChanged(nameof(UbatchSizeTokens));
-        OnPropertyChanged(nameof(ParallelSlotCount));
-        OnPropertyChanged(nameof(EnableContinuousBatching));
-        OnPropertyChanged(nameof(EnableCachePrompt));
-        OnPropertyChanged(nameof(EnableContextShift));
-        OnPropertyChanged(nameof(GpuLayerCount));
-        OnPropertyChanged(nameof(SplitMode));
-        OnPropertyChanged(nameof(KvCacheTypeK));
-        OnPropertyChanged(nameof(KvCacheTypeV));
-        OnPropertyChanged(nameof(EnableKvOffload));
-        OnPropertyChanged(nameof(EnableFlashAttention));
-        OnPropertyChanged(nameof(SamplingTemperature));
-        OnPropertyChanged(nameof(TopP));
-        OnPropertyChanged(nameof(TopK));
-        OnPropertyChanged(nameof(MinP));
-        OnPropertyChanged(nameof(RepeatPenalty));
-        OnPropertyChanged(nameof(RepeatLastNTokens));
-        OnPropertyChanged(nameof(PresencePenalty));
-        OnPropertyChanged(nameof(FrequencyPenalty));
-        OnPropertyChanged(nameof(Seed));
-        OnPropertyChanged(nameof(ThreadCount));
-        OnPropertyChanged(nameof(HttpThreadCount));
-        OnPropertyChanged(nameof(ChatTemplate));
-        OnPropertyChanged(nameof(EnableJinja));
-        OnPropertyChanged(nameof(ReasoningFormat));
-        OnPropertyChanged(nameof(ModelAlias));
-        OnPropertyChanged(nameof(LogVerbosity));
-        OnPropertyChanged(nameof(EnableMlock));
-        OnPropertyChanged(nameof(EnableMmap));
-        OnPropertyChanged(nameof(ServerTimeoutSeconds));
-
-        OnPropertyChanged(nameof(EnableJudge));
-        OnPropertyChanged(nameof(JudgeManageServer));
-        OnPropertyChanged(nameof(JudgeUseLocalFile));
-        OnPropertyChanged(nameof(JudgeLocalModelPath));
-        OnPropertyChanged(nameof(JudgeHfRepo));
-        OnPropertyChanged(nameof(JudgeHfToken));
-        OnPropertyChanged(nameof(JudgeServerUrl));
-        OnPropertyChanged(nameof(JudgeApiKey));
-        OnPropertyChanged(nameof(JudgeExecutablePath));
-        OnPropertyChanged(nameof(JudgeContextWindowTokens));
-        OnPropertyChanged(nameof(JudgeBatchSizeTokens));
-        OnPropertyChanged(nameof(JudgeParallelSlotCount));
-        OnPropertyChanged(nameof(JudgeGpuLayerCount));
-        OnPropertyChanged(nameof(JudgeSplitMode));
-        OnPropertyChanged(nameof(JudgeKvCacheTypeK));
-        OnPropertyChanged(nameof(JudgeKvCacheTypeV));
-        OnPropertyChanged(nameof(JudgeEnableFlashAttention));
-        OnPropertyChanged(nameof(JudgeSamplingTemperature));
-        OnPropertyChanged(nameof(JudgeTopP));
-        OnPropertyChanged(nameof(JudgeTopK));
-        OnPropertyChanged(nameof(JudgeMinP));
-        OnPropertyChanged(nameof(JudgeRepeatPenalty));
-        OnPropertyChanged(nameof(JudgeSeed));
-        OnPropertyChanged(nameof(JudgeThreadCount));
-        OnPropertyChanged(nameof(JudgeHttpThreadCount));
-        OnPropertyChanged(nameof(JudgeChatTemplate));
-        OnPropertyChanged(nameof(JudgeEnableJinja));
-        OnPropertyChanged(nameof(JudgeLogVerbosity));
-        OnPropertyChanged(nameof(JudgeEnableMlock));
-        OnPropertyChanged(nameof(JudgeEnableMmap));
-        OnPropertyChanged(nameof(JudgeServerTimeoutSeconds));
-        OnPropertyChanged(nameof(JudgeTemplate));
-        OnPropertyChanged(nameof(SelectedJudgeTemplateIndex));
-        OnPropertyChanged(nameof(JudgeScoreMin));
-        OnPropertyChanged(nameof(JudgeScoreMax));
-
-        OnPropertyChanged(nameof(RunName));
-        OnPropertyChanged(nameof(OutputDir));
-        OnPropertyChanged(nameof(ShellTarget));
-        OnPropertyChanged(nameof(ContinueOnEvalFailure));
-        OnPropertyChanged(nameof(MaxConcurrentEvals));
-
-        OnPropertyChanged(nameof(PipelineName));
-        OnPropertyChanged(nameof(SelectedPipelineIndex));
-        OnPropertyChanged(nameof(UseSingleFileDataSource));
-        OnPropertyChanged(nameof(DataFilePath));
-        OnPropertyChanged(nameof(PromptDir));
-        OnPropertyChanged(nameof(ExpectedDir));
-
-        // Notify UI that CanGoForward may have changed
-        OnPropertyChanged(nameof(CanGoForward));
-
-        // Notify commands that CanExecute may have changed
-        ((RelayCommand)GoBackCommand).NotifyCanExecuteChanged();
-        ((RelayCommand)GoForwardCommand).NotifyCanExecuteChanged();
+        NotifyAllProperties();
 
         // Build notification message about what was loaded
         var missingFields = new List<string>();
@@ -1732,6 +1967,11 @@ public sealed partial class WizardViewModel : IWizardViewModel
         _judgeExecutablePath = null;
         _judgeContextWindowTokens = null;
         _judgeBatchSizeTokens = null;
+        _judgeUbatchSizeTokens = null;
+        _judgeEnableContinuousBatching = null;
+        _judgeEnableCachePrompt = null;
+        _judgeEnableContextShift = null;
+        _judgeEnableKvOffload = null;
         _judgeParallelSlotCount = null;
         _judgeSplitMode = null;
         _judgeKvCacheTypeK = null;
@@ -1742,19 +1982,22 @@ public sealed partial class WizardViewModel : IWizardViewModel
         _judgeTopK = null;
         _judgeMinP = null;
         _judgeRepeatPenalty = null;
+        _judgeRepeatLastNTokens = null;
+        _judgePresencePenalty = null;
+        _judgeFrequencyPenalty = null;
         _judgeSeed = null;
         _judgeThreadCount = null;
         _judgeHttpThreadCount = null;
         _judgeChatTemplate = null;
         _judgeEnableJinja = null;
+        _judgeReasoningFormat = null;
+        _judgeModelAlias = null;
         _judgeLogVerbosity = null;
         _judgeEnableMlock = null;
         _judgeEnableMmap = null;
         _judgeServerTimeoutSeconds = null;
         _judgeGpuLayerCount = null;
         JudgeTemplate = "standard";  // Use property setter to trigger notifications
-        _judgeScoreMin = 0;
-        _judgeScoreMax = 10;
 
         // Output settings
         _writePerEvalJson = false;
@@ -1778,114 +2021,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         ResetToDefaultsCompleted?.Invoke(this, EventArgs.Empty);
 
         // Notify all properties changed
-        OnPropertyChanged(nameof(CurrentStep));
-        OnPropertyChanged(nameof(CanGoBack));
-        OnPropertyChanged(nameof(CanGoForward));
-
-        // Server properties
-        OnPropertyChanged(nameof(ManageServer));
-        OnPropertyChanged(nameof(UseLocalFile));
-        OnPropertyChanged(nameof(LocalModelPath));
-        OnPropertyChanged(nameof(HfRepo));
-        OnPropertyChanged(nameof(HfToken));
-        OnPropertyChanged(nameof(ServerUrl));
-        OnPropertyChanged(nameof(LlamaServerExecutablePath));
-        OnPropertyChanged(nameof(Host));
-        OnPropertyChanged(nameof(Port));
-        OnPropertyChanged(nameof(ApiKey));
-
-        // Performance properties
-        OnPropertyChanged(nameof(ContextWindowTokens));
-        OnPropertyChanged(nameof(BatchSizeTokens));
-        OnPropertyChanged(nameof(UbatchSizeTokens));
-        OnPropertyChanged(nameof(ParallelSlotCount));
-        OnPropertyChanged(nameof(EnableContinuousBatching));
-        OnPropertyChanged(nameof(EnableCachePrompt));
-        OnPropertyChanged(nameof(EnableContextShift));
-        OnPropertyChanged(nameof(GpuLayerCount));
-        OnPropertyChanged(nameof(SplitMode));
-        OnPropertyChanged(nameof(KvCacheTypeK));
-        OnPropertyChanged(nameof(KvCacheTypeV));
-        OnPropertyChanged(nameof(EnableKvOffload));
-        OnPropertyChanged(nameof(EnableFlashAttention));
-        OnPropertyChanged(nameof(SamplingTemperature));
-        OnPropertyChanged(nameof(TopP));
-        OnPropertyChanged(nameof(TopK));
-        OnPropertyChanged(nameof(MinP));
-        OnPropertyChanged(nameof(RepeatPenalty));
-        OnPropertyChanged(nameof(RepeatLastNTokens));
-        OnPropertyChanged(nameof(PresencePenalty));
-        OnPropertyChanged(nameof(FrequencyPenalty));
-        OnPropertyChanged(nameof(Seed));
-        OnPropertyChanged(nameof(ThreadCount));
-        OnPropertyChanged(nameof(HttpThreadCount));
-        OnPropertyChanged(nameof(ChatTemplate));
-        OnPropertyChanged(nameof(EnableJinja));
-        OnPropertyChanged(nameof(ReasoningFormat));
-        OnPropertyChanged(nameof(ModelAlias));
-        OnPropertyChanged(nameof(LogVerbosity));
-        OnPropertyChanged(nameof(EnableMlock));
-        OnPropertyChanged(nameof(EnableMmap));
-        OnPropertyChanged(nameof(ServerTimeoutSeconds));
-
-        // Dataset properties
-        OnPropertyChanged(nameof(PipelineName));
-        OnPropertyChanged(nameof(SelectedPipelineIndex));
-        OnPropertyChanged(nameof(DataFilePath));
-        OnPropertyChanged(nameof(PromptDir));
-        OnPropertyChanged(nameof(ExpectedDir));
-        OnPropertyChanged(nameof(UseSingleFileDataSource));
-        OnPropertyChanged(nameof(UseDirectoryDataSource));
-
-        // Judge properties
-        OnPropertyChanged(nameof(EnableJudge));
-        OnPropertyChanged(nameof(JudgeManageServer));
-        OnPropertyChanged(nameof(JudgeUseLocalFile));
-        OnPropertyChanged(nameof(JudgeLocalModelPath));
-        OnPropertyChanged(nameof(JudgeHfRepo));
-        OnPropertyChanged(nameof(JudgeHfToken));
-        OnPropertyChanged(nameof(JudgeServerUrl));
-        OnPropertyChanged(nameof(JudgeExecutablePath));
-        OnPropertyChanged(nameof(JudgeContextWindowTokens));
-        OnPropertyChanged(nameof(JudgeBatchSizeTokens));
-        OnPropertyChanged(nameof(JudgeParallelSlotCount));
-        OnPropertyChanged(nameof(JudgeSplitMode));
-        OnPropertyChanged(nameof(JudgeKvCacheTypeK));
-        OnPropertyChanged(nameof(JudgeKvCacheTypeV));
-        OnPropertyChanged(nameof(JudgeEnableFlashAttention));
-        OnPropertyChanged(nameof(JudgeSamplingTemperature));
-        OnPropertyChanged(nameof(JudgeTopP));
-        OnPropertyChanged(nameof(JudgeTopK));
-        OnPropertyChanged(nameof(JudgeMinP));
-        OnPropertyChanged(nameof(JudgeRepeatPenalty));
-        OnPropertyChanged(nameof(JudgeSeed));
-        OnPropertyChanged(nameof(JudgeThreadCount));
-        OnPropertyChanged(nameof(JudgeHttpThreadCount));
-        OnPropertyChanged(nameof(JudgeChatTemplate));
-        OnPropertyChanged(nameof(JudgeEnableJinja));
-        OnPropertyChanged(nameof(JudgeLogVerbosity));
-        OnPropertyChanged(nameof(JudgeEnableMlock));
-        OnPropertyChanged(nameof(JudgeEnableMmap));
-        OnPropertyChanged(nameof(JudgeServerTimeoutSeconds));
-        OnPropertyChanged(nameof(JudgeGpuLayerCount));
-        OnPropertyChanged(nameof(JudgeTemplate));
-        OnPropertyChanged(nameof(SelectedJudgeTemplateIndex));
-        OnPropertyChanged(nameof(JudgeScoreMin));
-        OnPropertyChanged(nameof(JudgeScoreMax));
-
-        // Output properties
-        OnPropertyChanged(nameof(WritePerEvalJson));
-        OnPropertyChanged(nameof(WriteSummaryJson));
-        OnPropertyChanged(nameof(WriteSummaryCsv));
-        OnPropertyChanged(nameof(WriteResultsParquet));
-        OnPropertyChanged(nameof(IncludeRawLlmResponse));
-        OnPropertyChanged(nameof(ContinueOnEvalFailure));
-        OnPropertyChanged(nameof(MaxConcurrentEvals));
-        OnPropertyChanged(nameof(RunName));
-        OnPropertyChanged(nameof(OutputDir));
-        OnPropertyChanged(nameof(ShellTarget));
-        OnPropertyChanged(nameof(CheckpointDatabasePath));
-        OnPropertyChanged(nameof(ContinueFromCheckpoint));
+        NotifyAllProperties();
     }
 
     /// <summary>
@@ -1919,6 +2055,22 @@ public sealed partial class WizardViewModel : IWizardViewModel
         if (GoForwardCommand is RelayCommand fwdCmd) fwdCmd.NotifyCanExecuteChanged();
 
         return true;
+    }
+
+    /// <summary>
+    /// Uses reflection to notify the UI that all public properties may have changed.
+    /// </summary>
+    private void NotifyAllProperties()
+    {
+        var properties = GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        foreach (var prop in properties)
+        {
+            OnPropertyChanged(prop.Name);
+        }
+
+        // Notify commands that CanExecute may have changed
+        if (GoBackCommand is RelayCommand backCmd) backCmd.NotifyCanExecuteChanged();
+        if (GoForwardCommand is RelayCommand fwdCmd) fwdCmd.NotifyCanExecuteChanged();
     }
 
     // ─── Sync from loaded settings ────────────────────────────────────────────
@@ -2035,10 +2187,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 _judgeServerUrl = judge.BaseUrl;
             if (!_editedFields.Contains(nameof(SelectedJudgeTemplateIndex)))
                 _judgeTemplate = judge.JudgePromptTemplate ?? "standard";
-            if (!_editedFields.Contains(nameof(JudgeScoreMin)))
-                _judgeScoreMin = (int)judge.ScoreMinValue;
-            if (!_editedFields.Contains(nameof(JudgeScoreMax)))
-                _judgeScoreMax = (int)judge.ScoreMaxValue;
 
             // Judge llama-server settings
             if (judge.ServerSettings != null)
@@ -2048,10 +2196,20 @@ public sealed partial class WizardViewModel : IWizardViewModel
                     _judgeContextWindowTokens = js.ContextWindowTokens;
                 if (!_editedFields.Contains(nameof(JudgeBatchSizeTokens)))
                     _judgeBatchSizeTokens = js.BatchSizeTokens;
+                if (!_editedFields.Contains(nameof(JudgeUbatchSizeTokens)))
+                    _judgeUbatchSizeTokens = js.UbatchSizeTokens;
                 if (!_editedFields.Contains(nameof(JudgeParallelSlotCount)))
                     _judgeParallelSlotCount = js.ParallelSlotCount;
+                if (!_editedFields.Contains(nameof(JudgeEnableContinuousBatching)))
+                    _judgeEnableContinuousBatching = js.EnableContinuousBatching;
+                if (!_editedFields.Contains(nameof(JudgeEnableCachePrompt)))
+                    _judgeEnableCachePrompt = js.EnableCachePrompt;
+                if (!_editedFields.Contains(nameof(JudgeEnableContextShift)))
+                    _judgeEnableContextShift = js.EnableContextShift;
                 if (!_editedFields.Contains(nameof(JudgeGpuLayerCount)))
                     _judgeGpuLayerCount = js.GpuLayerCount;
+                if (!_editedFields.Contains(nameof(JudgeEnableKvOffload)))
+                    _judgeEnableKvOffload = js.EnableKvOffload;
                 if (!_editedFields.Contains(nameof(JudgeSplitMode)))
                     _judgeSplitMode = js.SplitMode;
                 if (!_editedFields.Contains(nameof(JudgeKvCacheTypeK)))
@@ -2070,6 +2228,12 @@ public sealed partial class WizardViewModel : IWizardViewModel
                     _judgeMinP = js.MinP;
                 if (!_editedFields.Contains(nameof(JudgeRepeatPenalty)))
                     _judgeRepeatPenalty = js.RepeatPenalty;
+                if (!_editedFields.Contains(nameof(JudgeRepeatLastNTokens)))
+                    _judgeRepeatLastNTokens = js.RepeatLastNTokens;
+                if (!_editedFields.Contains(nameof(JudgePresencePenalty)))
+                    _judgePresencePenalty = js.PresencePenalty;
+                if (!_editedFields.Contains(nameof(JudgeFrequencyPenalty)))
+                    _judgeFrequencyPenalty = js.FrequencyPenalty;
                 if (!_editedFields.Contains(nameof(JudgeSeed)))
                     _judgeSeed = js.Seed;
                 if (!_editedFields.Contains(nameof(JudgeThreadCount)))
@@ -2080,6 +2244,10 @@ public sealed partial class WizardViewModel : IWizardViewModel
                     _judgeChatTemplate = js.ChatTemplate;
                 if (!_editedFields.Contains(nameof(JudgeEnableJinja)))
                     _judgeEnableJinja = js.EnableJinja;
+                if (!_editedFields.Contains(nameof(JudgeReasoningFormat)))
+                    _judgeReasoningFormat = js.ReasoningFormat;
+                if (!_editedFields.Contains(nameof(JudgeModelAlias)))
+                    _judgeModelAlias = js.ModelAlias;
                 if (!_editedFields.Contains(nameof(JudgeLogVerbosity)))
                     _judgeLogVerbosity = js.LogVerbosity;
                 if (!_editedFields.Contains(nameof(JudgeEnableMlock)))
@@ -2159,7 +2327,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
         }
 
         // Notify the Avalonia UI to repaint the bound variables that were just updated in the background
-        //TODO: OnPropertyChanged(string.Empty); but that doesn't work for every field
+        OnPropertyChanged(nameof(EnableJudge));
+        OnPropertyChanged(nameof(UseSingleFileDataSource));
+        OnPropertyChanged(nameof(UseDirectoryDataSource));
     }
 
     [System.Text.RegularExpressions.GeneratedRegex("(?<!^)([A-Z])")]

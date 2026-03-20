@@ -1,5 +1,6 @@
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
 using Seevalocal.UI.Commands;
@@ -344,6 +345,70 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (!string.IsNullOrEmpty(path))
         {
             CheckpointDatabasePath = path;
+            await LoadCheckpointConfigAsync(path);
+        }
+    }
+
+    /// <summary>
+    /// Loads configuration from a checkpoint database and populates fields.
+    /// </summary>
+    private async Task LoadCheckpointConfigAsync(string dbPath)
+    {
+        try
+        {
+            if (!File.Exists(dbPath)) return;
+
+            // Open the checkpoint database and load the startup config
+            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await connection.OpenAsync();
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = "SELECT Key, Value FROM StartupParameters";
+
+            using var reader = await cmd.ExecuteReaderAsync();
+            var values = new Dictionary<string, string>();
+
+            while (await reader.ReadAsync())
+            {
+                values[reader.GetString(0)] = reader.GetString(1);
+            }
+
+            if (!values.ContainsKey("Id")) return;
+
+            // Helper to convert empty strings to null
+            static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
+            static int ParseInt(string? s, int defaultValue) => int.TryParse(s, out var i) ? i : defaultValue;
+
+            // Populate fields from checkpoint
+            if (values.TryGetValue("DomainPrompt", out var domainPrompt))
+                DomainPrompt = NullIfEmpty(domainPrompt) ?? "";
+
+            if (values.TryGetValue("ContextPrompt", out var contextPrompt))
+                ContextPrompt = NullIfEmpty(contextPrompt) ?? "";
+
+            if (values.TryGetValue("SystemPrompt", out var systemPrompt))
+                SystemPrompt = NullIfEmpty(systemPrompt) ?? "";
+
+            if (values.TryGetValue("TargetCategoryCount", out var targetCategories))
+                TargetCategoryCount = ParseInt(targetCategories, 10);
+
+            if (values.TryGetValue("TargetProblemsPerCategory", out var targetProblems))
+                TargetProblemsPerCategory = ParseInt(targetProblems, 5);
+
+            if (values.TryGetValue("Phase1PromptTemplate", out var phase1Prompt))
+                Phase1Prompt = NullIfEmpty(phase1Prompt) ?? EvalGenService.DefaultPhase1Prompt;
+
+            if (values.TryGetValue("Phase2PromptTemplate", out var phase2Prompt))
+                Phase2Prompt = NullIfEmpty(phase2Prompt) ?? EvalGenService.DefaultPhase2Prompt;
+
+            if (values.TryGetValue("Phase3PromptTemplate", out var phase3Prompt))
+                Phase3Prompt = NullIfEmpty(phase3Prompt) ?? EvalGenService.DefaultPhase3Prompt;
+
+            _logger.LogInformation("Loaded checkpoint configuration from {DbPath}", dbPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load checkpoint configuration from {DbPath}", dbPath);
         }
     }
 

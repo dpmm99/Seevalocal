@@ -125,12 +125,13 @@ internal class Program
             // Register eval gen services
             _ = services.AddSingleton<IEvalGenService>(sp =>
             {
-                var serverLifecycle = sp.GetService<IServerLifecycleService>();
                 var serverManager = sp.GetRequiredService<LlamaServerManager>();
+                var downloader = sp.GetRequiredService<LlamaServerDownloader>();
+                var gpuDetector = sp.GetRequiredService<GpuDetector>();
                 var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
                 var httpClient = sp.GetRequiredService<HttpClient>();
                 var logger = sp.GetRequiredService<ILogger<EvalGenService>>();
-                return new EvalGenService(serverLifecycle, serverManager, loggerFactory, httpClient, logger);
+                return new EvalGenService(serverManager, downloader, gpuDetector, loggerFactory, httpClient, logger);
             });
 
             var registrar = new TypeRegistrar(services);

@@ -83,7 +83,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         const string evalItemId = "item-1";
         const string evalSetId = "eval-set-1";
         const string stageName = "PromptStage";
-        const string outputKey = "response";
+        const string outputKey = "PromptStage.response";  // Production uses prefixed keys
         const string outputValue = "test response content";
 
         // First create an EvalResult record (required by foreign key)
@@ -104,8 +104,8 @@ public sealed class PersistentResultCollectorTests : IDisposable
 
         // Assert
         var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
-        outputs.Should().ContainKey($"{stageName}.{outputKey}");
-        outputs[$"{stageName}.{outputKey}"].Should().Be(outputValue);
+        outputs.Should().ContainKey(outputKey);  // Key is already prefixed
+        outputs[outputKey].Should().Be(outputValue);
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         const string evalItemId = "item-1";
         const string evalSetId = "eval-set-1";
         const string stageName = "JudgeStage";
-        const string outputKey = "score";
+        const string outputKey = "JudgeStage.score";  // Production uses prefixed keys
         var outputValue = new { score = 8.5, rationale = "Good response" };
 
         // First create an EvalResult record (required by foreign key)
@@ -138,7 +138,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
 
         // Assert
         var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
-        outputs.Should().ContainKey($"{stageName}.{outputKey}");
+        outputs.Should().ContainKey(outputKey);  // Key is already prefixed
     }
 
     [Fact]
@@ -320,12 +320,12 @@ public sealed class PersistentResultCollectorTests : IDisposable
         };
         await collector.CollectAsync(result, cts.Token);
 
-        // Save stage outputs to the relational table
-        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "userPrompt", "What is 2+2?", cts.Token);
-        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "response", "2+2=4", cts.Token);
-        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "expectedOutput", "4", cts.Token);
-        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "score", 9.5, cts.Token);
-        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "rationale", "Good answer", cts.Token);
+        // Save stage outputs to the relational table (using prefixed keys like production)
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "PromptStage.userPrompt", "What is 2+2?", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "PromptStage.response", "2+2=4", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "PromptStage", "PromptStage.expectedOutput", "4", cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "JudgeStage.score", 9.5, cts.Token);
+        await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "JudgeStage.rationale", "Good answer", cts.Token);
 
         // Act
         var results = await collector.GetResultsForPhaseAsync(evalSetId, "primary", cts.Token);
@@ -373,9 +373,9 @@ public sealed class PersistentResultCollectorTests : IDisposable
             };
             await collector.CollectAsync(result, cts.Token);
 
-            // Save different stage outputs for each item
-            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", "response", $"response-{i}", cts.Token);
-            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", "itemNumber", i, cts.Token);
+            // Save different stage outputs for each item (using prefixed keys like production)
+            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", $"PromptStage.response", $"response-{i}", cts.Token);
+            await collector.SaveStageOutputAsync($"item-{i}", "PromptStage", $"PromptStage.itemNumber", i, cts.Token);
         }
 
         // Act
@@ -454,8 +454,8 @@ public sealed class PersistentResultCollectorTests : IDisposable
         };
         await collector.CollectAsync(result, cts.Token);
 
-        // Act - save null value
-        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "nullableKey", null, cts.Token);
+        // Act - save null value (using prefixed key like production)
+        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "TestStage.nullableKey", null, cts.Token);
 
         // Assert
         var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);
@@ -486,8 +486,8 @@ public sealed class PersistentResultCollectorTests : IDisposable
 
         var complexObject = new { name = "test", values = new[] { 1, 2, 3 }, nested = new { key = "value" } };
 
-        // Act
-        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "complexKey", complexObject, cts.Token);
+        // Act (using prefixed key like production)
+        await collector.SaveStageOutputAsync(evalItemId, "TestStage", "TestStage.complexKey", complexObject, cts.Token);
 
         // Assert
         var outputs = await collector.GetStageOutputsAsync(evalItemId, cts.Token);

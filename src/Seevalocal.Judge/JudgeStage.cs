@@ -89,14 +89,14 @@ public sealed partial class JudgeStage(
                 "Ensure the pipeline orchestrator initialises a judge endpoint.");
 
         // ── 2. Retrieve the primary LLM's actual output ────────────────────
-        var actualOutput = context.StageOutputs.GetValueOrDefault("PromptStage.response") as string ?? string.Empty;
+        var actualOutput = context.StageOutputs.GetValueOrDefault("PromptStage.response") as string;
 
         if (string.IsNullOrEmpty(actualOutput))
         {
             _logger.LogWarning(
-                "[{Stage}] EvalItem {ItemId}: 'PromptStage.response' is missing or empty. " +
-                "The judge will evaluate an empty actual output.",
+                "[{Stage}] EvalItem {ItemId}: 'PromptStage.response' is missing or empty. Skipping judge evaluation.",
                 StageName, context.Item.Id);
+            return StageResult.Failure($"[{StageName}] Skipping item - primary LLM output is missing or empty.");
         }
 
         // ── 3. Render judge prompt ─────────────────────────────────────────
@@ -125,6 +125,7 @@ public sealed partial class JudgeStage(
             Temperature = _config.JudgeSamplingTemperature,
         };
 
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         Result<ChatCompletionResponse> response;
         try
         {
@@ -145,6 +146,7 @@ public sealed partial class JudgeStage(
                 StageName, context.Item.Id);
             return StageResult.Failure($"[{StageName}] Unexpected error: {ex.Message}");
         }
+        sw.Stop();
 
         if (response.IsFailed)
         {
@@ -176,19 +178,19 @@ public sealed partial class JudgeStage(
                 Succeeded = false,
                 FailureReason = $"[{StageName}] Could not parse judge response: \"{judgeText}\"",
                 Outputs = BuildOutputs(judgeText, parsed),
-                Metrics = BuildMetrics(parsed),
+                Metrics = BuildMetrics(response.Value, sw.Elapsed.TotalSeconds),
             };
         }
 
         _logger.LogDebug(
-            "[{Stage}] EvalItem {ItemId}: judgeScore={Score:F2} passed={Passed}",
-            StageName, context.Item.Id, parsed.RawScore, parsed.Passed);
+            "[{Stage}] EvalItem {ItemId}: parsed {MetricCount} metrics from judge response",
+            StageName, context.Item.Id, parsed.Metrics.Count);
 
         return new StageResult
         {
             Succeeded = true,
             Outputs = BuildOutputs(judgeText, parsed),
-            Metrics = BuildMetrics(parsed),
+            Metrics = BuildMetrics(response.Value, sw.Elapsed.TotalSeconds, parsed),
         };
     }
 
@@ -198,114 +200,84 @@ public sealed partial class JudgeStage(
 
     private static Dictionary<string, object?> BuildOutputs(
         string judgeText,
-        ParsedJudgeResponse parsed) =>
-        new()
+        ParsedJudgeResponse parsed)
+    {
+        var outputs = new Dictionary<string, object?>
         {
             ["JudgeStage.rawResponse"] = judgeText,
-            ["JudgeStage.score"] = parsed.RawScore,
-            ["JudgeStage.passed"] = parsed.Passed,
-            ["JudgeStage.rationale"] = parsed.Rationale,
         };
-
-    private static IReadOnlyList<MetricValue> BuildMetrics(ParsedJudgeResponse parsed) =>
-    [
-        new MetricValue
+        
+        if (!string.IsNullOrEmpty(parsed.Rationale))
         {
-            Name        = "judgeScore",
-            Value       = new MetricScalar.DoubleMetric(parsed.RawScore ?? 0.0),
-            SourceStage = "JudgeStage",
-        },
-        new MetricValue
-        {
-            Name        = "judgePassedBool",
-            Value       = new MetricScalar.BoolMetric(parsed.Passed ?? false),
-            SourceStage = "JudgeStage",
-        },
-    ];
-
-    /// <summary>
-    /// Represents the result of parsing a judge score.
-    /// </summary>
-    public sealed class ScoreResult
-    {
-        public double ScoreRatio { get; init; }
-        public bool Passed { get; init; }
+            outputs["JudgeStage.rationale"] = parsed.Rationale;
+        }
+        
+        return outputs;
     }
 
-    public static ScoreResult? ParseScore(string raw, int maxScore, double passThreshold)
+    private static IReadOnlyList<MetricValue> BuildMetrics(ChatCompletionResponse response, double wallClockSeconds, ParsedJudgeResponse? parsed = null)
     {
-        double? numericScore = null;
+        var metrics = new List<MetricValue>();
 
-        // Try to parse numeric score from the raw response
-        if (double.TryParse(raw, out var directScore))
+        // Add token count and speed metrics (same as PromptStage)
+        var promptTokenCount = response.Usage?.PromptTokens ?? 0;
+        var completionTokenCount = response.Usage?.CompletionTokens ?? 0;
+        var totalTokenCount = response.Usage?.TotalTokens ?? (promptTokenCount + completionTokenCount);
+
+        metrics.Add(new MetricValue { Name = "judge.promptTokenCount", Value = new MetricScalar.IntMetric(promptTokenCount), SourceStage = "JudgeStage" });
+        metrics.Add(new MetricValue { Name = "judge.completionTokenCount", Value = new MetricScalar.IntMetric(completionTokenCount), SourceStage = "JudgeStage" });
+        metrics.Add(new MetricValue { Name = "judge.totalTokenCount", Value = new MetricScalar.IntMetric(totalTokenCount), SourceStage = "JudgeStage" });
+
+        // Prefer server-reported timing if available; fall back to wall-clock
+        var latencySeconds = response.Timings is not null
+            ? (response.Timings.PromptMs + response.Timings.PredictedMs) / 1000.0
+            : wallClockSeconds;
+
+        metrics.Add(new MetricValue { Name = "judge.llmLatencySeconds", Value = new MetricScalar.DoubleMetric(Math.Round(latencySeconds, 2)), SourceStage = "JudgeStage" });
+
+        if (latencySeconds > 0)
         {
-            numericScore = directScore;
+            var promptTps = promptTokenCount > 0
+                ? promptTokenCount / (response.Timings?.PromptMs / 1000.0 ?? latencySeconds)
+                : 0.0;
+
+            var completionTps = completionTokenCount > 0 && response.Timings is not null
+                ? completionTokenCount / (response.Timings.PredictedMs / 1000.0)
+                : completionTokenCount > 0
+                    ? completionTokenCount / latencySeconds
+                    : 0.0;
+
+            metrics.Add(new MetricValue { Name = "judge.promptTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(promptTps, 2)), SourceStage = "JudgeStage" });
+            metrics.Add(new MetricValue { Name = "judge.completionTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(completionTps, 2)), SourceStage = "JudgeStage" });
         }
-        // Try to extract score from JSON
-        else if (raw.Trim().StartsWith('{'))
+
+        // Add all parsed metrics with "judge." prefix
+        if (parsed != null)
         {
-            try
+            foreach (var kvp in parsed.Metrics)
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(raw);
-                if (doc.RootElement.TryGetProperty("score", out var scoreProp) && scoreProp.TryGetDouble(out var s))
-                    numericScore = s;
+                MetricScalar metricValue = kvp.Value switch
+                {
+                    null => new MetricScalar.DoubleMetric(0),
+                    bool b => new MetricScalar.BoolMetric(b),
+                    double d => new MetricScalar.DoubleMetric(d),
+                    int i => new MetricScalar.IntMetric(i),
+                    long l => new MetricScalar.IntMetric((int)l),
+                    float f => new MetricScalar.DoubleMetric(f),
+                    decimal m => new MetricScalar.DoubleMetric((double)m),
+                    string s => new MetricScalar.StringMetric(s),
+                    _ => new MetricScalar.StringMetric(kvp.Value?.ToString() ?? ""),
+                };
+
+                metrics.Add(new MetricValue
+                {
+                    Name = $"judge.{kvp.Key}",
+                    Value = metricValue,
+                    SourceStage = "JudgeStage",
+                });
             }
-            catch
-            {
-                // Ignore JSON parse errors, fall through to keyword detection
-            }
         }
 
-        // If we found a numeric score, return normalized ratio
-        if (numericScore.HasValue)
-        {
-            var ratio = maxScore > 0 ? numericScore.Value / maxScore : 0;
-            return new ScoreResult
-            {
-                ScoreRatio = ratio,
-                Passed = ratio >= passThreshold
-            };
-        }
-
-        // Try to extract first number from narrative response
-        var match = NumericScorePattern().Match(raw);
-        if (match.Success && double.TryParse(match.Value, out var extractedScore))
-        {
-            var ratio = maxScore > 0 ? extractedScore / maxScore : 0;
-            return new ScoreResult
-            {
-                ScoreRatio = ratio,
-                Passed = ratio >= passThreshold
-            };
-        }
-
-        // Keyword-based pass/fail detection
-        if (raw.Contains("pass", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("correct", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("true", StringComparison.OrdinalIgnoreCase))
-        {
-            return new ScoreResult
-            {
-                ScoreRatio = 1.0,
-                Passed = true
-            };
-        }
-
-        if (raw.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("incorrect", StringComparison.OrdinalIgnoreCase) ||
-            raw.Contains("false", StringComparison.OrdinalIgnoreCase))
-        {
-            return new ScoreResult
-            {
-                ScoreRatio = 0.0,
-                Passed = false
-            };
-        }
-
-        // Default: return null if no score could be extracted
-        return null;
+        return metrics;
     }
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"\d+(?:\.\d+)?")]
-    private static partial System.Text.RegularExpressions.Regex NumericScorePattern();
 }

@@ -23,9 +23,6 @@ public class EvalGenModelsTests
         config.OutputDirectoryPath.Should().BeEmpty();
         config.TargetCategoryCount.Should().Be(10);
         config.TargetProblemsPerCategory.Should().Be(5);
-        config.MaxConcurrentCategoryGenerations.Should().Be(1);
-        config.MaxConcurrentProblemGenerations.Should().Be(4);
-        config.MaxConcurrentFleshOutGenerations.Should().Be(4);
         config.ContinueFromCheckpoint.Should().BeFalse();
     }
 
@@ -182,7 +179,7 @@ public class EvalGenModelsTests
     [InlineData(0, 0, 0, 0, 0, 0, 0)] // All zeros = 0%
     [InlineData(10, 10, 50, 50, 50, 50, 100)] // All complete = 100%
     [InlineData(5, 10, 25, 50, 25, 50, 50)] // Half complete = 50%
-    [InlineData(10, 10, 50, 50, 0, 50, 60)] // Categories+problems done (20%+40%=60%), no flesh-out
+    [InlineData(10, 10, 50, 50, 0, 50, 20)] // Categories+problems done (5%+15%=20%), no flesh-out
     public void EvalGenProgress_OverallProgressPercent_CalculatesCorrectly(
         int catGen, int catTarget, int probGen, int probTarget, int fleshed, int _fleshTarget,
         double expectedPercent)

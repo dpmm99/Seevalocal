@@ -94,7 +94,6 @@ public sealed class ConfigurationMerger
             Host = LastSrvStr(all, static s => s.Host),
             Port = LastSrv(all, static s => s.Port),
             ApiKey = LastSrvStr(all, static s => s.ApiKey),
-            ExtraArgs = LastSrvRef(all, static s => s.ExtraArgs) ?? [],
             BaseUrl = LastSrvStr(all, static s => s.BaseUrl),
         };
 
@@ -304,7 +303,6 @@ public sealed class ConfigurationMerger
             Host = LastJudgeStr(all, j => j.ServerConfig?.Host),
             Port = LastJudgeInt(all, j => j.ServerConfig?.Port),
             ApiKey = LastJudgeStr(all, j => j.ServerConfig?.ApiKey),
-            ExtraArgs = LastJudgeList(all, j => j.ServerConfig?.ExtraArgs) ?? [],
             BaseUrl = LastJudgeStr(all, j => j.ServerConfig?.BaseUrl)
         };
     }

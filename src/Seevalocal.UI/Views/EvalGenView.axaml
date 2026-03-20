@@ -91,7 +91,7 @@
     <TextBlock Text="Generate Evaluation Set" Classes="pageTitle" Grid.Row="0"/>
 
     <Border Grid.Row="1" Background="#181825" CornerRadius="8" Padding="20" Margin="0,16">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel>
           <!-- Configuration Form -->
           <StackPanel IsVisible="{Binding ShowConfigurationForm}">
@@ -278,7 +278,7 @@
             <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:F1}%}" HorizontalAlignment="Center" Margin="0,4"/>
 
             <!-- Stats Grid -->
-            <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto" Margin="0,16">
+            <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto" Margin="0,16">
               <StackPanel Grid.Column="0" Spacing="4">
                 <TextBlock Text="Categories" Foreground="#7F849C" FontSize="12"/>
                 <TextBlock FontSize="18">
@@ -305,6 +305,11 @@
                   <Run Text="{Binding TargetProblems}"/>
                 </TextBlock>
               </StackPanel>
+
+              <StackPanel Grid.Column="3" Spacing="4">
+                <TextBlock Text="Tokens/sec" Foreground="#7F849C" FontSize="12"/>
+                <TextBlock Text="{Binding AverageTokensPerSecond, StringFormat={}{0:F1}}" FontSize="18"/>
+              </StackPanel>
             </Grid>
 
             <!-- Control Buttons -->
@@ -327,8 +332,7 @@
               <StackPanel>
                 <TextBlock Text="Generated Categories" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
 
-                <ScrollViewer MinHeight="200" MaxHeight="400" HorizontalScrollBarVisibility="Disabled">
-                  <ItemsControl ItemsSource="{Binding Categories}">
+                <ItemsControl ItemsSource="{Binding Categories}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
                         <StackPanel Orientation="Vertical" Spacing="4"/>
@@ -362,8 +366,7 @@
                                 <TextBlock.ContextMenu>
                                   <ContextMenu>
                                     <MenuItem Header="Copy Category Name"
-                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
-                                        CommandParameter="{Binding Name}"/>
+                                        Click="CopyCategoryNameMenuItem_Click"/>
                                   </ContextMenu>
                                 </TextBlock.ContextMenu>
                               </TextBlock>
@@ -394,38 +397,35 @@
                                           <TextBlock.ContextMenu>
                                             <ContextMenu>
                                               <MenuItem Header="Copy Problem"
-                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
-                                                        CommandParameter="{Binding OneLineStatement}"/>
+                                                        Click="CopyProblemMenuItem_Click"/>
                                             </ContextMenu>
                                           </TextBlock.ContextMenu>
                                         </TextBlock>
 
                                         <!-- Full Prompt (if available) -->
                                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#CDD6F4"
-                                                   IsVisible="{Binding FullPrompt, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   IsVisible="{Binding FullPrompt, Converter={x:Static converters:IsNotNullOrEmptyConverter.Instance}}"
                                                    Cursor="Hand">
                                           <Run Text="Prompt: " FontWeight="SemiBold" Foreground="#7F849C"/>
                                           <Run Text="{Binding FullPrompt}"/>
                                           <TextBlock.ContextMenu>
                                             <ContextMenu>
                                               <MenuItem Header="Copy Prompt"
-                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
-                                                        CommandParameter="{Binding FullPrompt}"/>
+                                                        Click="CopyPromptMenuItem_Click"/>
                                             </ContextMenu>
                                           </TextBlock.ContextMenu>
                                         </TextBlock>
 
                                         <!-- Expected Output (if available) -->
                                         <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#A6E3A1"
-                                                   IsVisible="{Binding ExpectedOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   IsVisible="{Binding ExpectedOutput, Converter={x:Static converters:IsNotNullOrEmptyConverter.Instance}}"
                                                    Cursor="Hand">
                                           <Run Text="Expected: " FontWeight="SemiBold" Foreground="#7F849C"/>
                                           <Run Text="{Binding ExpectedOutput}"/>
                                           <TextBlock.ContextMenu>
                                             <ContextMenu>
                                               <MenuItem Header="Copy Expected Output"
-                                                        Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
-                                                        CommandParameter="{Binding ExpectedOutput}"/>
+                                                        Click="CopyExpectedOutputMenuItem_Click"/>
                                             </ContextMenu>
                                           </TextBlock.ContextMenu>
                                         </TextBlock>
@@ -440,7 +440,6 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                </ScrollViewer>
               </StackPanel>
             </Border>
           </StackPanel>

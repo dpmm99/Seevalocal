@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
@@ -9,6 +10,7 @@ using Seevalocal.UI.Commands;
 using Seevalocal.UI.ViewModels;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 
 namespace Seevalocal.UI.Services;
 
@@ -33,10 +35,11 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private PipelineOrchestrator? _primaryOrchestrator;
     private PipelineOrchestrator? _judgeOrchestrator;  // Track judge orchestrator for pause
     private bool _primaryPhaseComplete;
-    private bool _judgePhaseComplete;
+    private bool _isJudgePhaseRunning;  // True during judge phase for progress tracking
     private LlamaServerClient? _primaryClient;  // Track primary client for managed servers
     private int _primarySlotCount = 4;  // Default, updated from server props
     private int _judgeSlotCount = 4;    // Default, updated from server props
+    private int _primaryPhaseCompletedCount = 0;  // Track primary phase completions for total count
     private bool _disposed;
     private int _earlyCompletionsLimit = 10;
 
@@ -125,6 +128,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     public RunSummary? Summary { get; private set; }
     public bool HadFailures { get; private set; }
     public ObservableCollection<EvalResultViewModel> Results { get; } = [];
+    public ObservableCollection<EvalResultViewModel> EarlyCompletions { get; } = [];
 
     public int EarlyCompletionsLimit
     {
@@ -135,15 +139,50 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             {
                 _earlyCompletionsLimit = value;
                 OnPropertyChanged(nameof(EarlyCompletionsLimit));
-                OnPropertyChanged(nameof(EarlyCompletions));
+                UpdateEarlyCompletions();
+                OnPropertyChanged(nameof(HasMoreEarlyCompletions));
                 OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
             }
         }
     }
 
-    public IEnumerable<EvalResultViewModel> EarlyCompletions => Results.Take(EarlyCompletionsLimit);
-
     public bool HasMoreEarlyCompletions => Results.Count > EarlyCompletionsLimit;
+
+    /// <summary>
+    /// Updates the EarlyCompletions collection to contain the first N results.
+    /// </summary>
+    private void UpdateEarlyCompletions()
+    {
+        var newEarlyCompletions = Results.Take(EarlyCompletionsLimit).ToList();
+        
+        for (int i = EarlyCompletions.Count - 1; i >= 0; i--)
+        {
+            if (i >= newEarlyCompletions.Count || EarlyCompletions[i] != newEarlyCompletions[i])
+            {
+                EarlyCompletions.RemoveAt(i);
+            }
+        }
+        
+        for (int i = EarlyCompletions.Count; i < newEarlyCompletions.Count; i++)
+        {
+            EarlyCompletions.Add(newEarlyCompletions[i]);
+        }
+    }
+
+    public string RecentActivitySummary
+    {
+        get
+        {
+            var recent = Results.TakeLast(5).ToList();
+            if (recent.Count == 0) return "No completions yet...";
+            var lastResult = recent.LastOrDefault();
+            if (lastResult == null) return "No completions yet...";
+            var promptPreview = lastResult.UserPrompt?.Length > 40
+                ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
+                : lastResult.UserPrompt ?? "N/A";
+            return $"Last: {promptPreview}";
+        }
+    }
 
     public System.Windows.Input.ICommand PauseCommand { get; }
     public System.Windows.Input.ICommand CancelCommand { get; }
@@ -231,9 +270,23 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         var checkpointStatus = Config.Run.ContinueFromCheckpoint ? " (continuing from checkpoint)" : "";
         StatusLine = $"Starting two-phase evaluation{checkpointStatus}...";
         OnPropertyChanged(nameof(StatusLine));
-        Results.Clear();
-        CompletedCount = 0;
+        
+        // Initialize CompletedCount from checkpoint if resuming
+        CompletedCount = Config.Run?.ContinueFromCheckpoint == true && _collector != null
+            ? await GetCheckpointCompletedCountAsync()
+            : 0;
         OnPropertyChanged(nameof(CompletedCount));
+
+        // Load existing results from checkpoint database BEFORE clearing
+        // This ensures EarlyCompletions shows checkpoint data immediately
+        if (Config.Run?.ContinueFromCheckpoint == true && _collector != null)
+        {
+            await LoadResultsFromCheckpointAsync();
+        }
+        else
+        {
+            Results.Clear();
+        }
 
         // Get total count from data source
         var totalCount = await _dataSource.GetCountAsync(_cts.Token);
@@ -387,10 +440,72 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             StatusLine = "Primary phase complete. Preparing judge phase...";
             OnPropertyChanged(nameof(StatusLine));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Primary phase failed");
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Resets metrics for Phase 2 (Judge evaluation).
+    /// AverageTokensPerSecond and ETA are reset to start fresh for the judge phase.
+    /// CompletedCount is preserved to show total progress across both phases.
+    /// </summary>
+    private void ResetMetricsForPhase2()
+    {
+        // Store the primary phase completed count to add to judge phase progress
+        _primaryPhaseCompletedCount = CompletedCount;
+        
+        AverageTokensPerSecond = 0;
+        EstimatedRemainingSeconds = null;
+        _logger.LogInformation("Metrics reset for judge phase (preserving {PrimaryCount} primary phase completions)", _primaryPhaseCompletedCount);
+    }
+
+    /// <summary>
+    /// Gets the count of already-completed items from checkpoint database.
+    /// </summary>
+    private async Task<int> GetCheckpointCompletedCountAsync()
+    {
+        if (_collector is not PersistentResultCollector persistentCollector)
+            return 0;
+
+        try
+        {
+            var completedIds = await persistentCollector.GetCompletedItemIdsAsync(_evalSet.Id, "primary", default);
+            _logger.LogInformation("Checkpoint loaded: {Count} already-completed items", completedIds.Count);
+            return completedIds.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load checkpoint completed count");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Loads existing results from checkpoint database.
+    /// For 2-phase eval runs, loads both primary and judge phase results and merges them.
+    /// </summary>
+    private async Task LoadResultsFromCheckpointAsync()
+    {
+        if (_collector is not PersistentResultCollector persistentCollector)
+            return;
+
+        try
+        {
+            // Populate the collector's in-memory cache with checkpoint data
+            // This ensures RefreshResultsFromCache() will display checkpoint completions
+            await persistentCollector.PopulateCacheFromCheckpointAsync(_evalSet.Id, default);
+            
+            // Refresh the UI from the cache (same as live completions)
+            RefreshResultsFromCache();
+
+            _logger.LogInformation("Checkpoint loaded: {Count} results from cache", Results.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load checkpoint results");
         }
     }
 
@@ -484,6 +599,12 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             _judgeOrchestrator.ItemStarted += OnItemStarted;
             _judgeOrchestrator.ItemCompleted += OnItemCompleted;
 
+            // Mark judge phase as running (for progress tracking)
+            _isJudgePhaseRunning = true;
+
+            // Reset metrics for judge phase
+            ResetMetricsForPhase2();
+
             StatusLine = "Phase 2: Judge evaluation...";
             OnPropertyChanged(nameof(StatusLine));
             var maxConcurrent = Config.Run?.MaxConcurrentEvals ?? _judgeSlotCount;
@@ -493,7 +614,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         }
         finally
         {
-            _judgePhaseComplete = true;
+            _isJudgePhaseRunning = false;
             var completionTime = DateTimeOffset.Now;
             StatusLine = $"Done at {completionTime:HH:mm:ss}";
             OnPropertyChanged(nameof(StatusLine));
@@ -539,9 +660,35 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
 
         // Note: Judge server is already stopped in RunJudgePhaseAsync finally block.
         // We don't need to dispose it again here.
-        if (Config.Judge is { Manage: true } && _judgePhaseComplete)
+        if (Config.Judge is { Manage: true } && !_isJudgePhaseRunning)
         {
             _logger.LogDebug("Judge server already stopped in RunJudgePhaseAsync, skipping disposal in StopAllServersAsync");
+        }
+    }
+
+    /// <summary>
+    /// Refreshes the Results collection from the collector's in-memory cache.
+    /// Called when loading checkpoint data and on progress updates.
+    /// </summary>
+    private void RefreshResultsFromCache()
+    {
+        var results = _collector.GetResults();
+
+        Results.Clear();
+        foreach (var result in results)
+        {
+            Results.Add(new EvalResultViewModel(result));
+        }
+
+        UpdateEarlyCompletions();
+
+        OnPropertyChanged(nameof(Results));
+        OnPropertyChanged(nameof(HasMoreEarlyCompletions));
+        OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+
+        if (LoadMoreEarlyCompletionsCommand is RelayCommand cmd)
+        {
+            cmd.NotifyCanExecuteChanged();
         }
     }
 
@@ -550,33 +697,23 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         // Update all properties on UI thread
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            CompletedCount = e.CompletedCount;
+            // During judge phase, add primary phase completions to show total progress
+            CompletedCount = _isJudgePhaseRunning ? (_primaryPhaseCompletedCount + e.CompletedCount) : e.CompletedCount;
             EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
+
+            // Update progress percent for the current phase (0-100% independently for each phase)
+            ProgressPercent = e.TotalCount > 0 ? (double)e.CompletedCount / e.TotalCount * 100 : 0;
 
             // Calculate moving average tokens/sec from last 10 completed items
             AverageTokensPerSecond = CalculateMovingAverageTokensPerSecond();
 
-            var results = _collector.GetResults();
-
-            Results.Clear();
-            foreach (var result in results)
-            {
-                Results.Add(new EvalResultViewModel(result));
-            }
+            // Refresh results from cache
+            RefreshResultsFromCache();
 
             OnPropertyChanged(nameof(CompletedCount));
             OnPropertyChanged(nameof(EstimatedRemainingSeconds));
+            OnPropertyChanged(nameof(ProgressPercent));
             OnPropertyChanged(nameof(AverageTokensPerSecond));
-            OnPropertyChanged(nameof(Results));
-            OnPropertyChanged(nameof(EarlyCompletions));
-            OnPropertyChanged(nameof(HasMoreEarlyCompletions));
-            OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
-
-            // Notify command that CanExecute may have changed
-            if (LoadMoreEarlyCompletionsCommand is RelayCommand cmd)
-            {
-                cmd.NotifyCanExecuteChanged();
-            }
         });
     }
 

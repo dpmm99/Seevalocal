@@ -77,10 +77,11 @@ public class JudgeStageTests
 
         _ = result.Succeeded.Should().BeTrue();
 
-        var scoreMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judgeScore").Subject;
+        // Metrics should now be prefixed with "judge."
+        var scoreMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judge.score").Subject;
         _ = ((MetricScalar.DoubleMetric)scoreMetric.Value).Value.Should().BeApproximately(9.0, 1e-9);
 
-        var passedMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judgePassedBool").Subject;
+        var passedMetric = result.Metrics.Should().ContainSingle(static m => m.Name == "judge.passed").Subject;
         _ = ((MetricScalar.BoolMetric)passedMetric.Value).Value.Should().BeTrue();
     }
 
@@ -138,16 +139,10 @@ public class JudgeStageTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_MissingPromptStageOutput_StillProducesResult()
+    public async Task ExecuteAsync_MissingPromptStageOutput_SkipsItem()
     {
         var judgeClientMock = Substitute.For<ILlamaServerClient>();
-        _ = judgeClientMock
-            .ChatCompletionAsync(Arg.Any<ChatCompletionRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Result.Ok(new ChatCompletionResponse
-            {
-                Choices = [new ChatChoice { Message = new ChatMessage { Content = """{"rationale":"empty","score":0,"passed":false}""" } }]
-            }));
-
+        
         // StageOutputs does NOT contain PromptStage.response
         var context = new EvalStageContext
         {
@@ -162,8 +157,12 @@ public class JudgeStageTests
         var stage = MakeStage();
         var result = await stage.ExecuteAsync(context);
 
-        _ = result.Succeeded.Should().BeTrue();
-        _ = result.Outputs.Should().ContainKey("JudgeStage.rawResponse");
+        // Should fail (skip) when prompt stage output is missing
+        _ = result.Succeeded.Should().BeFalse();
+        _ = result.FailureReason.Should().Contain("primary LLM output is missing or empty");
+        
+        // Judge client should NOT have been called
+        await judgeClientMock.DidNotReceive().ChatCompletionAsync(Arg.Any<ChatCompletionRequest>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -180,12 +179,20 @@ public class JudgeStageTests
         var stage = MakeStage();
         var result = await stage.ExecuteAsync(MakeContext(judgeClientMock));
 
+        // Outputs should contain rawResponse and rationale
         _ = result.Outputs.Keys.Should().Contain([
             "JudgeStage.rawResponse",
-            "JudgeStage.score",
-            "JudgeStage.passed",
             "JudgeStage.rationale",
         ]);
         _ = result.Outputs["JudgeStage.rationale"].Should().Be("great");
+        
+        // Metrics should contain judge.score and judge.passed
+        var scoreMetric = result.Metrics.FirstOrDefault(m => m.Name == "judge.score");
+        var passedMetric = result.Metrics.FirstOrDefault(m => m.Name == "judge.passed");
+        
+        _ = scoreMetric.Should().NotBeNull();
+        _ = passedMetric.Should().NotBeNull();
+        _ = scoreMetric!.Value.ToString().Should().Be("10");
+        _ = passedMetric!.Value.ToString().Should().Be("true");
     }
 }

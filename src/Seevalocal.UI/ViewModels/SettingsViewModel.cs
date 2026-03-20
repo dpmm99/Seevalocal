@@ -578,8 +578,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 },
                 ServerSettings = judgeServerSettings,
                 JudgePromptTemplate = F("judge.template"),
-                ScoreMinValue = Fd("judge.scoreMin") ?? 0,
-                ScoreMaxValue = Fd("judge.scoreMax") ?? 10,
             },
             Run = new PartialRunMeta
             {
@@ -765,7 +763,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "host" => server?.Host,
         "port" => server?.Port?.ToString(),
         "apiKey" => server?.ApiKey,
-        "extraArgs" => server?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
         "baseUrl" => server?.BaseUrl,
         _ => null
     };
@@ -819,8 +816,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "hfRepo" => judge?.ServerConfig?.Model?.HfRepo,
         "apiKey" => judge?.ServerConfig?.ApiKey,
         "template" => judge?.JudgePromptTemplate,
-        "scoreMin" => judge?.ScoreMinValue?.ToString(),
-        "scoreMax" => judge?.ScoreMaxValue?.ToString(),
         "executablePath" => judge?.ServerConfig?.ExecutablePath,
         "extraArgs" => judge?.ServerSettings?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
         _ => null
@@ -854,7 +849,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("server.host", "Host", "Server Configuration", "", "Server host address", true);
         AddField("server.port", "Port", "Server Configuration", "", "Server port number", true);
         AddField("server.apiKey", "API Key", "Server Configuration", "", "Optional API key for authentication", true);
-        AddField("server.extraArgs", "Extra Args", "Server Configuration", "", "Space-separated extra arguments", true);
         AddField("server.baseUrl", "Base URL", "Server Configuration", "", "Base URL for external server", true);
 
         // Llama Server Settings - Context/Batching (all default to null/empty for llama.cpp defaults)
@@ -926,8 +920,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("judge.hfRepo", "Judge HuggingFace Repo", "Judge Settings", "", "Judge HuggingFace repo", true);
         AddField("judge.apiKey", "Judge API Key", "Judge Settings", "", "Judge API key", true);
         AddField("judge.template", "Judge Template", "Judge Settings", "standard", "Judge prompt template");
-        AddField("judge.scoreMin", "Min Score", "Judge Settings", "0", "Minimum score value");
-        AddField("judge.scoreMax", "Judge Score Max", "Judge Settings", "10", "Maximum score value");
 
         // Judge Settings - Llama Server (same options as main server)
         AddField("judge.contextWindowTokens", "Judge Context Window", "Judge Settings", "", "Context window size in tokens", true);

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
+using Seevalocal.Judge;
 using Xunit;
 
 namespace Seevalocal.Judge.Tests;
@@ -11,168 +12,159 @@ public class JudgeResponseParserTests
     private static JudgeResponseParser CreateParser() =>
         new(NullLogger<JudgeResponseParser>.Instance);
 
-    private static JudgeConfig NumericConfig(double min = 0, double max = 10) =>
-        new() { ResponseFormat = JudgeResponseFormat.NumericScore, ScoreMinValue = min, ScoreMaxValue = max };
-
-    private static JudgeConfig PassFailConfig() =>
-        new() { ResponseFormat = JudgeResponseFormat.PassFail, ScoreMinValue = 0, ScoreMaxValue = 10 };
-
-    private static JudgeConfig JsonConfig(double min = 0, double max = 10) =>
-        new() { ResponseFormat = JudgeResponseFormat.StructuredJson, ScoreMinValue = min, ScoreMaxValue = max };
+    private static JudgeConfig DefaultConfig() =>
+        new() { ResponseFormat = JudgeResponseFormat.StructuredJson, ScoreMinValue = 0, ScoreMaxValue = 10 };
 
     // ──────────────────────────────────────────────────────────────────────
-    // NumericScore
+    // Basic JSON Parsing
     // ──────────────────────────────────────────────────────────────────────
 
-    [Theory]
-    [InlineData("7", 7.0)]
-    [InlineData("7.5", 7.5)]
-    [InlineData("10", 10.0)]
-    [InlineData("0", 0.0)]
-    public void NumericScore_ExtractsInteger_OrFloat(string rawText, double expectedRaw)
+    [Fact]
+    public void Parse_ValidJson_ExtractsAllFieldsAsMetrics()
     {
         var parser = CreateParser();
-        var result = parser.Parse(rawText, NumericConfig(0, 10));
+        var json = """{"score": 8.5, "passed": true, "rationale": "Good answer"}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().BeApproximately(expectedRaw / 10.0, 1e-9);
+        _ = result.Metrics.Should().ContainKey("score");
+        _ = result.Metrics["score"].Should().Be(8.5);
+        _ = result.Metrics.Should().ContainKey("passed");
+        _ = result.Metrics["passed"].Should().Be(true);
+        _ = result.Rationale.Should().Be("Good answer");
     }
 
     [Fact]
-    public void NumericScore_ExtractsFromSurroundingText()
+    public void Parse_StripsMarkdownFences()
     {
         var parser = CreateParser();
-        var result = parser.Parse("Score: 7.5/10", NumericConfig(0, 10));
+        var json = "```json\n{\"score\": 5, \"rationale\": \"ok\"}\n```";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().BeApproximately(0.75, 1e-9);
+        _ = result.Metrics.Should().ContainKey("score");
+        _ = result.Metrics["score"].Should().Be(5.0);
+        _ = result.Rationale.Should().Be("ok");
     }
 
     [Fact]
-    public void NumericScore_NoNumberInResponse_ReturnsFailed()
+    public void Parse_MalformedJson_ReturnsFailed()
     {
         var parser = CreateParser();
-        var result = parser.Parse("The answer is great!", NumericConfig(0, 10));
+        var result = parser.Parse("This is not JSON at all!", DefaultConfig());
+
+        _ = result.ParseSucceeded.Should().BeFalse();
+        _ = result.Metrics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Parse_NotAnObject_ReturnsFailed()
+    {
+        var parser = CreateParser();
+        var result = parser.Parse("[1, 2, 3]", DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeFalse();
     }
 
     [Fact]
-    public void NumericScore_AboveMax_ClampsTo1()
+    public void Parse_CaseInsensitiveRationaleField()
     {
         var parser = CreateParser();
-        var result = parser.Parse("12", NumericConfig(0, 10));
+        var json = """{"Rationale": "test explanation", "score": 6}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().Be(1.0);
+        // Rationale is extracted case-insensitively to the Rationale property
+        _ = result.Rationale.Should().Be("test explanation");
+        // Rationale is NOT in Metrics (it's extracted separately)
+        _ = result.Metrics.Should().ContainKey("score");
     }
 
     [Fact]
-    public void NumericScore_BelowMin_ClampsTo0()
+    public void Parse_NullValues_AreHandled()
     {
         var parser = CreateParser();
-        var result = parser.Parse("-5", NumericConfig(0, 10));
+        var json = """{"score": null, "rationale": "test"}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().Be(0.0);
+        _ = result.Metrics.Should().ContainKey("score");
+        _ = result.Metrics["score"].Should().BeNull();
     }
 
-    // ──────────────────────────────────────────────────────────────────────
-    // PassFail
-    // ──────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData("PASS", true, 1.0)]
-    [InlineData("FAIL", false, 0.0)]
-    [InlineData("pass", true, 1.0)]
-    [InlineData("fail", false, 0.0)]
-    [InlineData("Pass", true, 1.0)]
-    [InlineData("The result is PASS overall.", true, 1.0)]
-    public void PassFail_ParsesVerdictCorrectly(string rawText, bool expectedPassed, double expectedScore)
+    [Fact]
+    public void Parse_IntegerValues_AreHandled()
     {
         var parser = CreateParser();
-        var result = parser.Parse(rawText, PassFailConfig());
+        var json = """{"score": 8, "count": 42}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.Passed.Should().Be(expectedPassed);
-        _ = result.NormalizedScore.Should().BeApproximately(expectedScore, 1e-9);
+        _ = result.Metrics["score"].Should().Be(8.0);
+        _ = result.Metrics["count"].Should().Be(42.0);
     }
 
     [Fact]
-    public void PassFail_NeitherKeyword_ReturnsFailed()
+    public void Parse_BooleanValues_AreHandled()
     {
         var parser = CreateParser();
-        var result = parser.Parse("The answer is mostly correct.", PassFailConfig());
-
-        _ = result.ParseSucceeded.Should().BeFalse();
-    }
-
-    // ──────────────────────────────────────────────────────────────────────
-    // StructuredJson
-    // ──────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void StructuredJson_ValidPayload_ParsesAllFields()
-    {
-        var parser = CreateParser();
-        var json = """{"rationale":"Looks good","score":8,"passed":true}""";
-        var result = parser.Parse(json, JsonConfig(0, 10));
+        var json = """{"passed": true, "failed": false}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().BeApproximately(0.8, 1e-9);
-        _ = result.Passed.Should().BeTrue();
-        _ = result.Rationale.Should().Be("Looks good");
+        _ = result.Metrics["passed"].Should().Be(true);
+        _ = result.Metrics["failed"].Should().Be(false);
     }
 
     [Fact]
-    public void StructuredJson_StripsMarkdownFences()
+    public void Parse_EmptyObject_ReturnsSuccessWithNoMetrics()
     {
         var parser = CreateParser();
-        var json = "```json\n{\"rationale\":\"ok\",\"score\":5,\"passed\":false}\n```";
-        var result = parser.Parse(json, JsonConfig(0, 10));
+        var json = """{}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().BeApproximately(0.5, 1e-9);
-        _ = result.Passed.Should().BeFalse();
+        _ = result.Metrics.Should().BeEmpty();
+        _ = result.Rationale.Should().BeNull();
     }
 
     [Fact]
-    public void StructuredJson_Malformed_ReturnsFailed()
+    public void Parse_NestedObjects_AreSerializedAsJson()
     {
         var parser = CreateParser();
-        var result = parser.Parse("This is not JSON at all!", JsonConfig(0, 10));
-
-        _ = result.ParseSucceeded.Should().BeFalse();
-    }
-
-    [Fact]
-    public void StructuredJson_MissingScoreField_ReturnsFailed()
-    {
-        var parser = CreateParser();
-        var result = parser.Parse("""{"rationale":"ok","passed":true}""", JsonConfig(0, 10));
-
-        _ = result.ParseSucceeded.Should().BeFalse();
-    }
-
-    [Fact]
-    public void StructuredJson_PassedInferredFromScore_WhenMissing()
-    {
-        var parser = CreateParser();
-        // score=8 → normalized 0.8 → >= 0.5 → passed=true
-        var result = parser.Parse("""{"rationale":"good","score":8}""", JsonConfig(0, 10));
+        var json = """{"score": 8, "details": {"accuracy": 0.95, "completeness": 0.8}}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.Passed.Should().BeTrue();
+        _ = result.Metrics.Should().ContainKey("details");
+        // JSON serialization may have different whitespace, so check structure
+        var detailsJson = result.Metrics["details"]!.ToString()!;
+        _ = detailsJson.Should().Contain("accuracy").And.Contain("0.95");
+        _ = detailsJson.Should().Contain("completeness").And.Contain("0.8");
     }
 
     [Fact]
-    public void StructuredJson_CaseInsensitiveFields()
+    public void Parse_Arrays_AreSerializedAsJson()
     {
         var parser = CreateParser();
-        var json = """{"Rationale":"test","Score":6,"Passed":false}""";
-        var result = parser.Parse(json, JsonConfig(0, 10));
+        var json = """{"tags": ["good", "accurate"], "score": 9}""";
+        var result = parser.Parse(json, DefaultConfig());
 
         _ = result.ParseSucceeded.Should().BeTrue();
-        _ = result.NormalizedScore.Should().BeApproximately(0.6, 1e-9);
+        _ = result.Metrics.Should().ContainKey("tags");
+        // JSON serialization may have different whitespace, so check structure
+        var tagsJson = result.Metrics["tags"]!.ToString()!;
+        _ = tagsJson.Should().Contain("good").And.Contain("accurate");
+    }
+
+    [Fact]
+    public void Parse_RawResponse_ContainsStrippedJson()
+    {
+        var parser = CreateParser();
+        var json = "```json\n{\"score\": 7}\n```";
+        var result = parser.Parse(json, DefaultConfig());
+
+        _ = result.ParseSucceeded.Should().BeTrue();
+        _ = result.RawResponse.Should().Be("""{"score": 7}""");
     }
 }

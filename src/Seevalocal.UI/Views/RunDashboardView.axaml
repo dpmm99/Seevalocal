@@ -18,57 +18,58 @@
     <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16,16,8,16" Margin="0,16">
       <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <Grid>
+          <!-- No active run or loaded results -->
           <StackPanel Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center"
-                      IsVisible="{Binding ActiveRun, Converter={x:Static converters:IsNullConverter.Instance}}">
+                      IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}}">
             <TextBlock Text="No active run" FontSize="24" Foreground="#7F849C" HorizontalAlignment="Center"/>
             <TextBlock Text="Start a new evaluation from the Setup Wizard" FontSize="14" Foreground="#6C7086" HorizontalAlignment="Center"/>
             <Button Content="Open Setup Wizard" Classes="primary" Padding="24,10" HorizontalAlignment="Center" Margin="0,16"
                     Command="{Binding NavigateToWizardCommand}"/>
           </StackPanel>
 
-          <!-- Active Run Display -->
+          <!-- Active Run or Loaded Results Display -->
           <StackPanel Spacing="16"
-                      IsVisible="{Binding ActiveRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
-            
+                      IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
+
             <!-- Status Header -->
-            <TextBlock Text="{Binding ActiveRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center">
+            <TextBlock Text="{Binding CurrentResultsRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center">
               <TextBlock.ContextMenu>
                 <ContextMenu>
-                  <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding ActiveRun.StatusLine}"/>
+                  <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding CurrentResultsRun.StatusLine}"/>
                 </ContextMenu>
               </TextBlock.ContextMenu>
             </TextBlock>
 
             <!-- Progress Bar -->
-            <ProgressBar Value="{Binding ActiveRun.ProgressPercent}" Maximum="100" Height="24" Margin="0,8"/>
+            <ProgressBar Value="{Binding CurrentResultsRun.ProgressPercent}" Maximum="100" Height="24" Margin="0,8"/>
 
             <!-- Stats Grid -->
             <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto" Margin="0,8">
               <StackPanel Grid.Column="0" Spacing="4">
                 <TextBlock Text="Completed" Foreground="#7F849C" FontSize="12"/>
                 <TextBlock FontSize="18">
-                  <Run Text="{Binding ActiveRun.CompletedCount}"/>
+                  <Run Text="{Binding CurrentResultsRun.CompletedCount}"/>
                   <Run Text=" / "/>
-                  <Run Text="{Binding ActiveRun.TotalCount}"/>
+                  <Run Text="{Binding CurrentResultsRun.TotalCount}"/>
                 </TextBlock>
               </StackPanel>
 
               <StackPanel Grid.Column="1" Spacing="4">
                 <TextBlock Text="Tokens/sec" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock Text="{Binding ActiveRun.AverageTokensPerSecond, StringFormat={}{0:F1}}" FontSize="18"/>
+                <TextBlock Text="{Binding CurrentResultsRun.AverageTokensPerSecond, StringFormat={}{0:F1}}" FontSize="18"/>
               </StackPanel>
 
               <StackPanel Grid.Column="2" Spacing="4">
                 <TextBlock Text="ETA" Foreground="#7F849C" FontSize="12"/>
                 <TextBlock FontSize="18">
-                  <Run Text="{Binding ActiveRun.EstimatedRemainingSeconds, StringFormat={}{0:F0}}"/>
+                  <Run Text="{Binding CurrentResultsRun.EstimatedRemainingSeconds, StringFormat={}{0:F0}}"/>
                   <Run Text="s"/>
                 </TextBlock>
               </StackPanel>
 
               <StackPanel Grid.Column="3" Spacing="4">
                 <TextBlock Text="Recent Activity" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock Text="{Binding ActiveRun.RecentActivitySummary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Text="{Binding CurrentResultsRun.RecentActivitySummary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
               </StackPanel>
             </Grid>
 
@@ -78,9 +79,9 @@
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
                   <TextBlock Text="Early Completions" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
                   <TextBlock Text="(" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding ActiveRun.EarlyCompletionsLimit}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding CurrentResultsRun.EarlyCompletionsLimit}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
                   <TextBlock Text=" of " FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding ActiveRun.Results.Count}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding CurrentResultsRun.Results.Count}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
                   <TextBlock Text=")" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
                 </StackPanel>
 
@@ -88,11 +89,11 @@
                         HorizontalAlignment="Right"
                         Padding="12,6"
                         Classes="secondary"
-                        IsVisible="{Binding ActiveRun.HasMoreEarlyCompletions}"
-                        Command="{Binding ActiveRun.LoadMoreEarlyCompletionsCommand}"/>
+                        IsVisible="{Binding CurrentResultsRun.HasMoreEarlyCompletions}"
+                        Command="{Binding CurrentResultsRun.LoadMoreEarlyCompletionsCommand}"/>
 
                 <ScrollViewer Grid.Row="2" MinHeight="250" HorizontalScrollBarVisibility="Disabled">
-                  <ItemsControl ItemsSource="{Binding ActiveRun.EarlyCompletions}">
+                  <ItemsControl ItemsSource="{Binding CurrentResultsRun.EarlyCompletions}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
                         <StackPanel Orientation="Vertical" Spacing="8"/>
@@ -104,16 +105,22 @@
                             <StackPanel Spacing="8">
                               <!-- Header Row -->
                               <Grid ColumnDefinitions="Auto,*,Auto">
-                                <!-- Status Badge -->
+                                <!-- Status Badge (pipeline execution status: Pending/Succeeded/Failed) -->
                                 <Border Grid.Column="0"
                                         Background="{Binding Succeeded, Converter={x:Static converters:StatusToBackgroundConverter.Instance}}"
                                         CornerRadius="3" Padding="8,4" Margin="0,0,8,0">
-                                  <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                  <TextBlock Text="{Binding PipelineStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
                                 </Border>
                                 
                                 <!-- ID -->
-                                <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="12" VerticalAlignment="Center" 
-                                           Foreground="#A6ADC8" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="#A6ADC8" TextTrimming="CharacterEllipsis">
+                                  <TextBlock.ContextMenu>
+                                    <ContextMenu>
+                                      <MenuItem Header="Copy ID" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding Id}"/>
+                                    </ContextMenu>
+                                  </TextBlock.ContextMenu>
+                                </TextBlock>
                                 
                                 <!-- Duration -->
                                 <TextBlock Grid.Column="2" Text="{Binding DurationSeconds, StringFormat={}{0:F2}s}"
@@ -206,6 +213,12 @@
                                     <DataTemplate>
                                       <Border Background="#2A2A3E" CornerRadius="3" Padding="6,3" Margin="0,0,4,0">
                                         <TextBlock FontSize="10" Foreground="#9399B2">
+                                          <TextBlock.ContextMenu>
+                                            <ContextMenu>
+                                              <MenuItem Header="Copy Metric" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" 
+                                                        CommandParameter="{Binding Value}"/>
+                                            </ContextMenu>
+                                          </TextBlock.ContextMenu>
                                           <Run Text="{Binding Name}" Foreground="#7F849C"/>
                                           <Run Text=": "/>
                                           <Run Text="{Binding Value}" Foreground="#CDD6F4"/>
@@ -226,7 +239,7 @@
 
             <!-- All Results Summary (compact) -->
             <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8"
-                    IsVisible="{Binding ActiveRun.HasMoreEarlyCompletions}">
+                    IsVisible="{Binding CurrentResultsRun.HasMoreEarlyCompletions}">
               <Grid RowDefinitions="Auto">
                 <TextBlock Grid.Row="0" Text="All Results (showing first N above, see Results tab for all)"
                            FontSize="12" Foreground="#7F849C" FontStyle="Italic"/>
@@ -240,11 +253,11 @@
     <!-- Control Buttons -->
     <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
       <Button Content="Pause" Classes="secondary" Padding="16,8"
-              IsEnabled="{Binding ActiveRun.IsRunning}"
-              Command="{Binding ActiveRun.PauseCommand}"/>
+              IsEnabled="{Binding CurrentResultsRun.IsRunning}"
+              Command="{Binding CurrentResultsRun.PauseCommand}"/>
       <Button Content="Cancel Run" Classes="danger" Padding="16,8"
-              IsEnabled="{Binding ActiveRun.IsRunning}"
-              Command="{Binding ActiveRun.CancelCommand}"/>
+              IsEnabled="{Binding CurrentResultsRun.IsRunning}"
+              Command="{Binding CurrentResultsRun.CancelCommand}"/>
     </StackPanel>
   </Grid>
 </UserControl>

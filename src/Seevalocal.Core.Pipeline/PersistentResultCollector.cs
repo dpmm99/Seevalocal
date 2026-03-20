@@ -95,12 +95,12 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var completed = new HashSet<string>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE EvalSetId = @evalSetId AND Phase = @phase";
         cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
         cmd.Parameters.AddWithValue("@phase", phase);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             completed.Add(reader.GetString(0));
@@ -116,10 +116,10 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var evalSetIds = new List<string>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults";
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             evalSetIds.Add(reader.GetString(0));
@@ -135,10 +135,10 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var completed = new HashSet<string>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT EvalItemId FROM EvalResults WHERE LastCompletedStage = 'JudgeStage'";
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             completed.Add(reader.GetString(0));
@@ -154,12 +154,12 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var results = new List<EvalResult>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT * FROM EvalResults WHERE EvalSetId = @evalSetId AND Phase = @phase";
         cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
         cmd.Parameters.AddWithValue("@phase", phase);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             results.Add(await ReadResultAsync(reader, ct));
@@ -177,7 +177,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         try
         {
             // Save the complete config to StartupParameters table
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT OR REPLACE INTO StartupParameters (Key, Value) VALUES (@key, @value);
                 INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key2, @value2)
@@ -206,7 +206,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = "INSERT OR REPLACE INTO StartupParameters (Key, Value) VALUES (@key, @value)";
             cmd.Parameters.AddWithValue("@key", $"{serverType}_binary_path");
             cmd.Parameters.AddWithValue("@value", binaryPath);
@@ -250,7 +250,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     private async Task<string?> LoadStartupParameterAsync(string key, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT Value FROM StartupParameters WHERE Key = @key";
         cmd.Parameters.AddWithValue("@key", key);
         var result = await cmd.ExecuteScalarAsync(ct);
@@ -265,7 +265,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO StageOutputs (EvalItemId, StageName, OutputKey, OutputValue, CompletedAt)
                 VALUES (@evalItemId, @stageName, @outputKey, @outputValue, @completedAt)
@@ -307,7 +307,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     private async Task SaveMetricInternalAsync(string evalItemId, string metricName, MetricValue metricValue, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             INSERT INTO Metrics (EvalItemId, MetricName, SourceStage, MetricType, IntValue, DoubleValue, BoolValue, StringValue, CompletedAt)
             VALUES (@evalItemId, @metricName, @sourceStage, @metricType, @intValue, @doubleValue, @boolValue, @stringValue, @completedAt)
@@ -365,11 +365,11 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var metrics = new List<MetricValue>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT MetricName, SourceStage, MetricType, IntValue, DoubleValue, BoolValue, StringValue FROM Metrics WHERE EvalItemId = @evalItemId";
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             var metricName = reader.GetString(0);
@@ -418,7 +418,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     private async Task ClearMetricsInternalAsync(string evalItemId, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "DELETE FROM Metrics WHERE EvalItemId = @evalItemId";
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
         await cmd.ExecuteNonQueryAsync(ct);
@@ -429,7 +429,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     public async Task<string?> GetLastCompletedStageAsync(string evalItemId, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT LastCompletedStage FROM EvalResults WHERE EvalItemId = @evalItemId";
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
         var result = await cmd.ExecuteScalarAsync(ct);
@@ -443,16 +443,17 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     {
         var outputs = new Dictionary<string, object?>();
 
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT StageName, OutputKey, OutputValue FROM StageOutputs WHERE EvalItemId = @evalItemId";
         cmd.Parameters.AddWithValue("@evalItemId", evalItemId);
 
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        using var reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
-            var stageName = reader.GetString(0);
             var outputKey = reader.GetString(1);
-            var key = $"{stageName}.{outputKey}";
+            // OutputKey already contains the full key (e.g., "PromptStage.response")
+            // Don't prepend stage name - stages include it in their output keys
+            var key = outputKey;
 
             if (reader.IsDBNull(2))
             {
@@ -526,7 +527,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     public async Task<string?> LoadCheckpointAsync(string key, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT Value FROM Checkpoint WHERE Key = @key";
         cmd.Parameters.AddWithValue("@key", key);
         var result = await cmd.ExecuteScalarAsync(ct);
@@ -541,7 +542,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = "INSERT OR REPLACE INTO Checkpoint (Key, Value) VALUES (@key, @value)";
             cmd.Parameters.AddWithValue("@key", key);
             cmd.Parameters.AddWithValue("@value", value);
@@ -561,7 +562,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = "INSERT OR REPLACE INTO RunMetadata (Key, Value) VALUES (@key, @value)";
             cmd.Parameters.AddWithValue("@key", key);
             cmd.Parameters.AddWithValue("@value", value);
@@ -578,7 +579,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     /// </summary>
     public async Task<string?> LoadMetadataAsync(string key, CancellationToken ct)
     {
-        await using var cmd = _connection.CreateCommand();
+        using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT Value FROM RunMetadata WHERE Key = @key";
         cmd.Parameters.AddWithValue("@key", key);
         var result = await cmd.ExecuteScalarAsync(ct);
@@ -593,7 +594,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = "DELETE FROM EvalResults WHERE EvalSetId = @evalSetId AND Phase = @phase";
             cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
             cmd.Parameters.AddWithValue("@phase", phase);
@@ -612,7 +613,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
                 INSERT OR REPLACE INTO EvalResults
                 (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
@@ -653,7 +654,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             // Use UPDATE instead of INSERT OR REPLACE to avoid overwriting RawLlmResponse
             // First check if row exists
             cmd.CommandText = "SELECT COUNT(*) FROM EvalResults WHERE EvalItemId = @evalItemId";
@@ -701,6 +702,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
 
     /// <summary>
     /// Collects a result for the judge phase.
+    /// Only updates LastCompletedStage on success, allowing failed items to be retried.
     /// </summary>
     public async Task CollectJudgeResultAsync(EvalResult result, CancellationToken ct)
     {
@@ -709,14 +711,18 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         await _writeSemaphore.WaitAsync(ct);
         try
         {
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
+            
+            // Only update LastCompletedStage on success - failed items should be retried
+            var lastStage = result.Succeeded ? "JudgeStage" : (object)DBNull.Value;
+            
             cmd.CommandText = """
                 UPDATE EvalResults SET
                     Succeeded = @succeeded,
                     FailureReason = @failureReason,
                     DurationSeconds = @duration,
                     Phase = 'judge',
-                    LastCompletedStage = 'JudgeStage'  -- Use actual stage name for skip logic
+                    LastCompletedStage = @lastStage
                 WHERE EvalItemId = @evalItemId
                 """;
 
@@ -724,6 +730,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
             cmd.Parameters.AddWithValue("@succeeded", result.Succeeded ? 1 : 0);
             cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
+            cmd.Parameters.AddWithValue("@lastStage", lastStage);
 
             var rowsAffected = await cmd.ExecuteNonQueryAsync(ct);
 
@@ -735,7 +742,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                     INSERT INTO EvalResults
                     (EvalItemId, EvalSetId, Succeeded, FailureReason, RawLlmResponse, StartedAt, DurationSeconds, Phase, LastCompletedStage)
                     VALUES
-                    (@evalItemId, @evalSetId, @succeeded, @failureReason, NULL, @startedAt, @duration, 'judge', 'JudgeComplete')
+                    (@evalItemId, @evalSetId, @succeeded, @failureReason, NULL, @startedAt, @duration, 'judge', @lastStage2)
                     """;
                 cmd.Parameters.Clear();
                 cmd.Parameters.AddWithValue("@evalItemId", result.EvalItemId);
@@ -744,6 +751,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
                 cmd.Parameters.AddWithValue("@failureReason", result.FailureReason ?? (object)DBNull.Value);
                 cmd.Parameters.AddWithValue("@startedAt", DateTimeOffset.UtcNow.ToString("O"));
                 cmd.Parameters.AddWithValue("@duration", result.DurationSeconds);
+                cmd.Parameters.AddWithValue("@lastStage2", lastStage);
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
@@ -768,7 +776,7 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         try
         {
             // Inline the checkpoint save to avoid nested semaphore acquisition (deadlock)
-            await using var cmd = _connection.CreateCommand();
+            using var cmd = _connection.CreateCommand();
             cmd.CommandText = "INSERT OR REPLACE INTO Checkpoint (Key, Value) VALUES (@key, @value)";
             cmd.Parameters.AddWithValue("@key", "finalized");
             cmd.Parameters.AddWithValue("@value", "true");
@@ -788,12 +796,98 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
     }
 
     /// <summary>
+    /// Populates the in-memory cache with results from the database.
+    /// This is used when loading checkpoint data so that GetResults() returns checkpoint data.
+    /// </summary>
+    public async Task PopulateCacheFromCheckpointAsync(string evalSetId, CancellationToken ct)
+    {
+        var allResults = await GetAllResultsMergedAsync(evalSetId, ct);
+        foreach (var result in allResults)
+        {
+            _resultsCache[result.EvalItemId] = result;
+        }
+    }
+
+    /// <summary>
     /// Gets all results from the database with full stage outputs and metrics.
     /// Use this instead of GetResults() when you need complete data from the database.
     /// </summary>
     public async Task<IReadOnlyList<EvalResult>> GetResultsAsync(string evalSetId, string phase, CancellationToken ct)
     {
         return await GetResultsForPhaseAsync(evalSetId, phase, ct);
+    }
+
+    /// <summary>
+    /// Gets all results from the database, merging data from all phases (primary, judge, etc.).
+    /// Results are merged by EvalItemId, combining metrics and stage outputs from all phases.
+    /// This is useful for displaying complete results from checkpoint databases.
+    /// </summary>
+    public async Task<IReadOnlyList<EvalResult>> GetAllResultsMergedAsync(string evalSetId, CancellationToken ct)
+    {
+        // Get all results from all phases for this eval set
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT * FROM EvalResults WHERE EvalSetId = @evalSetId ORDER BY EvalItemId";
+        cmd.Parameters.AddWithValue("@evalSetId", evalSetId);
+
+        var resultsByItem = new Dictionary<string, EvalResult>();
+
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            var result = await ReadResultAsync(reader, ct);
+
+            if (resultsByItem.TryGetValue(result.EvalItemId, out var existingResult))
+            {
+                // Merge with existing result
+                var mergedMetrics = existingResult.Metrics.Concat(result.Metrics).ToList();
+                var mergedOutputs = new Dictionary<string, object?>(existingResult.AllStageOutputs);
+                foreach (var kvp in result.AllStageOutputs)
+                {
+                    mergedOutputs[kvp.Key] = kvp.Value;
+                }
+
+                // Use the most complete data: prefer non-null values from the newer result
+                resultsByItem[result.EvalItemId] = existingResult with
+                {
+                    Metrics = mergedMetrics,
+                    AllStageOutputs = mergedOutputs,
+                    // Use judge phase success status if available (more recent)
+                    Succeeded = result.Succeeded || existingResult.Succeeded,
+                    FailureReason = result.FailureReason ?? existingResult.FailureReason,
+                    RawLlmResponse = result.RawLlmResponse ?? existingResult.RawLlmResponse,
+                    DurationSeconds = Math.Max(existingResult.DurationSeconds, result.DurationSeconds),
+                };
+            }
+            else
+            {
+                resultsByItem[result.EvalItemId] = result;
+            }
+        }
+
+        return resultsByItem.Values.ToList();
+    }
+
+    /// <summary>
+    /// Gets all EvalSet entries from the database.
+    /// </summary>
+    public async Task<List<EvalSetConfig>> GetAllEvalSetsAsync(CancellationToken ct)
+    {
+        var evalSets = new List<EvalSetConfig>();
+        
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults ORDER BY EvalSetId";
+        
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            evalSets.Add(new EvalSetConfig
+            {
+                Id = reader.GetString("EvalSetId"),
+                DataSource = new DataSourceConfig()
+            });
+        }
+        
+        return evalSets;
     }
 
     private async Task<EvalResult> ReadResultAsync(SqliteDataReader reader, CancellationToken ct)

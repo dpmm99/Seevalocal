@@ -48,34 +48,22 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
 
     public EvalPipeline Create(EvalSetConfig evalSetConfig, ResolvedConfig resolvedConfig)
     {
-        var opts = evalSetConfig.PipelineOptions;
-        var sourceLanguage = opts?.GetValueOrDefault("sourceLanguage") as string ?? "English";
-        var targetLanguage = opts?.GetValueOrDefault("targetLanguage") as string ?? "French";
-        var customSystemPrompt = opts?.GetValueOrDefault("systemPrompt") as string;
-
-        // Create system prompt - use custom if provided, otherwise use default template
-        var systemPrompt = !string.IsNullOrEmpty(customSystemPrompt)
-            ? customSystemPrompt
-            : $"You are a professional translator. Translate the following text from {sourceLanguage} to {targetLanguage} accurately and naturally. Output only the translation, with no explanation or preamble.";
+        // Note: System prompt is now handled by the data source via DataSourceConfig.DefaultSystemPrompt
+        // The data source will use per-item SystemPromptField if provided, otherwise fall back to
+        // DefaultSystemPrompt which is generated from source/target language in the Wizard.
 
         var promptStage = new PromptStage(_loggerFactory.CreateLogger<PromptStage>())
         {
             MaxTokens = null,
             StopSequences = [],
-            // The system prompt is set per-item via the EvalItem.SystemPrompt field
-            // The data source should populate this, or it can be set via PipelineOptions
+            // SystemPrompt is populated per-item by the data source
         };
-
-        // Store the system prompt in pipeline options so it can be injected into items
-        // This is handled by the data source when creating EvalItems
 
         // Create JudgeStage using JudgeConfig from resolved config
         // If no judge config exists, create a default one with pipeline-specific template
         var judgeConfig = resolvedConfig.Judge ?? new JudgeConfig
         {
             JudgePromptTemplate = "translation",
-            ScoreMinValue = 0,
-            ScoreMaxValue = 10,
         };
 
         var judgeStage = new JudgeStage(

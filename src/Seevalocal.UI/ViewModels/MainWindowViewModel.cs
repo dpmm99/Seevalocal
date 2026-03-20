@@ -1,8 +1,12 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using FluentResults;
 using Microsoft.Extensions.Logging;
+using Seevalocal.Core;
 using Seevalocal.Core.Models;
+using Seevalocal.Core.Pipeline;
+using Seevalocal.Metrics.Models;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using System.Collections.ObjectModel;
@@ -85,10 +89,99 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _activeRun;
         private set
         {
+            // Unsubscribe from old run's property changes
+            if (_activeRun != null)
+            {
+                _activeRun.PropertyChanged -= OnActiveRunPropertyChanged;
+            }
+
             SetField(ref _activeRun, value);
             OnPropertyChanged(nameof(CanNavigateToEvalGen));
+            // Update metric stats when active run changes
+            OnPropertyChanged(nameof(MetricStats));
+            // Notify that CurrentResultsRun has changed (important for Run Dashboard visibility)
+            OnPropertyChanged(nameof(CurrentResultsRun));
+
+            // Subscribe to new run's property changes
+            if (_activeRun != null)
+            {
+                _activeRun.PropertyChanged += OnActiveRunPropertyChanged;
+            }
         }
     }
+
+    /// <summary>
+    /// Temporarily loaded results from a checkpoint database or JSON file.
+    /// Used when viewing results without an active run.
+    /// </summary>
+    public TempEvalRunViewModel? LoadedResultsRun
+    {
+        get => _loadedResultsRun;
+        private set
+        {
+            if (_loadedResultsRun != null)
+            {
+                _loadedResultsRun.PropertyChanged -= OnLoadedResultsRunPropertyChanged;
+            }
+
+            SetField(ref _loadedResultsRun, value);
+
+            if (_loadedResultsRun != null)
+            {
+                _loadedResultsRun.PropertyChanged += OnLoadedResultsRunPropertyChanged;
+            }
+
+            // Notify all dependent properties immediately
+            OnPropertyChanged(nameof(CurrentResultsRun));
+            OnPropertyChanged(nameof(MetricStats));
+        }
+    }
+    private TempEvalRunViewModel? _loadedResultsRun;
+
+    /// <summary>
+    /// Gets the current results view model - either from an active run or loaded results.
+    /// </summary>
+    public IEvalRunViewModel? CurrentResultsRun => ActiveRun ?? (IEvalRunViewModel?)LoadedResultsRun;
+
+    private void OnLoadedResultsRunPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == "Results" || e.PropertyName == "EarlyCompletionsLimit")
+        {
+            // Notify on UI thread for Avalonia binding
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                OnPropertyChanged(nameof(MetricStats));
+                // Notify that CurrentResultsRun's collection properties have changed
+                OnPropertyChanged(nameof(CurrentResultsRun));
+            });
+        }
+    }
+
+    private void OnActiveRunPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == "Results")
+        {
+            // Notify on UI thread for Avalonia binding
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                OnPropertyChanged(nameof(MetricStats));
+                // Notify that CurrentResultsRun's collection properties have changed
+                // This is needed for Run Dashboard EarlyCompletions and Results Viewer
+                OnPropertyChanged(nameof(CurrentResultsRun));
+            });
+        }
+    }
+
+    /// <summary>
+    /// Metric statistics calculated from all items in the active run or loaded results.
+    /// Groups metrics by stage and shows min, max, avg, count, and missing count.
+    /// </summary>
+    public List<StageStatsViewModel> MetricStats =>
+        ActiveRun?.Results != null
+            ? MetricStatsCalculator.Calculate(ActiveRun.Results)
+            : LoadedResultsRun?.Results != null
+                ? MetricStatsCalculator.Calculate(LoadedResultsRun.Results)
+                : [];
 
     /// <summary>
     /// Whether navigation to Eval Gen view is allowed.
@@ -463,12 +556,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 break;
             case "judge.template":
                 state.JudgeTemplate = materializedValue == "Unspecified" ? "standard" : (materializedValue ?? "standard");
-                break;
-            case "judge.scoreMin":
-                state.JudgeScoreMin = double.TryParse(materializedValue, out var min) ? min : 0;
-                break;
-            case "judge.scoreMax":
-                state.JudgeScoreMax = double.TryParse(materializedValue, out var max) ? max : 10;
                 break;
 
             // Judge llama-server settings
@@ -1010,6 +1097,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             EnableMlock = Fb("llama.enableMlock"),
             EnableMmap = Fb("llama.enableMmap"),
             ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
+            ExtraArgs = F("llama.extraArgs") is { } ea && !string.IsNullOrWhiteSpace(ea)
+                ? ea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : null,
         };
 
         var judgeServerSettings = new PartialLlamaServerSettings
@@ -1046,6 +1135,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             EnableMlock = Fb("judge.enableMlock"),
             EnableMmap = Fb("judge.enableMmap"),
             ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
+            ExtraArgs = F("judge.extraArgs") is { } jea && !string.IsNullOrWhiteSpace(jea)
+                ? jea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : null,
         };
 
         // Build Judge config - always include, even if not enabled
@@ -1153,12 +1244,89 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         var path = await _filePicker.ShowOpenFileDialogAsync(
             "Load Results File",
-            "JSON Files|*.json|All Files|*.*");
+            "Checkpoint Database|*.db|JSON Files|*.json|All Files|*.*");
 
         if (string.IsNullOrEmpty(path)) return;
 
-        // TODO: Implement results file loading logic
-        _logger.LogInformation("Results file selected: {Path}", path);
+        try
+        {
+            if (path.EndsWith(".db", StringComparison.OrdinalIgnoreCase))
+            {
+                // Load from checkpoint database
+                await LoadResultsFromCheckpointDbAsync(path);
+            }
+            else
+            {
+                // Load from JSON file (existing logic - TODO)
+                _toastService.Show("JSON file loading not yet implemented. Please select a checkpoint database (.db file).", 5000);
+                _logger.LogInformation("JSON file loading not implemented: {Path}", path);
+            }
+        }
+        catch (Exception ex)
+        {
+            _toastService.ShowError($"Failed to load results: {ex.Message}", 8000);
+            _logger.LogError(ex, "Failed to load results file: {Path}", path);
+        }
+    }
+
+    private async Task LoadResultsFromCheckpointDbAsync(string dbPath)
+    {
+        if (!File.Exists(dbPath))
+        {
+            _toastService.ShowError("Database file not found", 5000);
+            return;
+        }
+
+        // Create a temporary collector to load results from the database
+        var collector = new PersistentResultCollector(dbPath);
+
+        try
+        {
+            // Get all eval sets from the database
+            var evalSets = await collector.GetAllEvalSetsAsync(default);
+            if (evalSets.Count == 0)
+            {
+                _toastService.Show("No evaluation runs found in database", 5000);
+                return;
+            }
+
+            // Use the most recent eval set (last one in the list)
+            var evalSet = evalSets.Last();
+            _logger.LogInformation("Loading results from eval set: {EvalSetId}", evalSet.Id);
+
+            // Load ALL results merged from all phases (primary, judge, etc.)
+            // This ensures we get complete data including metrics and stage outputs from all phases
+            var results = await collector.GetAllResultsMergedAsync(evalSet.Id, default);
+            _logger.LogInformation("Loaded {Count} merged results from checkpoint: {Path}", results.Count, dbPath);
+
+            if (results.Count == 0)
+            {
+                _toastService.Show("No results found in checkpoint database", 5000);
+                return;
+            }
+
+            // Create a temporary view model to display results
+            var tempRunVm = new TempEvalRunViewModel(evalSet, results);
+            _logger.LogInformation("Created TempEvalRunViewModel with {Count} results", tempRunVm.Results.Count);
+
+            // Store in a property for the Results view to access
+            // This will trigger property change notifications for CurrentResultsRun and MetricStats
+            LoadedResultsRun = tempRunVm;
+            
+            // Switch to Results view
+            CurrentView = AppView.Results;
+
+            _toastService.ShowSuccess($"Loaded {results.Count} results from checkpoint database", 5000);
+        }
+        catch (Exception ex)
+        {
+            _toastService.ShowError($"Failed to load results: {ex.Message}", 8000);
+            _logger.LogError(ex, "Failed to load results from checkpoint: {Path}", dbPath);
+        }
+        finally
+        {
+            await collector.DisposeAsync();
+        }
     }
 
     private async Task ExportResultsToJsonAsync()
@@ -1190,7 +1358,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 r.Id,
                 r.EvalSetId,
                 r.Succeeded,
-                Status = r.Status,
                 r.FailureReason,
                 r.DurationSeconds,
                 r.StartedAt,
@@ -1309,4 +1476,128 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public void Dispose() => ActiveRun?.Dispose();
+}
+
+/// <summary>
+/// Temporary view model for displaying loaded results from a checkpoint database or JSON file.
+/// Implements minimal IEvalRunViewModel interface for results display.
+/// </summary>
+public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyChanged
+{
+    private readonly EvalSetConfig _evalSet;
+    private int _earlyCompletionsLimit = 10;
+
+    public TempEvalRunViewModel(EvalSetConfig evalSet, IReadOnlyList<EvalResult> results)
+    {
+        _evalSet = evalSet;
+        Results = new ObservableCollection<EvalResultViewModel>(results.Select(r => new EvalResultViewModel(r)));
+        EarlyCompletions = new ObservableCollection<EvalResultViewModel>();
+        TotalCount = results.Count;
+        CompletedCount = results.Count;
+        StatusLine = $"Loaded from checkpoint: {evalSet.Id}";
+        Config = new ResolvedConfig();
+
+        // Initialize EarlyCompletions with first N items
+        UpdateEarlyCompletions();
+
+        // Make LoadMoreEarlyCompletionsCommand actually work
+        LoadMoreEarlyCompletionsCommand = new RelayCommand(LoadMoreEarlyCompletions, () => HasMoreEarlyCompletions);
+
+        // Notify that Results collection is ready (for UI binding)
+        OnPropertyChanged(nameof(Results));
+        OnPropertyChanged(nameof(EarlyCompletions));
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(CompletedCount));
+        OnPropertyChanged(nameof(StatusLine));
+        OnPropertyChanged(nameof(HadFailures));
+    }
+
+    public ResolvedConfig Config { get; }
+    public ObservableCollection<EvalResultViewModel> Results { get; }
+    public ObservableCollection<EvalResultViewModel> EarlyCompletions { get; }
+    public int TotalCount { get; }
+    public int CompletedCount { get; }
+    public double ProgressPercent => 100;
+    public string StatusLine { get; }
+    public bool IsRunning => false;
+    public bool IsPaused => false;
+    public bool HadFailures => Results.Any(r => !r.Succeeded);
+    public double? EstimatedRemainingSeconds => null;
+    public double AverageTokensPerSecond => 0;
+
+    public int EarlyCompletionsLimit
+    {
+        get => _earlyCompletionsLimit;
+        set
+        {
+            if (_earlyCompletionsLimit != value)
+            {
+                _earlyCompletionsLimit = value;
+                OnPropertyChanged(nameof(EarlyCompletionsLimit));
+                UpdateEarlyCompletions();
+                OnPropertyChanged(nameof(HasMoreEarlyCompletions));
+                ((RelayCommand)LoadMoreEarlyCompletionsCommand).NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool HasMoreEarlyCompletions => Results.Count > EarlyCompletionsLimit;
+    public RunSummary? Summary => null;
+
+    public string RecentActivitySummary
+    {
+        get
+        {
+            var recent = Results.TakeLast(5).ToList();
+            if (recent.Count == 0) return "No completions yet...";
+            var lastResult = recent.LastOrDefault();
+            if (lastResult == null) return "No completions yet...";
+            var promptPreview = lastResult.UserPrompt?.Length > 40
+                ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
+                : lastResult.UserPrompt ?? "N/A";
+            return $"Last: {promptPreview}";
+        }
+    }
+
+    /// <summary>
+    /// Updates the EarlyCompletions collection to contain the first N results.
+    /// </summary>
+    private void UpdateEarlyCompletions()
+    {
+        var newEarlyCompletions = Results.Take(EarlyCompletionsLimit).ToList();
+        
+        for (int i = EarlyCompletions.Count - 1; i >= 0; i--)
+        {
+            if (i >= newEarlyCompletions.Count || EarlyCompletions[i] != newEarlyCompletions[i])
+            {
+                EarlyCompletions.RemoveAt(i);
+            }
+        }
+        
+        for (int i = EarlyCompletions.Count; i < newEarlyCompletions.Count; i++)
+        {
+            EarlyCompletions.Add(newEarlyCompletions[i]);
+        }
+    }
+
+    public System.Windows.Input.ICommand PauseCommand { get; } = new RelayCommand(() => { }, () => false);
+    public System.Windows.Input.ICommand CancelCommand { get; } = new RelayCommand(() => { }, () => false);
+    public System.Windows.Input.ICommand LoadMoreEarlyCompletionsCommand { get; }
+
+    private void LoadMoreEarlyCompletions()
+    {
+        EarlyCompletionsLimit += 10;
+    }
+
+    public void TogglePause() { }
+    public void Cancel() { }
+    public Task StartAsync(CancellationToken externalCt = default) => Task.CompletedTask;
+    public void Dispose() { }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
 }

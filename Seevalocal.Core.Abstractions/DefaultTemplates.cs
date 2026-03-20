@@ -159,15 +159,25 @@ public static class DefaultTemplates
     /// - CoT before scoring
     /// </summary>
     public const string TranslationJudgeTemplate = """
-        You are an expert translator evaluator. Evaluate the quality of a translation.
+        You are an expert translator evaluator. Evaluate the quality of the given translation.
 
         <instructions>
-        1. Compare the model's translation to the reference translation.
-        2. Consider accuracy, fluency, and naturalness.
-        3. Think through your reasoning BEFORE assigning a score.
-        4. Output ONLY a JSON object.
+        1. Compare the model's translation to the reference translation if provided.
+        2. Consider the rubric carefully, one category at a time.
+        3. Think through your reasoning BEFORE assigning a score. Never provide any score numbers, partial or otherwise, before the reasoning that would lead to such numbers. For example, do NOT write "Naturalness: 5/10 - this is why."
+        4. DO NOT write any text other than the JSON in your response--no markdown, no code fences.
+        5. Use only whole numbers.
+        6. Be sure to follow those exact point scales and categories when outputting the JSON even if you messed up the scale during the reasoning.
         </instructions>
 
+        <scoring-rubric>
+        1. Accuracy (40 points): Does the translation's meaning match the original meaning, considering cultural differences? Translation to the wrong language is an instant 0.
+        2. Completeness (30 points): Does the translation cover the entire content of the original message?
+        3. Quality (10 points): Is the translation well-formed, clear, and error-free?
+        4. Mood (10 points): Does the translation give the same emotional impact as the original?
+        5. Naturalness (10 points): Does the translation feel natural in the target language?
+        </scoring-rubric>
+        
         <source-text>
         {prompt}
         </source-text>
@@ -180,25 +190,9 @@ public static class DefaultTemplates
         {actualOutput}
         </model-translation>
 
-        <scoring-rubric>
-        0  — Wrong language or gibberish
-        3  — Major errors, wrong meaning
-        5  — Partially correct with significant errors
-        7  — Good translation with minor issues
-        10 — Perfect, natural, equivalent meaning
-        </scoring-rubric>
-
-        <response-format>
         Respond ONLY with a JSON object in this exact format:
-        {"rationale": "<your step-by-step reasoning>", "score": <0-10>, "passed": <true if score >= 6 else false>}
-
-        IMPORTANT:
-        - The "rationale" MUST explain your reasoning first.
-        - The "score" MUST be a number 0-10.
-        - The "passed" MUST be true or false.
-        - DO NOT include any text outside the JSON.
-        </response-format>
-        """;
+        {"rationale": "Because A, B. Because C, D.", "accuracy": 16, "completeness": 18, "quality": 3, "mood": 4, "naturalness": 2}
+        """; //TODO: Toggle between "reference translation" and simply "target language". Would change the instructions, the variables, and the <reference-translation> part.
 
     /// <summary>
     /// Template for casual Q&A evaluation. Scores semantic correctness.
