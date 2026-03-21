@@ -263,8 +263,8 @@ public sealed class ConfigurationMerger
         {
             Kind = LastDsEnum(all, d => d.Kind) ?? DataSourceKind.SingleFile,
             FilePath = LastDsStr(all, d => d.FilePath),
-            PromptDirectoryPath = LastDsStr(all, d => d.PromptDirectoryPath),
-            ExpectedOutputDirectoryPath = LastDsStr(all, d => d.ExpectedOutputDirectoryPath),
+            PromptDirectory = LastDsStr(all, d => d.PromptDirectory),
+            ExpectedDirectory = LastDsStr(all, d => d.ExpectedDirectory),
         };
 
         static T? LastDsEnum<T>(IReadOnlyList<PartialConfig> all, Func<PartialDataSourceConfig, T?> sel)

@@ -106,7 +106,7 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         return messages;
     }
 
-    private static List<MetricValue> BuildMetrics(ChatCompletionResponse response, double wallClockSeconds)
+    private List<MetricValue> BuildMetrics(ChatCompletionResponse response, double wallClockSeconds)
     {
         List<MetricValue> metrics = [];
 
@@ -114,16 +114,16 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
         var completionTokenCount = response.Usage?.CompletionTokens ?? 0;
         var totalTokenCount = response.Usage?.TotalTokens ?? (promptTokenCount + completionTokenCount);
 
-        metrics.Add(new MetricValue { Name = "promptTokenCount", Value = new MetricScalar.IntMetric(promptTokenCount) });
-        metrics.Add(new MetricValue { Name = "completionTokenCount", Value = new MetricScalar.IntMetric(completionTokenCount) });
-        metrics.Add(new MetricValue { Name = "totalTokenCount", Value = new MetricScalar.IntMetric(totalTokenCount) });
+        metrics.Add(new MetricValue { Name = "promptTokenCount", Value = new MetricScalar.IntMetric(promptTokenCount), SourceStage = StageName });
+        metrics.Add(new MetricValue { Name = "completionTokenCount", Value = new MetricScalar.IntMetric(completionTokenCount), SourceStage = StageName });
+        metrics.Add(new MetricValue { Name = "totalTokenCount", Value = new MetricScalar.IntMetric(totalTokenCount), SourceStage = StageName });
 
         // Prefer server-reported timing if available; fall back to wall-clock
         var latencySeconds = response.Timings is not null
             ? (response.Timings.PromptMs + response.Timings.PredictedMs) / 1000.0
             : wallClockSeconds;
 
-        metrics.Add(new MetricValue { Name = "llmLatencySeconds", Value = new MetricScalar.DoubleMetric(Math.Round(latencySeconds, 2)) });
+        metrics.Add(new MetricValue { Name = "llmLatencySeconds", Value = new MetricScalar.DoubleMetric(Math.Round(latencySeconds, 2)), SourceStage = StageName });
 
         if (latencySeconds > 0)
         {
@@ -137,8 +137,8 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
                     ? completionTokenCount / latencySeconds
                     : 0.0;
 
-            metrics.Add(new MetricValue { Name = "promptTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(promptTps, 2)) });
-            metrics.Add(new MetricValue { Name = "completionTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(completionTps, 2)) });
+            metrics.Add(new MetricValue { Name = "promptTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(promptTps, 2)), SourceStage = StageName });
+            metrics.Add(new MetricValue { Name = "completionTokensPerSecond", Value = new MetricScalar.DoubleMetric(Math.Round(completionTps, 2)), SourceStage = StageName });
         }
 
         return metrics;

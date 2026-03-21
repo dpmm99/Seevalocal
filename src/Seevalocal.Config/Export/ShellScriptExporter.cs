@@ -115,10 +115,10 @@ public sealed class ShellScriptExporter
             var ds = evalSet.DataSource;
             if (!string.IsNullOrEmpty(ds.FilePath))
                 args.Add($"--data-file {EscapeBash(ds.FilePath)}");
-            if (!string.IsNullOrEmpty(ds.PromptDirectoryPath))
-                args.Add($"--prompt-dir {EscapeBash(ds.PromptDirectoryPath)}");
-            if (!string.IsNullOrEmpty(ds.ExpectedOutputDirectoryPath))
-                args.Add($"--expected-dir {EscapeBash(ds.ExpectedOutputDirectoryPath)}");
+            if (!string.IsNullOrEmpty(ds.PromptDirectory))
+                args.Add($"--prompt-dir {EscapeBash(ds.PromptDirectory)}");
+            if (!string.IsNullOrEmpty(ds.ExpectedDirectory))
+                args.Add($"--expected-dir {EscapeBash(ds.ExpectedDirectory)}");
         }
 
         // Judge options
@@ -257,10 +257,10 @@ public sealed class ShellScriptExporter
             var ds = evalSet.DataSource;
             if (!string.IsNullOrEmpty(ds.FilePath))
                 args.Add($"--data-file {EscapePs(ds.FilePath)}");
-            if (!string.IsNullOrEmpty(ds.PromptDirectoryPath))
-                args.Add($"--prompt-dir {EscapePs(ds.PromptDirectoryPath)}");
-            if (!string.IsNullOrEmpty(ds.ExpectedOutputDirectoryPath))
-                args.Add($"--expected-dir {EscapePs(ds.ExpectedOutputDirectoryPath)}");
+            if (!string.IsNullOrEmpty(ds.PromptDirectory))
+                args.Add($"--prompt-dir {EscapePs(ds.PromptDirectory)}");
+            if (!string.IsNullOrEmpty(ds.ExpectedDirectory))
+                args.Add($"--expected-dir {EscapePs(ds.ExpectedDirectory)}");
         }
 
         // Judge options

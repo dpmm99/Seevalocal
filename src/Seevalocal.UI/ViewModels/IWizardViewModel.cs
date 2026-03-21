@@ -1,4 +1,4 @@
-﻿using Seevalocal.Core.Models;
+using Seevalocal.Core.Models;
 using System.ComponentModel;
 
 namespace Seevalocal.UI.ViewModels;

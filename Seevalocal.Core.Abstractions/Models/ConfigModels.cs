@@ -56,6 +56,8 @@ public record LlamaServerSettings
     public bool? EnableJinja { get; init; }
     public string? ReasoningFormat { get; init; }
     public string? ModelAlias { get; init; }
+    public int? ReasoningBudget { get; init; }
+    public string? ReasoningBudgetMessage { get; init; }
 
     // Logging
     public int? LogVerbosity { get; init; }
@@ -104,11 +106,11 @@ public record DataSourceConfig
 {
     public DataSourceKind Kind { get; init; } = DataSourceKind.Directory;
 
-    /// <summary>Used when Kind = Directory. Path to prompt files.</summary>
-    public string? PromptDirectoryPath { get; init; }
+    /// <summary>Path to prompt directory (for directory-based data sources).</summary>
+    public string? PromptDirectory { get; init; }
 
-    /// <summary>Used when Kind = Directory. Path to expected-output files (optional).</summary>
-    public string? ExpectedOutputDirectoryPath { get; init; }
+    /// <summary>Path to expected output directory (optional, for directory-based data sources).</summary>
+    public string? ExpectedDirectory { get; init; }
 
     /// <summary>Path to a single file (JSON, YAML, CSV, Parquet, or raw text).</summary>
     public string? FilePath { get; init; }
@@ -127,20 +129,6 @@ public record DataSourceConfig
 
     /// <summary>File extension filter for directory sources. Default: null (all extensions).</summary>
     public string? FileExtensionFilter { get; init; }
-
-    /// <summary>Alias for PromptDirectoryPath (for CLI compatibility).</summary>
-    public string? PromptDirectory
-    {
-        get => PromptDirectoryPath;
-        init => PromptDirectoryPath = value;
-    }
-
-    /// <summary>Alias for ExpectedOutputDirectoryPath (for CLI compatibility).</summary>
-    public string? ExpectedDirectory
-    {
-        get => ExpectedOutputDirectoryPath;
-        init => ExpectedOutputDirectoryPath = value;
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +383,8 @@ public record PartialLlamaServerSettings
     public bool? EnableJinja { get; init; }
     public string? ReasoningFormat { get; init; }
     public string? ModelAlias { get; init; }
+    public int? ReasoningBudget { get; init; }
+    public string? ReasoningBudgetMessage { get; init; }
     public int? LogVerbosity { get; init; }
     public bool? EnableMlock { get; init; }
     public bool? EnableMmap { get; init; }
@@ -439,23 +429,9 @@ public record PartialDataSourceConfig
 {
     public DataSourceKind? Kind { get; init; }
     public string? FilePath { get; init; }
-    public string? PromptDirectoryPath { get; init; }
-    public string? ExpectedOutputDirectoryPath { get; init; }
+    public string? PromptDirectory { get; init; }
+    public string? ExpectedDirectory { get; init; }
     public FieldMapping? FieldMapping { get; init; }
-
-    /// <summary>Alias for PromptDirectoryPath (for CLI compatibility).</summary>
-    public string? PromptDirectory
-    {
-        get => PromptDirectoryPath;
-        init => PromptDirectoryPath = value;
-    }
-
-    /// <summary>Alias for ExpectedOutputDirectoryPath (for CLI compatibility).</summary>
-    public string? ExpectedDirectory
-    {
-        get => ExpectedOutputDirectoryPath;
-        init => ExpectedOutputDirectoryPath = value;
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -465,6 +441,7 @@ public record PartialDataSourceConfig
 public record PartialJudgeConfig
 {
     public bool? Enable { get; init; }
+    public bool? Manage { get; init; }
     public PartialServerConfig? ServerConfig { get; init; }
     public PartialLlamaServerSettings? ServerSettings { get; init; }
     public string? JudgePromptTemplate { get; init; }
@@ -476,27 +453,6 @@ public record PartialJudgeConfig
     public double? JudgeSamplingTemperature { get; init; }
     public string? BaseUrl { get; init; }
     public double? SamplingTemperature { get; init; }
-
-    /// <summary>Alias for BaseUrl (for CLI compatibility).</summary>
-    public string? JudgeUrl
-    {
-        get => BaseUrl;
-        init => BaseUrl = value;
-    }
-
-    /// <summary>Alias for ScoreMinValue (for CLI compatibility).</summary>
-    public double? ScoreMin
-    {
-        get => ScoreMinValue;
-        init { if (value.HasValue) ScoreMinValue = value.Value; }
-    }
-
-    /// <summary>Alias for ScoreMaxValue (for CLI compatibility).</summary>
-    public double? ScoreMax
-    {
-        get => ScoreMaxValue;
-        init { if (value.HasValue) ScoreMaxValue = value.Value; }
-    }
 }
 
 // ---------------------------------------------------------------------------

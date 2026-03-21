@@ -806,6 +806,13 @@ public sealed class PersistentResultCollector : IResultCollector, IAsyncDisposab
         {
             _resultsCache[result.EvalItemId] = result;
         }
+        // Log for debugging
+        System.Console.WriteLine($"[PersistentResultCollector] PopulateCacheFromCheckpointAsync: Loaded {allResults.Count} results for EvalSetId={evalSetId}");
+        if (allResults.Count > 0)
+        {
+            var first = allResults.First();
+            System.Console.WriteLine($"[PersistentResultCollector]   First result: EvalItemId={first.EvalItemId}, Metrics={first.Metrics.Count}, StageOutputs={first.AllStageOutputs.Count}");
+        }
     }
 
     /// <summary>

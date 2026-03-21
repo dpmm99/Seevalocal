@@ -1,4 +1,4 @@
-﻿using Seevalocal.Core;
+using Seevalocal.Core;
 using Seevalocal.Metrics.Models;
 
 namespace Seevalocal.Metrics;

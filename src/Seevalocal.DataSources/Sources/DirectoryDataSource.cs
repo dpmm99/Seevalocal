@@ -18,7 +18,7 @@ internal sealed class DirectoryDataSource(string name, DataSourceConfig config, 
     public async IAsyncEnumerable<EvalItem> GetItemsAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
-        var promptDir = Path.GetFullPath(_config.PromptDirectoryPath!);
+        var promptDir = Path.GetFullPath(_config.PromptDirectory!);
         var promptFiles = Directory.GetFiles(promptDir, _config.FileExtensionFilter)
             .Order()
             .ToArray();
@@ -44,9 +44,9 @@ internal sealed class DirectoryDataSource(string name, DataSourceConfig config, 
             var userPrompt = await File.ReadAllTextAsync(promptFile, ct);
 
             string? expectedOutput = null;
-            if (_config.ExpectedOutputDirectoryPath is not null)
+            if (_config.ExpectedDirectory is not null)
             {
-                var expectedDir = Path.GetFullPath(_config.ExpectedOutputDirectoryPath);
+                var expectedDir = Path.GetFullPath(_config.ExpectedDirectory);
                 // Try the same extension first, then any matching stem
                 var expectedFile = Directory.GetFiles(expectedDir, $"{stem}.*")
                     .FirstOrDefault();
@@ -68,10 +68,10 @@ internal sealed class DirectoryDataSource(string name, DataSourceConfig config, 
 
     public Task<int?> GetCountAsync(CancellationToken ct)
     {
-        if (_config.PromptDirectoryPath is null)
+        if (_config.PromptDirectory is null)
             return Task.FromResult<int?>(null);
 
-        var promptDir = Path.GetFullPath(_config.PromptDirectoryPath);
+        var promptDir = Path.GetFullPath(_config.PromptDirectory);
         if (!Directory.Exists(promptDir))
             return Task.FromResult<int?>(null);
 

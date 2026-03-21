@@ -338,7 +338,7 @@
             <Border Background="#181825" CornerRadius="6" Padding="16" Margin="0,8">
               <StackPanel Spacing="12">
                 <TextBlock Text="Model Behavior &amp; Logging" Classes="sectionHeader"/>
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,12">
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                   <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Chat Template" Classes="label"/>
                     <TextBox Text="{Binding ChatTemplate}" Watermark="e.g., llama-2"/>
@@ -355,10 +355,20 @@
                     <TextBlock Text="Log Verbosity (0-3)" Classes="label"/>
                     <TextBox Text="{Binding LogVerbosity}" Watermark="e.g., 2"/>
                   </StackPanel>
-                  <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                  <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                    <TextBlock Text="Reasoning Budget (tokens)" Classes="label"/>
+                    <TextBox Text="{Binding ReasoningBudget}" Watermark="e.g., 1024"/>
+                  </StackPanel>
+                  <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
+                    <TextBlock Text="Reasoning Budget Message" Classes="label"/>
+                    <TextBox Text="{Binding ReasoningBudgetMessage}" Watermark="e.g., --wait, I've exhausted my reasoning budget. I must stick with this answer."/>
+                  </StackPanel>
+                  <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <CheckBox Content="Enable Jinja Template Processing" IsChecked="{Binding EnableJinja}"/>
                     <TextBlock Text="Server Timeout (seconds)" Classes="label" Margin="0,8,0,0"/>
                     <TextBox Text="{Binding ServerTimeoutSeconds}" Watermark="e.g., 300"/>
+                    <TextBlock Text="Extra Llama-Server Args" Classes="label" Margin="0,8,0,0"/>
+                    <TextBox Text="{Binding ExtraLlamaArgs}" Watermark="e.g., -ts 14,38" AcceptsReturn="False"/>
                   </StackPanel>
                 </Grid>
               </StackPanel>
@@ -583,7 +593,7 @@
                     Background="#181825" CornerRadius="6" Padding="16">
               <StackPanel Spacing="12">
                 <TextBlock Text="CasualQA Settings" Classes="sectionHeader"/>
-                <TextBlock Text="The CasualQA pipeline uses default settings. No additional configuration is required." 
+                <TextBlock Text="The CasualQA pipeline has no pipeline-specific settings." 
                            Foreground="#7F849C" TextWrapping="Wrap"/>
               </StackPanel>
             </Border>
@@ -780,7 +790,7 @@
                     <Border Background="#181825" CornerRadius="6" Padding="12" Margin="0,4">
                       <StackPanel Spacing="8">
                         <TextBlock Text="Model Behavior &amp; Logging" Classes="label"/>
-                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Chat Template" Classes="label"/>
                             <TextBox Text="{Binding JudgeChatTemplate}" Watermark="e.g., llama-2"/>
@@ -797,10 +807,20 @@
                             <TextBlock Text="Log Verbosity (0-3)" Classes="label"/>
                             <TextBox Text="{Binding JudgeLogVerbosity}" Watermark="e.g., 2"/>
                           </StackPanel>
-                          <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
+                          <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
+                            <TextBlock Text="Reasoning Budget (tokens)" Classes="label"/>
+                            <TextBox Text="{Binding JudgeReasoningBudget}" Watermark="e.g., 1024"/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Reasoning Budget Message" Classes="label"/>
+                            <TextBox Text="{Binding JudgeReasoningBudgetMessage}" Watermark="e.g., --wait, I've exhausted my reasoning budget. I must stick with this answer."/>
+                          </StackPanel>
+                          <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <CheckBox Content="Enable Jinja Template Processing" IsChecked="{Binding JudgeEnableJinja}"/>
                             <TextBlock Text="Server Timeout (seconds)" Classes="label" Margin="0,8,0,0"/>
                             <TextBox Text="{Binding JudgeServerTimeoutSeconds}" Watermark="e.g., 300"/>
+                            <TextBlock Text="Extra Judge Llama-Server Args" Classes="label" Margin="0,8,0,0"/>
+                            <TextBox Text="{Binding JudgeExtraLlamaArgs}" Watermark="e.g., -ts 14,38" AcceptsReturn="False"/>
                           </StackPanel>
                         </Grid>
                       </StackPanel>
@@ -868,19 +888,22 @@
 
             <Border Background="#181825" CornerRadius="6" Padding="16">
               <StackPanel Spacing="12">
-                <TextBlock Text="Server Configuration" Classes="sectionHeader"/>
-                <TextBlock Classes="reviewLabel">
-                  Mode: <Run Text="{Binding ManageServer, Converter={x:Static convert:BoolToTextConverter.Instance}}"/>
-                </TextBlock>
-                <TextBlock Classes="reviewLabel">
-                  Pipeline: <Run Text="{Binding PipelineName}"/>
-                </TextBlock>
-                <TextBlock Classes="reviewLabel">
-                  Output: <Run Text="{Binding OutputDir}"/>
-                </TextBlock>
-                <TextBlock Classes="reviewLabel">
-                  Judge: <Run Text="{Binding EnableJudge, Converter={x:Static convert:BoolToYesNoConverter.Instance}}"/>
-                </TextBlock>
+                <TextBlock Text="Configuration Preview (YAML)" Classes="sectionHeader"/>
+                <TextBlock Text="This is the configuration that will be used if you proceed. Review carefully before running."
+                           Foreground="#7F849C" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                <Border Background="#0D0D14" CornerRadius="4" Padding="12" MaxHeight="400">
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <TextBox Text="{Binding ConfigYamlPreview}"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas,Monaco,monospace"
+                             FontSize="12"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="#A6ADC8"/>
+                  </ScrollViewer>
+                </Border>
               </StackPanel>
             </Border>
 

@@ -553,8 +553,8 @@ public sealed class CliSettingsAdapterTests
 
         // Assert
         _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.DirectoryPair);
-        _ = config.EvalSets[0].DataSource.PromptDirectoryPath.Should().Be("/prompts");
-        _ = config.EvalSets[0].DataSource.ExpectedOutputDirectoryPath.Should().Be("/expected");
+        _ = config.EvalSets[0].DataSource.PromptDirectory.Should().Be("/prompts");
+        _ = config.EvalSets[0].DataSource.ExpectedDirectory.Should().Be("/expected");
     }
 
     [Fact]

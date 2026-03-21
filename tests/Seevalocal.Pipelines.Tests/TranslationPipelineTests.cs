@@ -37,8 +37,8 @@ public sealed class TranslationPipelineTests
     public void DefaultDataSourceConfig_IsSplitDirectories()
     {
         Assert.Equal(DataSourceKind.SplitDirectories, _factory.DefaultDataSourceConfig.Kind);
-        Assert.Equal("./data/source", _factory.DefaultDataSourceConfig.PromptDirectoryPath);
-        Assert.Equal("./data/reference", _factory.DefaultDataSourceConfig.ExpectedOutputDirectoryPath);
+        Assert.Equal("./data/source", _factory.DefaultDataSourceConfig.PromptDirectory);
+        Assert.Equal("./data/reference", _factory.DefaultDataSourceConfig.ExpectedDirectory);
         Assert.Equal("*.txt", _factory.DefaultDataSourceConfig.FilePattern);
     }
 

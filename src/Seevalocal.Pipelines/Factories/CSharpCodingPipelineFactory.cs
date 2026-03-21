@@ -21,7 +21,7 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
     public DataSourceConfig DefaultDataSourceConfig => new()
     {
         Kind = DataSourceKind.Directory,
-        PromptDirectoryPath = "./data/prompts",
+        PromptDirectory = "./data/prompts",
     };
 
     public IReadOnlyList<ValidationError> Validate(EvalSetConfig evalSetConfig)

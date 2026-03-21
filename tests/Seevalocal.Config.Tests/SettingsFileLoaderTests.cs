@@ -113,7 +113,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
         _ = result.Value.EvalSets.Should().HaveCount(1);
         _ = result.Value.EvalSets![0].Id.Should().Be("my-eval");
         _ = result.Value.EvalSets![0].PipelineName.Should().Be("CSharpCoding");
-        _ = result.Value.EvalSets![0].DataSource.PromptDirectoryPath.Should().Be("./prompts");
+        _ = result.Value.EvalSets![0].DataSource.PromptDirectory.Should().Be("./prompts");
     }
 
     // -------------------------------------------------------------------------

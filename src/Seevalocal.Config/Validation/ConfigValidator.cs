@@ -167,9 +167,9 @@ public sealed class ConfigValidator(
         switch (ds.Kind)
         {
             case DataSourceKind.Directory:
-                if (string.IsNullOrWhiteSpace(ds.PromptDirectoryPath))
-                    errors.Add(new ValidationError($"{prefix}.promptDirectoryPath",
-                        $"[ConfigValidator] {prefix}.promptDirectoryPath must be set when kind is Directory"));
+                if (string.IsNullOrWhiteSpace(ds.PromptDirectory))
+                    errors.Add(new ValidationError($"{prefix}.PromptDirectory",
+                        $"[ConfigValidator] {prefix}.PromptDirectory must be set when kind is Directory"));
                 break;
 
             case DataSourceKind.SingleFile:

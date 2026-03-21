@@ -60,8 +60,8 @@ public sealed class AutoSetupTests
             PipelineName = "Translation",
             DataSource = new DataSourceConfig
             {
-                PromptDirectoryPath = "/no/such/dir/source",
-                ExpectedOutputDirectoryPath = "/no/such/dir/ref",
+                PromptDirectory = "/no/such/dir/source",
+                ExpectedDirectory = "/no/such/dir/ref",
             }
         };
 

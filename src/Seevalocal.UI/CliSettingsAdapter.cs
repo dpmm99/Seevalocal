@@ -166,8 +166,8 @@ public static class CliSettingsAdapter
             ? new DataSourceConfig
             {
                 Kind = DataSourceKind.DirectoryPair,
-                PromptDirectoryPath = s.PromptDir,
-                ExpectedOutputDirectoryPath = s.ExpectedDir
+                PromptDirectory = s.PromptDir,
+                ExpectedDirectory = s.ExpectedDir
             }
             : new DataSourceConfig { Kind = DataSourceKind.SingleFile };
     }

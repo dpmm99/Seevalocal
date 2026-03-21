@@ -25,7 +25,7 @@ public sealed class ConfigValidatorTests
                     DataSource = new DataSourceConfig
                     {
                         Kind = DataSourceKind.Directory,
-                        PromptDirectoryPath = "/tmp/prompts",
+                        PromptDirectory = "/tmp/prompts",
                     },
                 },
             ],
@@ -189,13 +189,13 @@ public sealed class ConfigValidatorTests
                 {
                     Id = "dup",
                     PipelineName = "PipeA",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectoryPath = "/p" },
+                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
                 },
                 new EvalSetConfig
                 {
                     Id = "dup",
                     PipelineName = "PipeB",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectoryPath = "/p" },
+                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
                 },
             ],
         };
@@ -216,7 +216,7 @@ public sealed class ConfigValidatorTests
                 {
                     Id = "",
                     PipelineName = "PipeA",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectoryPath = "/p" },
+                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
                 },
             ],
         };
@@ -238,7 +238,7 @@ public sealed class ConfigValidatorTests
                 {
                     Id = "set1",
                     PipelineName = "UnknownPipeline",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectoryPath = "/p" },
+                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
                 },
             ],
         };
@@ -268,7 +268,7 @@ public sealed class ConfigValidatorTests
                 {
                     Id = "set1",
                     PipelineName = "P",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectoryPath = null },
+                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = null },
                 },
             ],
         };

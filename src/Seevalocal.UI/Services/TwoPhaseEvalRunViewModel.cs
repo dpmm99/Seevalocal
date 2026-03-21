@@ -39,7 +39,6 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     private LlamaServerClient? _primaryClient;  // Track primary client for managed servers
     private int _primarySlotCount = 4;  // Default, updated from server props
     private int _judgeSlotCount = 4;    // Default, updated from server props
-    private int _primaryPhaseCompletedCount = 0;  // Track primary phase completions for total count
     private bool _disposed;
     private int _earlyCompletionsLimit = 10;
 
@@ -173,14 +172,17 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     {
         get
         {
-            var recent = Results.TakeLast(5).ToList();
-            if (recent.Count == 0) return "No completions yet...";
-            var lastResult = recent.LastOrDefault();
-            if (lastResult == null) return "No completions yet...";
+            var count = Results.Count;
+            if (count == 0) return "No completions yet...";
+            
+            // Show count and last item info
+            var lastResult = Results.LastOrDefault();
+            if (lastResult == null) return $"{count} items loaded...";
+            
             var promptPreview = lastResult.UserPrompt?.Length > 40
                 ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
                 : lastResult.UserPrompt ?? "N/A";
-            return $"Last: {promptPreview}";
+            return $"[{count}] {promptPreview}";
         }
     }
 
@@ -450,16 +452,12 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     /// <summary>
     /// Resets metrics for Phase 2 (Judge evaluation).
     /// AverageTokensPerSecond and ETA are reset to start fresh for the judge phase.
-    /// CompletedCount is preserved to show total progress across both phases.
     /// </summary>
     private void ResetMetricsForPhase2()
     {
-        // Store the primary phase completed count to add to judge phase progress
-        _primaryPhaseCompletedCount = CompletedCount;
-        
         AverageTokensPerSecond = 0;
         EstimatedRemainingSeconds = null;
-        _logger.LogInformation("Metrics reset for judge phase (preserving {PrimaryCount} primary phase completions)", _primaryPhaseCompletedCount);
+        _logger.LogInformation("Metrics reset for judge phase");
     }
 
     /// <summary>
@@ -498,10 +496,14 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
             // This ensures RefreshResultsFromCache() will display checkpoint completions
             await persistentCollector.PopulateCacheFromCheckpointAsync(_evalSet.Id, default);
             
+            // Debug: log what was loaded
+            var cacheCount = persistentCollector.GetResults().Count;
+            _logger.LogInformation("Checkpoint loaded: {Count} results in cache, EvalSetId={EvalSetId}", cacheCount, _evalSet.Id);
+            
             // Refresh the UI from the cache (same as live completions)
             RefreshResultsFromCache();
 
-            _logger.LogInformation("Checkpoint loaded: {Count} results from cache", Results.Count);
+            _logger.LogInformation("After RefreshResultsFromCache: Results.Count={Count}", Results.Count);
         }
         catch (Exception ex)
         {
@@ -683,8 +685,10 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         UpdateEarlyCompletions();
 
         OnPropertyChanged(nameof(Results));
+        OnPropertyChanged(nameof(EarlyCompletions));
         OnPropertyChanged(nameof(HasMoreEarlyCompletions));
         OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
+        OnPropertyChanged(nameof(RecentActivitySummary));
 
         if (LoadMoreEarlyCompletionsCommand is RelayCommand cmd)
         {
@@ -697,8 +701,9 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         // Update all properties on UI thread
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            // During judge phase, add primary phase completions to show total progress
-            CompletedCount = _isJudgePhaseRunning ? (_primaryPhaseCompletedCount + e.CompletedCount) : e.CompletedCount;
+            // Show only judge phase completions (not primary phase completions)
+            // This gives a clear picture of judge phase progress
+            CompletedCount = e.CompletedCount;
             EstimatedRemainingSeconds = e.EstimatedRemainingSeconds;
 
             // Update progress percent for the current phase (0-100% independently for each phase)

@@ -25,8 +25,8 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
     public DataSourceConfig DefaultDataSourceConfig => new()
     {
         Kind = DataSourceKind.SplitDirectories,
-        PromptDirectoryPath = "./data/source",
-        ExpectedOutputDirectoryPath = "./data/reference",
+        PromptDirectory = "./data/source",
+        ExpectedDirectory = "./data/reference",
         FilePattern = "*.txt",
     };
 
@@ -91,8 +91,8 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         if (resolvedConfig.Judge is null)
             errors.Add("[TranslationPipelineFactory] Judge endpoint is not configured. Set 'judge' in settings.");
 
-        var sourceDir = evalSetConfig.DataSource?.PromptDirectoryPath ?? "./data/source";
-        var refDir = evalSetConfig.DataSource?.ExpectedOutputDirectoryPath ?? "./data/reference";
+        var sourceDir = evalSetConfig.DataSource?.PromptDirectory ?? "./data/source";
+        var refDir = evalSetConfig.DataSource?.ExpectedDirectory ?? "./data/reference";
 
         if (!Directory.Exists(sourceDir))
             errors.Add($"[TranslationPipelineFactory] Source directory not found: {Path.GetFullPath(sourceDir)}");

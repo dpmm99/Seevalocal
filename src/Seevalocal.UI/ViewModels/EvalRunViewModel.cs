@@ -201,6 +201,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
         // Notify UI of changes
         OnPropertyChanged(nameof(Results));
+        OnPropertyChanged(nameof(EarlyCompletions));
         OnPropertyChanged(nameof(HasMoreEarlyCompletions));
         OnPropertyChanged(nameof(RecentActivitySummary));
         OnPropertyChanged(nameof(LoadMoreEarlyCompletionsCommand));
@@ -394,14 +395,17 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     {
         get
         {
-            var recent = Results.TakeLast(5).ToList();
-            if (recent.Count == 0) return "No completions yet...";
-            var lastResult = recent.LastOrDefault();
-            if (lastResult == null) return "No completions yet...";
+            var count = Results.Count;
+            if (count == 0) return "No completions yet...";
+            
+            // Show count and last item info
+            var lastResult = Results.LastOrDefault();
+            if (lastResult == null) return $"{count} items loaded...";
+            
             var promptPreview = lastResult.UserPrompt?.Length > 40
                 ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
                 : lastResult.UserPrompt ?? "N/A";
-            return $"Last: {promptPreview}";
+            return $"[{count}] {promptPreview}";
         }
     }
 
@@ -647,10 +651,14 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             // This ensures RefreshResultsFromCache() will display checkpoint completions
             await persistentCollector.PopulateCacheFromCheckpointAsync(_evalSet.Id, default);
             
+            // Debug: log what was loaded
+            var cacheCount = persistentCollector.GetResults().Count;
+            _logger.LogInformation("Checkpoint loaded: {Count} results in cache, EvalSetId={EvalSetId}", cacheCount, _evalSet.Id);
+            
             // Refresh the UI from the cache (same as live completions)
             RefreshResultsFromCache();
 
-            _logger.LogInformation("Checkpoint loaded: {Count} results from cache", Results.Count);
+            _logger.LogInformation("After RefreshResultsFromCache: Results.Count={Count}", Results.Count);
         }
         catch (Exception ex)
         {

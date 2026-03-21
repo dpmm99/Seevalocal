@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Threading;
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core;
@@ -90,10 +89,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         private set
         {
             // Unsubscribe from old run's property changes
-            if (_activeRun != null)
-            {
-                _activeRun.PropertyChanged -= OnActiveRunPropertyChanged;
-            }
+            _activeRun?.PropertyChanged -= OnActiveRunPropertyChanged;
 
             SetField(ref _activeRun, value);
             OnPropertyChanged(nameof(CanNavigateToEvalGen));
@@ -103,10 +99,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(CurrentResultsRun));
 
             // Subscribe to new run's property changes
-            if (_activeRun != null)
-            {
-                _activeRun.PropertyChanged += OnActiveRunPropertyChanged;
-            }
+            _activeRun?.PropertyChanged += OnActiveRunPropertyChanged;
         }
     }
 
@@ -119,17 +112,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _loadedResultsRun;
         private set
         {
-            if (_loadedResultsRun != null)
-            {
-                _loadedResultsRun.PropertyChanged -= OnLoadedResultsRunPropertyChanged;
-            }
+            _loadedResultsRun?.PropertyChanged -= OnLoadedResultsRunPropertyChanged;
 
             SetField(ref _loadedResultsRun, value);
 
-            if (_loadedResultsRun != null)
-            {
-                _loadedResultsRun.PropertyChanged += OnLoadedResultsRunPropertyChanged;
-            }
+            _loadedResultsRun?.PropertyChanged += OnLoadedResultsRunPropertyChanged;
 
             // Notify all dependent properties immediately
             OnPropertyChanged(nameof(CurrentResultsRun));
@@ -143,7 +130,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     public IEvalRunViewModel? CurrentResultsRun => ActiveRun ?? (IEvalRunViewModel?)LoadedResultsRun;
 
-    private void OnLoadedResultsRunPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnLoadedResultsRunPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == "Results" || e.PropertyName == "EarlyCompletionsLimit")
         {
@@ -157,7 +144,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void OnActiveRunPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnActiveRunPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == "Results")
         {
@@ -400,289 +387,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             // Find the field and update its value
             var field = SettingsViewModel.SettingsFields.FirstOrDefault(f => f.Key == args.FieldKey);
-            if (field != null)
-            {
-                field.Value = path;
-            }
+            field?.Value = path;
         }
     }
 
     private void UpdateWizardStateFromSettingsField(SettingsFieldViewModel field)
     {
-        // Update the corresponding property in WizardState based on the field key
         if (WizardState is not WizardViewModel state) return;
 
-        // Use MaterializedValue (which includes values from all layers) instead of Value (user edits only)
-        var materializedValue = field.MaterializedValue;
-
-        switch (field.Key)
-        {
-            // Server settings
-            case "server.manage":
-                state.ManageServer = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "server.executablePath":
-                state.LlamaServerExecutablePath = materializedValue;
-                break;
-            case "server.host":
-                state.Host = materializedValue ?? "127.0.0.1";
-                break;
-            case "server.port":
-                state.Port = int.TryParse(materializedValue, out var port) ? port : 8080;
-                break;
-            case "server.apiKey":
-                state.ApiKey = materializedValue;
-                break;
-            case "server.baseUrl":
-                state.ServerUrl = materializedValue;
-                break;
-
-            // Llama server settings
-            case "llama.contextWindowTokens":
-                state.ContextWindowTokens = int.TryParse(materializedValue, out var context) ? context : null;
-                break;
-            case "llama.batchSizeTokens":
-                state.BatchSizeTokens = int.TryParse(materializedValue, out var batch) ? batch : null;
-                break;
-            case "llama.ubatchSizeTokens":
-                state.UbatchSizeTokens = int.TryParse(materializedValue, out var ubatch) ? ubatch : null;
-                break;
-            case "llama.parallelSlotCount":
-                state.ParallelSlotCount = int.TryParse(materializedValue, out var parallel) ? parallel : null;
-                break;
-            case "llama.enableContinuousBatching":
-                state.EnableContinuousBatching = ParseBool(materializedValue);
-                break;
-            case "llama.enableCachePrompt":
-                state.EnableCachePrompt = ParseBool(materializedValue);
-                break;
-            case "llama.enableContextShift":
-                state.EnableContextShift = ParseBool(materializedValue);
-                break;
-            case "llama.gpuLayerCount":
-                state.GpuLayerCount = int.TryParse(materializedValue, out var gpuLayers) ? gpuLayers : null;
-                break;
-            case "llama.splitMode":
-                state.SplitMode = materializedValue == "Unspecified" ? null : materializedValue;
-                break;
-            case "llama.kvCacheTypeK":
-                state.KvCacheTypeK = materializedValue;
-                break;
-            case "llama.kvCacheTypeV":
-                state.KvCacheTypeV = materializedValue;
-                break;
-            case "llama.enableKvOffload":
-                state.EnableKvOffload = ParseBool(materializedValue);
-                break;
-            case "llama.enableFlashAttention":
-                state.EnableFlashAttention = ParseBool(materializedValue);
-                break;
-            case "llama.samplingTemperature":
-                state.SamplingTemperature = double.TryParse(materializedValue, out var temp) ? temp : null;
-                break;
-            case "llama.topP":
-                state.TopP = double.TryParse(materializedValue, out var topP) ? topP : null;
-                break;
-            case "llama.topK":
-                state.TopK = int.TryParse(materializedValue, out var topK) ? topK : null;
-                break;
-            case "llama.minP":
-                state.MinP = double.TryParse(materializedValue, out var minP) ? minP : null;
-                break;
-            case "llama.repeatPenalty":
-                state.RepeatPenalty = double.TryParse(materializedValue, out var penalty) ? penalty : null;
-                break;
-            case "llama.repeatLastNTokens":
-                state.RepeatLastNTokens = int.TryParse(materializedValue, out var repeatN) ? repeatN : null;
-                break;
-            case "llama.presencePenalty":
-                state.PresencePenalty = double.TryParse(materializedValue, out var presence) ? presence : null;
-                break;
-            case "llama.frequencyPenalty":
-                state.FrequencyPenalty = double.TryParse(materializedValue, out var frequency) ? frequency : null;
-                break;
-            case "llama.seed":
-                state.Seed = int.TryParse(materializedValue, out var seed) ? seed : null;
-                break;
-            case "llama.threadCount":
-                state.ThreadCount = int.TryParse(materializedValue, out var threads) ? threads : null;
-                break;
-            case "llama.httpThreadCount":
-                state.HttpThreadCount = int.TryParse(materializedValue, out var httpThreads) ? httpThreads : null;
-                break;
-            case "llama.chatTemplate":
-                state.ChatTemplate = materializedValue;
-                break;
-            case "llama.enableJinja":
-                state.EnableJinja = ParseBool(materializedValue);
-                break;
-            case "llama.reasoningFormat":
-                state.ReasoningFormat = materializedValue == "Unspecified" ? null : materializedValue;
-                break;
-            case "llama.modelAlias":
-                state.ModelAlias = materializedValue;
-                break;
-            case "llama.logVerbosity":
-                state.LogVerbosity = int.TryParse(materializedValue, out var verbosity) ? verbosity : null;
-                break;
-            case "llama.enableMlock":
-                state.EnableMlock = ParseBool(materializedValue);
-                break;
-            case "llama.enableMmap":
-                state.EnableMmap = ParseBool(materializedValue);
-                break;
-            case "llama.serverTimeoutSeconds":
-                state.ServerTimeoutSeconds = double.TryParse(materializedValue, out var timeout) ? timeout : null;
-                break;
-
-            // Judge settings
-            case "judge.manage":
-                state.JudgeManageServer = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "judge.executablePath":
-                state.JudgeExecutablePath = materializedValue;
-                break;
-            case "judge.baseUrl":
-                state.JudgeServerUrl = materializedValue;
-                break;
-            case "judge.modelFile":
-                state.JudgeLocalModelPath = materializedValue;
-                break;
-            case "judge.hfRepo":
-                state.JudgeHfRepo = materializedValue;
-                break;
-            case "judge.apiKey":
-                state.JudgeApiKey = materializedValue;
-                break;
-            case "judge.template":
-                state.JudgeTemplate = materializedValue == "Unspecified" ? "standard" : (materializedValue ?? "standard");
-                break;
-
-            // Judge llama-server settings
-            case "judge.contextWindowTokens":
-                state.JudgeContextWindowTokens = int.TryParse(materializedValue, out var jContext) ? jContext : null;
-                break;
-            case "judge.batchSizeTokens":
-                state.JudgeBatchSizeTokens = int.TryParse(materializedValue, out var jBatch) ? jBatch : null;
-                break;
-            case "judge.parallelSlotCount":
-                state.JudgeParallelSlotCount = int.TryParse(materializedValue, out var jParallel) ? jParallel : null;
-                break;
-            case "judge.gpuLayerCount":
-                state.JudgeGpuLayerCount = int.TryParse(materializedValue, out var jGpuLayers) ? jGpuLayers : null;
-                break;
-            case "judge.splitMode":
-                state.JudgeSplitMode = materializedValue == "Unspecified" ? null : materializedValue;
-                break;
-            case "judge.kvCacheTypeK":
-                state.JudgeKvCacheTypeK = materializedValue;
-                break;
-            case "judge.kvCacheTypeV":
-                state.JudgeKvCacheTypeV = materializedValue;
-                break;
-            case "judge.enableFlashAttention":
-                state.JudgeEnableFlashAttention = ParseBool(materializedValue);
-                break;
-            case "judge.samplingTemperature":
-                state.JudgeSamplingTemperature = double.TryParse(materializedValue, out var jTemp) ? jTemp : null;
-                break;
-            case "judge.topP":
-                state.JudgeTopP = double.TryParse(materializedValue, out var jTopP) ? jTopP : null;
-                break;
-            case "judge.topK":
-                state.JudgeTopK = int.TryParse(materializedValue, out var jTopK) ? jTopK : null;
-                break;
-            case "judge.minP":
-                state.JudgeMinP = double.TryParse(materializedValue, out var jMinP) ? jMinP : null;
-                break;
-            case "judge.repeatPenalty":
-                state.JudgeRepeatPenalty = double.TryParse(materializedValue, out var jPenalty) ? jPenalty : null;
-                break;
-            case "judge.seed":
-                state.JudgeSeed = int.TryParse(materializedValue, out var jSeed) ? jSeed : null;
-                break;
-            case "judge.threadCount":
-                state.JudgeThreadCount = int.TryParse(materializedValue, out var jThreads) ? jThreads : null;
-                break;
-            case "judge.httpThreadCount":
-                state.JudgeHttpThreadCount = int.TryParse(materializedValue, out var jHttpThreads) ? jHttpThreads : null;
-                break;
-            case "judge.chatTemplate":
-                state.JudgeChatTemplate = materializedValue;
-                break;
-            case "judge.enableJinja":
-                state.JudgeEnableJinja = ParseBool(materializedValue);
-                break;
-            case "judge.logVerbosity":
-                state.JudgeLogVerbosity = int.TryParse(materializedValue, out var jLog) ? jLog : null;
-                break;
-            case "judge.enableMlock":
-                state.JudgeEnableMlock = ParseBool(materializedValue);
-                break;
-            case "judge.enableMmap":
-                state.JudgeEnableMmap = ParseBool(materializedValue);
-                break;
-            case "judge.serverTimeoutSeconds":
-                state.JudgeServerTimeoutSeconds = double.TryParse(materializedValue, out var jTimeout) ? jTimeout : null;
-                break;
-
-            // Output settings
-            case "output.writePerEvalJson":
-                state.WritePerEvalJson = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "output.writeSummaryJson":
-                state.WriteSummaryJson = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "output.writeSummaryCsv":
-                state.WriteSummaryCsv = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "output.writeParquet":
-                state.WriteResultsParquet = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "output.includeRawResponse":
-                state.IncludeRawLlmResponse = materializedValue?.ToLowerInvariant() == "true";
-                break;
-
-            // Run settings
-            case "run.name":
-                state.RunName = materializedValue;
-                break;
-            case "run.outputDirectoryPath":
-                state.OutputDir = materializedValue ?? "";
-                break;
-            case "run.exportShellTarget":
-                state.ShellTarget = materializedValue == "Unspecified" ? null : ParseShellTarget(materializedValue);
-                break;
-            case "run.continueOnEvalFailure":
-                state.ContinueOnEvalFailure = materializedValue?.ToLowerInvariant() == "true";
-                break;
-            case "run.maxConcurrentEvals":
-                state.MaxConcurrentEvals = int.TryParse(materializedValue, out var maxConcurrent) ? maxConcurrent : null;
-                break;
-            case "run.dataFilePath":
-                state.DataFilePath = materializedValue;
-                break;
-            case "run.promptDirectoryPath":
-                state.PromptDir = materializedValue;
-                break;
-            case "run.expectedDirectoryPath":
-                state.ExpectedDir = materializedValue;
-                break;
-        }
-
-        static bool? ParseBool(string? value) => value?.ToLowerInvariant() switch
-        {
-            "true" => true,
-            "false" => false,
-            _ => null
-        };
-
-        static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
-        {
-            "bash" => ShellTarget.Bash,
-            "powershell" => ShellTarget.PowerShell,
-            _ => null
-        };
+        // Use the reflection-based helper to apply the field value
+        SettingsFieldMapping.ApplyFieldToWizard(field, state);
     }
 
     /// <summary>
@@ -885,98 +599,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private PartialConfig BuildPartialConfigFromMaterializedValues()
     {
+        var fields = SettingsViewModel.SettingsFields;
+
         // Helper to get materialized field value - empty strings are treated as null
-        string? F(string key)
-        {
-            var val = SettingsViewModel.SettingsFields.FirstOrDefault(f => f.Key == key)?.MaterializedValue;
-            return string.IsNullOrEmpty(val) ? null : val;
-        }
-        bool? Fb(string key) => bool.TryParse(F(key), out var v) ? v : null;
-        int? Fi(string key) => int.TryParse(F(key), out var v) ? v : null;
-        double? Fd(string key) => double.TryParse(F(key), out var v) ? v : null;
+        string? F(string key) => SettingsFieldMapping.GetFieldValue(fields, key, f => f.MaterializedValue);
 
-        var llamaServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("llama.contextWindowTokens"),
-            BatchSizeTokens = Fi("llama.batchSizeTokens"),
-            UbatchSizeTokens = Fi("llama.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("llama.parallelSlotCount"),
-            EnableContinuousBatching = Fb("llama.enableContinuousBatching"),
-            EnableCachePrompt = Fb("llama.enableCachePrompt"),
-            EnableContextShift = Fb("llama.enableContextShift"),
-            GpuLayerCount = Fi("llama.gpuLayerCount"),
-            SplitMode = F("llama.splitMode") is var sm && sm != "Unspecified" ? sm : null,
-            KvCacheTypeK = F("llama.kvCacheTypeK"),
-            KvCacheTypeV = F("llama.kvCacheTypeV"),
-            EnableKvOffload = Fb("llama.enableKvOffload"),
-            EnableFlashAttention = Fb("llama.enableFlashAttention"),
-            SamplingTemperature = Fd("llama.samplingTemperature"),
-            TopP = Fd("llama.topP"),
-            TopK = Fi("llama.topK"),
-            MinP = Fd("llama.minP"),
-            RepeatPenalty = Fd("llama.repeatPenalty"),
-            RepeatLastNTokens = Fi("llama.repeatLastNTokens"),
-            PresencePenalty = Fd("llama.presencePenalty"),
-            FrequencyPenalty = Fd("llama.frequencyPenalty"),
-            Seed = Fi("llama.seed"),
-            ThreadCount = Fi("llama.threadCount"),
-            HttpThreadCount = Fi("llama.httpThreadCount"),
-            ChatTemplate = F("llama.chatTemplate"),
-            EnableJinja = Fb("llama.enableJinja"),
-            ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
-            ModelAlias = F("llama.modelAlias"),
-            LogVerbosity = Fi("llama.logVerbosity"),
-            EnableMlock = Fb("llama.enableMlock"),
-            EnableMmap = Fb("llama.enableMmap"),
-            ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
-        };
-
-        var judgeServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("judge.contextWindowTokens"),
-            BatchSizeTokens = Fi("judge.batchSizeTokens"),
-            UbatchSizeTokens = Fi("judge.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("judge.parallelSlotCount"),
-            EnableContinuousBatching = Fb("judge.enableContinuousBatching"),
-            EnableCachePrompt = Fb("judge.enableCachePrompt"),
-            EnableContextShift = Fb("judge.enableContextShift"),
-            GpuLayerCount = Fi("judge.gpuLayerCount"),
-            SplitMode = F("judge.splitMode") is var jsm && jsm != "Unspecified" ? jsm : null,
-            KvCacheTypeK = F("judge.kvCacheTypeK"),
-            KvCacheTypeV = F("judge.kvCacheTypeV"),
-            EnableKvOffload = Fb("judge.enableKvOffload"),
-            EnableFlashAttention = Fb("judge.enableFlashAttention"),
-            SamplingTemperature = Fd("judge.samplingTemperature"),
-            TopP = Fd("judge.topP"),
-            TopK = Fi("judge.topK"),
-            MinP = Fd("judge.minP"),
-            RepeatPenalty = Fd("judge.repeatPenalty"),
-            RepeatLastNTokens = Fi("judge.repeatLastNTokens"),
-            PresencePenalty = Fd("judge.presencePenalty"),
-            FrequencyPenalty = Fd("judge.frequencyPenalty"),
-            Seed = Fi("judge.seed"),
-            ThreadCount = Fi("judge.threadCount"),
-            HttpThreadCount = Fi("judge.httpThreadCount"),
-            ChatTemplate = F("judge.chatTemplate"),
-            EnableJinja = Fb("judge.enableJinja"),
-            ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
-            ModelAlias = F("judge.modelAlias"),
-            LogVerbosity = Fi("judge.logVerbosity"),
-            EnableMlock = Fb("judge.enableMlock"),
-            EnableMmap = Fb("judge.enableMmap"),
-            ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
-        };
+        // Use reflection-based helper to build llama server settings
+        var llamaServerSettings = SettingsFieldMapping.BuildLlamaServerSettings(fields, "llama", f => f.MaterializedValue);
+        var judgeServerSettings = SettingsFieldMapping.BuildLlamaServerSettings(fields, "judge", f => f.MaterializedValue);
 
         // Build Judge config - always include, even if not enabled
         var judge = new PartialJudgeConfig
         {
-            Enable = Fb("judge.enable"),
+            Enable = SettingsFieldMapping.ParseBool(F("judge.enable")),
             ServerConfig = new PartialServerConfig
             {
-                Manage = Fb("judge.manage"),
+                Manage = SettingsFieldMapping.ParseBool(F("judge.manage")),
                 ExecutablePath = F("judge.executablePath"),
                 Host = F("judge.host"),
-                Port = Fi("judge.port"),
+                Port = int.TryParse(F("judge.port"), out var p) ? p : null,
                 ApiKey = F("judge.apiKey"),
                 BaseUrl = F("judge.baseUrl"),
                 Model = new ModelSource
@@ -987,37 +628,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             },
             ServerSettings = judgeServerSettings,
             JudgePromptTemplate = F("judge.template"),
-            ScoreMinValue = Fd("judge.scoreMin") ?? 0,
-            ScoreMaxValue = Fd("judge.scoreMax") ?? 10,
+            ScoreMinValue = double.TryParse(F("judge.scoreMin"), out var sm) ? sm : 0,
+            ScoreMaxValue = double.TryParse(F("judge.scoreMax"), out var sx) ? sx : 10,
         };
 
         // Build DataSource config
-        var dataSourceKindStr = F("dataSource.kind");
-        DataSourceKind? dataSourceKind = dataSourceKindStr?.ToLowerInvariant() switch
-        {
-            "singlefile" => DataSourceKind.SingleFile,
-            "jsonlfile" => DataSourceKind.JsonlFile,
-            "splitdirectories" => DataSourceKind.SplitDirectories,
-            "directory" => DataSourceKind.Directory,
-            _ => null
-        };
-
         var dataSource = new PartialDataSourceConfig
         {
-            Kind = dataSourceKind,
+            Kind = SettingsFieldMapping.ParseDataSourceKind(F("dataSource.kind")),
             FilePath = F("dataSource.filePath"),
-            PromptDirectoryPath = F("dataSource.promptDirectory"),
-            ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+            PromptDirectory = F("dataSource.promptDirectory"),
+            ExpectedDirectory = F("dataSource.expectedDirectory"),
         };
 
         return new PartialConfig
         {
             Server = new PartialServerConfig
             {
-                Manage = Fb("server.manage"),
+                Manage = SettingsFieldMapping.ParseBool(F("server.manage")),
                 ExecutablePath = F("server.executablePath"),
                 Host = F("server.host"),
-                Port = Fi("server.port"),
+                Port = int.TryParse(F("server.port"), out var sp) ? sp : null,
                 ApiKey = F("server.apiKey"),
                 BaseUrl = F("server.baseUrl"),
             },
@@ -1027,17 +658,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 RunName = F("run.name"),
                 OutputDirectoryPath = F("run.outputDirectoryPath"),
-                ExportShellTarget = F("run.exportShellTarget") is var st && st != "Unspecified" ? ParseShellTarget(st) : null,
-                ContinueOnEvalFailure = Fb("run.continueOnEvalFailure"),
-                MaxConcurrentEvals = Fi("run.maxConcurrentEvals"),
+                ExportShellTarget = SettingsFieldMapping.ParseShellTarget(F("run.exportShellTarget")),
+                ContinueOnEvalFailure = SettingsFieldMapping.ParseBool(F("run.continueOnEvalFailure")),
+                MaxConcurrentEvals = int.TryParse(F("run.maxConcurrentEvals"), out var mc) ? mc : null,
             },
             Output = new OutputConfig
             {
-                WritePerEvalJson = Fb("output.writePerEvalJson") ?? false,
-                WriteSummaryJson = Fb("output.writeSummaryJson") ?? true,
-                WriteSummaryCsv = Fb("output.writeSummaryCsv") ?? false,
-                WriteResultsParquet = Fb("output.writeParquet") ?? false,
-                IncludeRawLlmResponse = Fb("output.includeRawResponse") ?? true,
+                WritePerEvalJson = SettingsFieldMapping.ParseBool(F("output.writePerEvalJson")) ?? false,
+                WriteSummaryJson = SettingsFieldMapping.ParseBool(F("output.writeSummaryJson")) ?? true,
+                WriteSummaryCsv = SettingsFieldMapping.ParseBool(F("output.writeSummaryCsv")) ?? false,
+                WriteResultsParquet = SettingsFieldMapping.ParseBool(F("output.writeParquet")) ?? false,
+                IncludeRawLlmResponse = SettingsFieldMapping.ParseBool(F("output.includeRawResponse")) ?? true,
             },
             EvalSets = [],
             DataSource = dataSource,
@@ -1053,102 +684,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// </summary>
     private PartialConfig BuildPartialConfigFromSettingsFields()
     {
+        var fields = SettingsViewModel.SettingsFields;
+
         // Helper to get field value - empty strings are treated as null
-        string? F(string key)
-        {
-            var val = SettingsViewModel.SettingsFields.FirstOrDefault(f => f.Key == key)?.Value;
-            return string.IsNullOrEmpty(val) ? null : val;
-        }
-        bool? Fb(string key) => bool.TryParse(F(key), out var v) ? v : null;
-        int? Fi(string key) => int.TryParse(F(key), out var v) ? v : null;
-        double? Fd(string key) => double.TryParse(F(key), out var v) ? v : null;
+        string? F(string key) => SettingsFieldMapping.GetFieldValue(fields, key, f => f.Value);
 
-        var llamaServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("llama.contextWindowTokens"),
-            BatchSizeTokens = Fi("llama.batchSizeTokens"),
-            UbatchSizeTokens = Fi("llama.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("llama.parallelSlotCount"),
-            EnableContinuousBatching = Fb("llama.enableContinuousBatching"),
-            EnableCachePrompt = Fb("llama.enableCachePrompt"),
-            EnableContextShift = Fb("llama.enableContextShift"),
-            GpuLayerCount = Fi("llama.gpuLayerCount"),
-            SplitMode = F("llama.splitMode") is var sm && sm != "Unspecified" ? sm : null,
-            KvCacheTypeK = F("llama.kvCacheTypeK"),
-            KvCacheTypeV = F("llama.kvCacheTypeV"),
-            EnableKvOffload = Fb("llama.enableKvOffload"),
-            EnableFlashAttention = Fb("llama.enableFlashAttention"),
-            SamplingTemperature = Fd("llama.samplingTemperature"),
-            TopP = Fd("llama.topP"),
-            TopK = Fi("llama.topK"),
-            MinP = Fd("llama.minP"),
-            RepeatPenalty = Fd("llama.repeatPenalty"),
-            RepeatLastNTokens = Fi("llama.repeatLastNTokens"),
-            PresencePenalty = Fd("llama.presencePenalty"),
-            FrequencyPenalty = Fd("llama.frequencyPenalty"),
-            Seed = Fi("llama.seed"),
-            ThreadCount = Fi("llama.threadCount"),
-            HttpThreadCount = Fi("llama.httpThreadCount"),
-            ChatTemplate = F("llama.chatTemplate"),
-            EnableJinja = Fb("llama.enableJinja"),
-            ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
-            ModelAlias = F("llama.modelAlias"),
-            LogVerbosity = Fi("llama.logVerbosity"),
-            EnableMlock = Fb("llama.enableMlock"),
-            EnableMmap = Fb("llama.enableMmap"),
-            ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
-            ExtraArgs = F("llama.extraArgs") is { } ea && !string.IsNullOrWhiteSpace(ea)
-                ? ea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : null,
-        };
-
-        var judgeServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("judge.contextWindowTokens"),
-            BatchSizeTokens = Fi("judge.batchSizeTokens"),
-            UbatchSizeTokens = Fi("judge.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("judge.parallelSlotCount"),
-            EnableContinuousBatching = Fb("judge.enableContinuousBatching"),
-            EnableCachePrompt = Fb("judge.enableCachePrompt"),
-            EnableContextShift = Fb("judge.enableContextShift"),
-            GpuLayerCount = Fi("judge.gpuLayerCount"),
-            SplitMode = F("judge.splitMode") is var jsm && jsm != "Unspecified" ? jsm : null,
-            KvCacheTypeK = F("judge.kvCacheTypeK"),
-            KvCacheTypeV = F("judge.kvCacheTypeV"),
-            EnableKvOffload = Fb("judge.enableKvOffload"),
-            EnableFlashAttention = Fb("judge.enableFlashAttention"),
-            SamplingTemperature = Fd("judge.samplingTemperature"),
-            TopP = Fd("judge.topP"),
-            TopK = Fi("judge.topK"),
-            MinP = Fd("judge.minP"),
-            RepeatPenalty = Fd("judge.repeatPenalty"),
-            RepeatLastNTokens = Fi("judge.repeatLastNTokens"),
-            PresencePenalty = Fd("judge.presencePenalty"),
-            FrequencyPenalty = Fd("judge.frequencyPenalty"),
-            Seed = Fi("judge.seed"),
-            ThreadCount = Fi("judge.threadCount"),
-            HttpThreadCount = Fi("judge.httpThreadCount"),
-            ChatTemplate = F("judge.chatTemplate"),
-            EnableJinja = Fb("judge.enableJinja"),
-            ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
-            ModelAlias = F("judge.modelAlias"),
-            LogVerbosity = Fi("judge.logVerbosity"),
-            EnableMlock = Fb("judge.enableMlock"),
-            EnableMmap = Fb("judge.enableMmap"),
-            ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
-            ExtraArgs = F("judge.extraArgs") is { } jea && !string.IsNullOrWhiteSpace(jea)
-                ? jea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : null,
-        };
+        // Use reflection-based helper to build llama server settings
+        var llamaServerSettings = SettingsFieldMapping.BuildLlamaServerSettings(fields, "llama", f => f.Value);
+        var judgeServerSettings = SettingsFieldMapping.BuildLlamaServerSettings(fields, "judge", f => f.Value);
 
         // Build Judge config - always include, even if not enabled
         var judge = new PartialJudgeConfig
         {
-            Enable = Fb("judge.enable"),
+            Enable = SettingsFieldMapping.ParseBool(F("judge.enable")),
             ServerConfig = new PartialServerConfig
             {
-                Manage = Fb("judge.manage"),
+                Manage = SettingsFieldMapping.ParseBool(F("judge.manage")),
                 ExecutablePath = F("judge.executablePath"),
                 Host = F("judge.host"),
-                Port = Fi("judge.port"),
+                Port = int.TryParse(F("judge.port"), out var p) ? p : null,
                 ApiKey = F("judge.apiKey"),
                 BaseUrl = F("judge.baseUrl"),
                 Model = new ModelSource
@@ -1159,37 +713,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             },
             ServerSettings = judgeServerSettings,
             JudgePromptTemplate = F("judge.template"),
-            ScoreMinValue = Fd("judge.scoreMin") ?? 0,
-            ScoreMaxValue = Fd("judge.scoreMax") ?? 10,
+            ScoreMinValue = double.TryParse(F("judge.scoreMin"), out var sm) ? sm : 0,
+            ScoreMaxValue = double.TryParse(F("judge.scoreMax"), out var sx) ? sx : 10,
         };
 
         // Build DataSource config
-        var dataSourceKindStr = F("dataSource.kind");
-        DataSourceKind? dataSourceKind = dataSourceKindStr?.ToLowerInvariant() switch
-        {
-            "singlefile" => DataSourceKind.SingleFile,
-            "jsonlfile" => DataSourceKind.JsonlFile,
-            "splitdirectories" => DataSourceKind.SplitDirectories,
-            "directory" => DataSourceKind.Directory,
-            _ => null
-        };
-
         var dataSource = new PartialDataSourceConfig
         {
-            Kind = dataSourceKind,
+            Kind = SettingsFieldMapping.ParseDataSourceKind(F("dataSource.kind")),
             FilePath = F("dataSource.filePath"),
-            PromptDirectoryPath = F("dataSource.promptDirectory"),
-            ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+            PromptDirectory = F("dataSource.promptDirectory"),
+            ExpectedDirectory = F("dataSource.expectedDirectory"),
         };
 
         return new PartialConfig
         {
             Server = new PartialServerConfig
             {
-                Manage = Fb("server.manage"),
+                Manage = SettingsFieldMapping.ParseBool(F("server.manage")),
                 ExecutablePath = F("server.executablePath"),
                 Host = F("server.host"),
-                Port = Fi("server.port"),
+                Port = int.TryParse(F("server.port"), out var sp) ? sp : null,
                 ApiKey = F("server.apiKey"),
                 BaseUrl = F("server.baseUrl"),
             },
@@ -1199,17 +743,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 RunName = F("run.name"),
                 OutputDirectoryPath = F("run.outputDirectoryPath"),
-                ExportShellTarget = F("run.exportShellTarget") is var st && st != "Unspecified" ? ParseShellTarget(st) : null,
-                ContinueOnEvalFailure = Fb("run.continueOnEvalFailure"),
-                MaxConcurrentEvals = Fi("run.maxConcurrentEvals"),
+                ExportShellTarget = SettingsFieldMapping.ParseShellTarget(F("run.exportShellTarget")),
+                ContinueOnEvalFailure = SettingsFieldMapping.ParseBool(F("run.continueOnEvalFailure")),
+                MaxConcurrentEvals = int.TryParse(F("run.maxConcurrentEvals"), out var mc) ? mc : null,
             },
             Output = new OutputConfig
             {
-                WritePerEvalJson = Fb("output.writePerEvalJson") ?? false,
-                WriteSummaryJson = Fb("output.writeSummaryJson") ?? true,
-                WriteSummaryCsv = Fb("output.writeSummaryCsv") ?? false,
-                WriteResultsParquet = Fb("output.writeParquet") ?? false,
-                IncludeRawLlmResponse = Fb("output.includeRawResponse") ?? true,
+                WritePerEvalJson = SettingsFieldMapping.ParseBool(F("output.writePerEvalJson")) ?? false,
+                WriteSummaryJson = SettingsFieldMapping.ParseBool(F("output.writeSummaryJson")) ?? true,
+                WriteSummaryCsv = SettingsFieldMapping.ParseBool(F("output.writeSummaryCsv")) ?? false,
+                WriteResultsParquet = SettingsFieldMapping.ParseBool(F("output.writeParquet")) ?? false,
+                IncludeRawLlmResponse = SettingsFieldMapping.ParseBool(F("output.includeRawResponse")) ?? true,
             },
             EvalSets = [],
             DataSource = dataSource,
@@ -1312,7 +856,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             // Store in a property for the Results view to access
             // This will trigger property change notifications for CurrentResultsRun and MetricStats
             LoadedResultsRun = tempRunVm;
-            
+
             // Switch to Results view
             CurrentView = AppView.Results;
 
@@ -1445,6 +989,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 _logger.LogInformation("Auto-loaded settings from {Path}", candidate);
             }
         }
+
+        // After loading default settings, sync wizard defaults to ensure the wizard
+        // shows the correct values from the settings file at startup
+        var config = ResolveCurrentConfig();
+        if (config.IsSuccess)
+        {
+            WizardState.SyncDefaultsFromSettings(config.Value, SettingsViewModel);
+        }
     }
 
     private void UpdateTitle()
@@ -1484,14 +1036,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 /// </summary>
 public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyChanged
 {
-    private readonly EvalSetConfig _evalSet;
     private int _earlyCompletionsLimit = 10;
 
     public TempEvalRunViewModel(EvalSetConfig evalSet, IReadOnlyList<EvalResult> results)
     {
-        _evalSet = evalSet;
         Results = new ObservableCollection<EvalResultViewModel>(results.Select(r => new EvalResultViewModel(r)));
-        EarlyCompletions = new ObservableCollection<EvalResultViewModel>();
+        EarlyCompletions = [];
         TotalCount = results.Count;
         CompletedCount = results.Count;
         StatusLine = $"Loaded from checkpoint: {evalSet.Id}";
@@ -1548,14 +1098,17 @@ public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyCha
     {
         get
         {
-            var recent = Results.TakeLast(5).ToList();
-            if (recent.Count == 0) return "No completions yet...";
-            var lastResult = recent.LastOrDefault();
-            if (lastResult == null) return "No completions yet...";
+            var count = Results.Count;
+            if (count == 0) return "No completions yet...";
+
+            // Show count and last item info
+            var lastResult = Results.LastOrDefault();
+            if (lastResult == null) return $"{count} items loaded...";
+
             var promptPreview = lastResult.UserPrompt?.Length > 40
                 ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
                 : lastResult.UserPrompt ?? "N/A";
-            return $"Last: {promptPreview}";
+            return $"[{count}] {promptPreview}";
         }
     }
 
@@ -1565,7 +1118,7 @@ public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyCha
     private void UpdateEarlyCompletions()
     {
         var newEarlyCompletions = Results.Take(EarlyCompletionsLimit).ToList();
-        
+
         for (int i = EarlyCompletions.Count - 1; i >= 0; i--)
         {
             if (i >= newEarlyCompletions.Count || EarlyCompletions[i] != newEarlyCompletions[i])
@@ -1573,16 +1126,16 @@ public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyCha
                 EarlyCompletions.RemoveAt(i);
             }
         }
-        
+
         for (int i = EarlyCompletions.Count; i < newEarlyCompletions.Count; i++)
         {
             EarlyCompletions.Add(newEarlyCompletions[i]);
         }
     }
 
-    public System.Windows.Input.ICommand PauseCommand { get; } = new RelayCommand(() => { }, () => false);
-    public System.Windows.Input.ICommand CancelCommand { get; } = new RelayCommand(() => { }, () => false);
-    public System.Windows.Input.ICommand LoadMoreEarlyCompletionsCommand { get; }
+    public ICommand PauseCommand { get; } = new RelayCommand(() => { }, () => false);
+    public ICommand CancelCommand { get; } = new RelayCommand(() => { }, () => false);
+    public ICommand LoadMoreEarlyCompletionsCommand { get; }
 
     private void LoadMoreEarlyCompletions()
     {
@@ -1596,7 +1149,7 @@ public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyCha
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }

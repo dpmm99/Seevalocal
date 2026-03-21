@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Seevalocal.Core.Models;
@@ -6,7 +6,7 @@ namespace Seevalocal.Core.Models;
 /// <summary>
 /// A typed, named measurement emitted by a pipeline stage.
 /// RULE: Name MUST end with a unit suffix (Seconds, Count, Bytes, Ratio, Percent, etc.).
-/// See 00-conventions.md §2.1 for the full list.
+/// See 00-conventions.md �2.1 for the full list.
 /// </summary>
 public record MetricValue
 {

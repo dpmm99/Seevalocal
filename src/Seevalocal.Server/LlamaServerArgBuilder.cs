@@ -106,6 +106,8 @@ public sealed class LlamaServerArgBuilder
         AppendInt(args, settings.LogVerbosity, "-lv");
         AppendString(args, settings.ChatTemplate, "--chat-template");
         AppendString(args, settings.ReasoningFormat, "--reasoning-format");
+        AppendInt(args, settings.ReasoningBudget, "--reasoning-budget");
+        AppendString(args, settings.ReasoningBudgetMessage, "--reasoning-budget-message");
         AppendDouble(args, settings.ServerTimeoutSeconds, "--timeout");
 
         // ── Extra args (verbatim) ─────────────────────────────────────────────

@@ -39,7 +39,7 @@ public sealed class CSharpCodingPipelineTests
     public void DefaultDataSourceConfig_IsDirectoryKind()
     {
         Assert.Equal(DataSourceKind.Directory, _factory.DefaultDataSourceConfig.Kind);
-        Assert.Equal("./data/prompts", _factory.DefaultDataSourceConfig.PromptDirectoryPath);
+        Assert.Equal("./data/prompts", _factory.DefaultDataSourceConfig.PromptDirectory);
     }
 
     [Fact]

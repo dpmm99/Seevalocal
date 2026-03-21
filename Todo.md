@@ -16,6 +16,8 @@ Add a "copy from wizard" button to the settings screen...if there wasn't already
 Make sure the wizard's reset-to-defaults button actually re-inherits but leaves anything they changed directly in the wizard alone.
 Make the settings show which pipeline each pipeline setting is for
 Verify that each setting is actually hooked up and meaningful (I notice judge log verbosity, judge reasoning format, judge template, and judge split mode don't even have fields, and there shouldn't be a "max concurrent evals" field anymore because that's dictated by the server /slots response)
+Make the ETA more meaningful (won't put in a ton of effort, but could consider remaining prompt tokens, average prompt processing speed, average completion token count relative to prompt token count and whether it seems linear, and tokens/sec times the parallel inference count)
+Be more specific about the expected generated prompt format in my translation eval generation flow.
 
 To-fix list:
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
@@ -25,9 +27,14 @@ Let the user know they can inject their per-item languages via curly brackets li
 TranslationPipelineFactory.EnsurePrerequisites should check that the data source is set up right, not for presence of those specific paths. Or maybe check nothing because that's already checked elsewhere?
 In fact, I don't think the PipelineRegistry is used at all...
 Translation judge prompt needs the language(s) listed in it, so the judge stage needs a way to pass them in.
-When continuing an eval from a checkpoint, the Run Dashboard and Results Viewer both need to include the data (StageOutputs and Metrics) from the checkpoint DB that were generated in past runs.
-
+The "Field mapping" tab isn't applicable for 'split directories' setup. Skip it.
+Move Pipeline Config to the end. "Translation Settings" (the ones specific to the translation pipeline) are only used by the judge, but maybe they should be used by the prompt stage, too.
+Reset what the UI shows for "Completed" and "Tokens/sec" and "ETA" and "Recent Activity" BEFORE "Phase 2: Judge evaluation..." so it doesn't look stuck while processing the first judgments.
+Instead of "Succeeded" as soon as the prompt stage completes, in the Run Dashboard, show "Pending" until the entire pipeline completes for that item. In fact, make it say "Running" when any stage starts and return to "Pending" when that stage finishes unless it's the final stage of the pipeline.
 
 To-test list:
-Fleshed-out problems have quit showing up in the GenEval view
 Add running average tokens per second to eval gen view (like "Tokens/sec" at the top of the Run Dashboard view).
+
+For the translation pipeline, the languages are only used by the judge--it currently expects the items to contain the full prompt and/or the system prompt. So when exporting a generated eval, which uses the split-directories mode, the FULL prompt has to be in the one folder. Maybe the right fix is to pull the languages from the problem statements or fleshed-out problem responses separately and output a JSONL file instead of split directories. Could also generate tags separately or something...
+The wizard doesn't use the TranslationSystemPrompt for any case, but it should use that instead of the default if specified.
+When continuing an eval from a checkpoint, the Run Dashboard and Results Viewer both need to include the data (StageOutputs and Metrics) from the checkpoint DB that were generated in past runs.

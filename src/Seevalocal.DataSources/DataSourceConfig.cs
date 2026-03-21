@@ -7,8 +7,8 @@ public record DataSourceConfig
     public DataSourceKind Kind { get; init; }
 
     // --- Directory-based ---
-    public string? PromptDirectoryPath { get; init; }
-    public string? ExpectedOutputDirectoryPath { get; init; }   // null = no expected output
+    public string? PromptDirectory { get; init; }
+    public string? ExpectedDirectory { get; init; }   // null = no expected output
     public string? SystemPromptFilePath { get; init; }          // single file applied to all
     public string FileExtensionFilter { get; init; } = "*.txt"; // glob
 

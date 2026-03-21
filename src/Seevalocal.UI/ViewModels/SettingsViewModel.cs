@@ -600,8 +600,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 Kind = F("dataSource.kind") is var kind && !string.IsNullOrEmpty(kind) && kind != "Unspecified"
                     ? ParseDataSourceKind(kind) : null,
                 FilePath = F("dataSource.filePath"),
-                PromptDirectoryPath = F("dataSource.promptDirectory"),
-                ExpectedOutputDirectoryPath = F("dataSource.expectedDirectory"),
+                PromptDirectory = F("dataSource.promptDirectory"),
+                ExpectedDirectory = F("dataSource.expectedDirectory"),
                 FieldMapping = new FieldMapping
                 {
                     IdField = F("dataSource.fieldMapping.idField"),
@@ -751,8 +751,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         "kind" => ds?.Kind?.ToString(),
         "filePath" => ds?.FilePath,
-        "promptDirectory" => ds?.PromptDirectoryPath,
-        "expectedDirectory" => ds?.ExpectedOutputDirectoryPath,
+        "promptDirectory" => ds?.PromptDirectory,
+        "expectedDirectory" => ds?.ExpectedDirectory,
         _ => null
     };
 
@@ -887,6 +887,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("llama.chatTemplate", "Chat Template", "Llama Server Settings", "", "Chat template name", true);
         AddField("llama.enableJinja", "Enable Jinja", "Llama Server Settings", "", "Enable Jinja template processing", true);
         AddField("llama.reasoningFormat", "Reasoning Format", "Llama Server Settings", "", "Reasoning format (e.g., chain-of-thought)", true);
+        AddField("llama.reasoningBudget", "Reasoning Budget", "Llama Server Settings", "", "Reasoning budget in tokens", true);
+        AddField("llama.reasoningBudgetMessage", "Reasoning Budget Message", "Llama Server Settings", "", "Message to control reasoning behavior", true);
         AddField("llama.modelAlias", "Model Alias", "Llama Server Settings", "", "Model alias for identification", true);
 
         // Llama Server Settings - Logging
@@ -949,6 +951,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("judge.chatTemplate", "Judge Chat Template", "Judge Settings", "", "Chat template name", true);
         AddField("judge.enableJinja", "Judge Enable Jinja", "Judge Settings", "", "Enable Jinja template processing", true);
         AddField("judge.reasoningFormat", "Judge Reasoning Format", "Judge Settings", "", "Reasoning format (e.g., chain-of-thought)", true);
+        AddField("judge.reasoningBudget", "Judge Reasoning Budget", "Judge Settings", "", "Reasoning budget in tokens", true);
+        AddField("judge.reasoningBudgetMessage", "Judge Reasoning Budget Message", "Judge Settings", "", "Message to control reasoning behavior", true);
         AddField("judge.modelAlias", "Judge Model Alias", "Judge Settings", "", "Model alias for identification", true);
         AddField("judge.logVerbosity", "Judge Log Verbosity", "Judge Settings", "", "Log verbosity level (0-3)", true);
         AddField("judge.enableMlock", "Judge Enable Mlock", "Judge Settings", "", "Lock model in memory", true);

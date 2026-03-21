@@ -16,18 +16,18 @@ public static class DataSourceValidator
         {
             case DataSourceKind.Directory:
             case DataSourceKind.SplitDirectories:
-                if (string.IsNullOrWhiteSpace(config.PromptDirectoryPath))
+                if (string.IsNullOrWhiteSpace(config.PromptDirectory))
                 {
                     errors.Add("[DataSourceValidator] PromptDirectoryPath is required for Directory/SplitDirectories kind");
                     break;
                 }
-                var promptDir = Path.GetFullPath(config.PromptDirectoryPath);
+                var promptDir = Path.GetFullPath(config.PromptDirectory);
                 if (!Directory.Exists(promptDir))
                     errors.Add($"[DataSourceValidator] PromptDirectoryPath does not exist: {promptDir}");
 
-                if (config.ExpectedOutputDirectoryPath is not null)
+                if (config.ExpectedDirectory is not null)
                 {
-                    var expDir = Path.GetFullPath(config.ExpectedOutputDirectoryPath);
+                    var expDir = Path.GetFullPath(config.ExpectedDirectory);
                     if (!Directory.Exists(expDir))
                         errors.Add($"[DataSourceValidator] ExpectedOutputDirectoryPath does not exist: {expDir}");
                 }

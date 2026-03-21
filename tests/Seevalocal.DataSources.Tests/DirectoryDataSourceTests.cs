@@ -45,7 +45,7 @@ public class DirectoryDataSourceTests : IDisposable
         var config = new DataSourceConfig
         {
             Kind = DataSourceKind.Directory,
-            PromptDirectoryPath = promptDir,
+            PromptDirectory = promptDir,
         };
         var ds = factory.Create("test", config).Value;
         var items = await TestHelpers.CollectAsync(ds);
@@ -73,8 +73,8 @@ public class DirectoryDataSourceTests : IDisposable
         var config = new DataSourceConfig
         {
             Kind = DataSourceKind.SplitDirectories,
-            PromptDirectoryPath = promptDir,
-            ExpectedOutputDirectoryPath = expectedDir,
+            PromptDirectory = promptDir,
+            ExpectedDirectory = expectedDir,
         };
         var ds = factory.Create("test", config).Value;
         var items = await TestHelpers.CollectAsync(ds);
@@ -95,7 +95,7 @@ public class DirectoryDataSourceTests : IDisposable
         var config = new DataSourceConfig
         {
             Kind = DataSourceKind.Directory,
-            PromptDirectoryPath = promptDir,
+            PromptDirectory = promptDir,
             SystemPromptFilePath = sysFile,
         };
         var ds = factory.Create("test", config).Value;
@@ -118,7 +118,7 @@ public class DirectoryDataSourceTests : IDisposable
         var config = new DataSourceConfig
         {
             Kind = DataSourceKind.Directory,
-            PromptDirectoryPath = promptDir,
+            PromptDirectory = promptDir,
             FileExtensionFilter = "*.txt",
         };
         var ds = factory.Create("test", config).Value;
@@ -137,7 +137,7 @@ public class DirectoryDataSourceTests : IDisposable
         var config = new DataSourceConfig
         {
             Kind = DataSourceKind.Directory,
-            PromptDirectoryPath = promptDir,
+            PromptDirectory = promptDir,
         };
         var ds = factory.Create("test", config).Value;
         var count = await ds.GetCountAsync(CancellationToken.None);

@@ -1,4 +1,4 @@
-﻿using FluentResults;
+using FluentResults;
 using Seevalocal.Core.Models;
 
 namespace Seevalocal.Core;

@@ -64,6 +64,6 @@ public sealed class ExactMatchStage(ILogger<ExactMatchStage> logger, bool caseSe
 
         return Task.FromResult(StageResult.Success(
             new Dictionary<string, object?> { ["ExactMatchStage.isMatch"] = isMatch },
-            [new MetricValue { Name = "exactMatch", Value = new MetricScalar.BoolMetric(isMatch) }]));
+            [new MetricValue { Name = "exactMatch", Value = new MetricScalar.BoolMetric(isMatch), SourceStage = StageName }]));
     }
 }

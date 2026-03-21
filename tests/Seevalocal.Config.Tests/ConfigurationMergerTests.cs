@@ -321,8 +321,8 @@ public sealed class ConfigurationMergerTests
             DataSource = new PartialDataSourceConfig
             {
                 Kind = DataSourceKind.SplitDirectories,
-                PromptDirectoryPath = "/prompts",
-                ExpectedOutputDirectoryPath = "/expected",
+                PromptDirectory = "/prompts",
+                ExpectedDirectory = "/expected",
             },
         };
         var second = new PartialConfig(); // no DataSource
@@ -330,8 +330,8 @@ public sealed class ConfigurationMergerTests
         var result = _merger.Merge([first, second]);
 
         _ = result.DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
-        _ = result.DataSource.PromptDirectoryPath.Should().Be("/prompts");
-        _ = result.DataSource.ExpectedOutputDirectoryPath.Should().Be("/expected");
+        _ = result.DataSource.PromptDirectory.Should().Be("/prompts");
+        _ = result.DataSource.ExpectedDirectory.Should().Be("/expected");
     }
 
     // -------------------------------------------------------------------------

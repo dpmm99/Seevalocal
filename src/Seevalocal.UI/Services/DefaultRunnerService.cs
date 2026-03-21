@@ -307,8 +307,8 @@ public sealed class DefaultRunnerService(
         return new DataSources.DataSourceConfig
         {
             Kind = effectiveKind,  // Now the same enum, no cast needed
-            PromptDirectoryPath = coreConfig.PromptDirectoryPath,
-            ExpectedOutputDirectoryPath = coreConfig.ExpectedOutputDirectoryPath,
+            PromptDirectory = coreConfig.PromptDirectory,
+            ExpectedDirectory = coreConfig.ExpectedDirectory,
             SystemPromptFilePath = coreConfig.DefaultSystemPromptFilePath,
             FileExtensionFilter = coreConfig.FileExtensionFilter ?? "*",
             DataFilePath = coreConfig.FilePath,

@@ -450,6 +450,8 @@ public sealed class WizardViewModelTests
         vm.JudgeUseLocalFile = true;
         vm.JudgeLocalModelPath = "/path/to/judge.gguf";
         vm.JudgeTemplate = "pass-fail";
+        vm.JudgeReasoningBudget = 512;
+        vm.JudgeReasoningBudgetMessage = "Reason carefully";
 
         // Act
         var config = vm.BuildPartialConfig();
@@ -460,6 +462,9 @@ public sealed class WizardViewModelTests
         _ = config.Judge.ServerConfig!.Model!.Kind.Should().Be(ModelSourceKind.LocalFile);
         _ = config.Judge.ServerConfig.Model.FilePath.Should().Be("/path/to/judge.gguf");
         _ = config.Judge.JudgePromptTemplate.Should().Be("pass-fail");
+        _ = config.Judge.ServerSettings.Should().NotBeNull();
+        _ = config.Judge.ServerSettings!.ReasoningBudget.Should().Be(512);
+        _ = config.Judge.ServerSettings.ReasoningBudgetMessage.Should().Be("Reason carefully");
         // Note: ScoreMin/ScoreMax have been removed as they are not used by the field-agnostic judge
     }
 
@@ -478,6 +483,8 @@ public sealed class WizardViewModelTests
         vm.TopP = 0.95;
         vm.TopK = 50;
         vm.ThreadCount = 8;
+        vm.ReasoningBudget = 1024;
+        vm.ReasoningBudgetMessage = "Think step by step";
 
         // Act
         var config = vm.BuildPartialConfig();
@@ -493,6 +500,8 @@ public sealed class WizardViewModelTests
         _ = config.LlamaSettings.TopP.Should().BeApproximately(0.95, 1e-9);
         _ = config.LlamaSettings.TopK.Should().Be(50);
         _ = config.LlamaSettings.ThreadCount.Should().Be(8);
+        _ = config.LlamaSettings.ReasoningBudget.Should().Be(1024);
+        _ = config.LlamaSettings.ReasoningBudgetMessage.Should().Be("Think step by step");
     }
 
     [Fact]
@@ -512,10 +521,10 @@ public sealed class WizardViewModelTests
         _ = config.Judge.Should().BeNull();
         // DataSource should still be created with defaults
         _ = config.EvalSets.Should().NotBeNull();
-        
-        // Server config exists but has null Manage and Model (not configured)
+
+        // Server config exists with default Manage=true (wizard manages server by default)
         _ = config.Server.Should().NotBeNull();
-        _ = config.Server.Manage.Should().BeNull();
+        _ = config.Server!.Manage.Should().BeTrue();  // Default is true, always included
         _ = config.Server.Model.Should().BeNull();
     }
 
@@ -844,8 +853,8 @@ public sealed class WizardViewModelTests
                     DataSource = new DataSourceConfig
                     {
                         Kind = DataSourceKind.SplitDirectories,
-                        PromptDirectoryPath = "./prompts",
-                        ExpectedOutputDirectoryPath = "./expected",
+                        PromptDirectory = "./prompts",
+                        ExpectedDirectory = "./expected",
                         FieldMapping = new FieldMapping
                         {
                             IdField = "test_id",

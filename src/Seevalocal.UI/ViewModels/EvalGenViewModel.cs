@@ -359,7 +359,7 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
             if (!File.Exists(dbPath)) return;
 
             // Open the checkpoint database and load the startup config
-            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await using var connection = new SqliteConnection($"Data Source={dbPath}");
             await connection.OpenAsync();
 
             await using var cmd = connection.CreateCommand();

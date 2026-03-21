@@ -120,8 +120,8 @@ public sealed partial class ExternalProcessStage(ILogger<ExternalProcessStage> l
 
         List<MetricValue> metrics =
         [
-            new MetricValue { Name = "processExitCode", Value = new MetricScalar.IntMetric(exitCode) },
-            new MetricValue { Name = "processDurationSeconds", Value = new MetricScalar.DoubleMetric(sw.Elapsed.TotalSeconds) }
+            new MetricValue { Name = "processExitCode", Value = new MetricScalar.IntMetric(exitCode), SourceStage = StageName },
+            new MetricValue { Name = "processDurationSeconds", Value = new MetricScalar.DoubleMetric(sw.Elapsed.TotalSeconds), SourceStage = StageName }
         ];
 
         // Extract metrics from stdout
@@ -169,16 +169,16 @@ public sealed partial class ExternalProcessStage(ILogger<ExternalProcessStage> l
             {
                 MetricType.Double when double.TryParse(raw, System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var d)
-                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.DoubleMetric(d) },
+                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.DoubleMetric(d), SourceStage = StageName },
 
                 MetricType.Int when int.TryParse(raw, out var i)
-                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.IntMetric(i) },
+                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.IntMetric(i), SourceStage = StageName },
 
                 MetricType.Bool when bool.TryParse(raw, out var b)
-                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.BoolMetric(b) },
+                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.BoolMetric(b), SourceStage = StageName },
 
                 MetricType.String
-                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.StringMetric(raw) },
+                    => new MetricValue { Name = extractor.MetricName, Value = new MetricScalar.StringMetric(raw), SourceStage = StageName },
 
                 _ => null
             };
