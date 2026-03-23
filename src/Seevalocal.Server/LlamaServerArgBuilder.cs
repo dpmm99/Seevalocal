@@ -49,13 +49,14 @@ public sealed class LlamaServerArgBuilder
 
         // ── Network ──────────────────────────────────────────────────────────
         // Network settings come from serverConfig only (not from settings)
-        var host = serverConfig.Host ?? "127.0.0.1";
-        args.Add("--host");
-        args.Add(host);
-
-        var port = serverConfig.Port ?? 8080;
-        args.Add("--port");
-        args.Add(port.ToString());
+        var url = new Uri(serverConfig.BaseUrl ?? "http://127.0.0.1:8080");
+        if (url != null)
+        {
+            args.Add("--host");
+            args.Add(url.Host);
+            args.Add("--port");
+            args.Add(url.Port.ToString());
+        }
 
         var apiKey = serverConfig.ApiKey;
         if (apiKey is not null)

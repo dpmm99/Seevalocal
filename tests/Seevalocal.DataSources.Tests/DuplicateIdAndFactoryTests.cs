@@ -94,7 +94,7 @@ public class DataSourceFactoryTests : IDisposable
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
         var result = factory.Create("test", new DataSourceConfig
         {
-            Kind = DataSourceKind.Directory,
+            Kind = DataSourceKind.SplitDirectories,
             PromptDirectory = "/nonexistent",
         });
         Assert.True(result.IsFailed);

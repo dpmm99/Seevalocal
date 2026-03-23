@@ -126,8 +126,7 @@ public sealed class RunCommand(
                 // This is a simplified placeholder that shows the structure
 
                 _console.MarkupLine($"[green]Server ready at {serverInfo.BaseUrl}[/]");
-                _console.MarkupLine($"[green]Pipeline: {resolvedConfig.EvalSets.FirstOrDefault()?.PipelineName ?? "none"}[/]");
-                _console.MarkupLine($"[green]Eval sets: {resolvedConfig.EvalSets.Count}[/]");
+                _console.MarkupLine($"[green]Pipeline: {resolvedConfig.Run.PipelineName ?? "none"}[/]");
 
                 // Placeholder for actual pipeline execution
                 await Task.CompletedTask;

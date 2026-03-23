@@ -50,14 +50,8 @@ public sealed class AutoSetupTests
     {
         var config = new ResolvedConfig
         {
+            Run = new RunMeta { PipelineName = "Translation" },
             Judge = null, // no judge configured
-        };
-
-        // Use directories that definitely don't exist
-        var evalSet = new EvalSetConfig
-        {
-            Id = "eval",
-            PipelineName = "Translation",
             DataSource = new DataSourceConfig
             {
                 PromptDirectory = "/no/such/dir/source",
@@ -65,7 +59,7 @@ public sealed class AutoSetupTests
             }
         };
 
-        var result = TranslationPipelineFactory.EnsurePrerequisites(evalSet, config);
+        var result = TranslationPipelineFactory.EnsurePrerequisites(config);
 
         Assert.True(result.IsFailed);
         Assert.Contains(result.Errors, static e => e.Message.Contains("Judge endpoint is not configured"));

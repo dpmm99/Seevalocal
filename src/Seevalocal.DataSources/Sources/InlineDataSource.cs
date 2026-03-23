@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.DataSources.Internal;

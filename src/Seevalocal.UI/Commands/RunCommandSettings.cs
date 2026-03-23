@@ -43,14 +43,6 @@ public class RunCommandSettings : CommandSettings
     [Description("API key for server authentication")]
     public string? ApiKey { get; set; }
 
-    [CommandOption("--host")]
-    [Description("llama-server host (default: 127.0.0.1)")]
-    public string? Host { get; set; }
-
-    [CommandOption("--port")]
-    [Description("llama-server port (default: 8080)")]
-    public int? Port { get; set; }
-
     // ─── llama-server tuning ──────────────────────────────────────────────────
 
     [CommandOption("--ctx")]
@@ -236,12 +228,4 @@ public class RunCommandSettings : CommandSettings
     [CommandOption("--stop-on-failure")]
     [Description("Stop run on first item failure")]
     public bool StopOnFailure { get; set; }
-
-    [CommandOption("--timeout-seconds")]
-    [Description("Per-item timeout in seconds")]
-    public double? TimeoutSeconds { get; set; }
-
-    [CommandOption("--retry-count")]
-    [Description("Number of retries on transient failure (default: 2)")]
-    public int? RetryCount { get; set; }
 }

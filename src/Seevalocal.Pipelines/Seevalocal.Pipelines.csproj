@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core\Seevalocal.Core.csproj" />
     <ProjectReference Include="..\Seevalocal.Config\Seevalocal.Config.csproj" />
     <ProjectReference Include="..\Seevalocal.Core.Pipeline\Seevalocal.Core.Pipeline.csproj" />
     <ProjectReference Include="..\Seevalocal.Judge\Seevalocal.Judge.csproj" />

@@ -12,8 +12,8 @@ public sealed class CSharpCodingPipelineTests
     [Fact]
     public void Create_DefaultOptions_ProducesTwoStages_PromptAndSetup()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CSharpCoding");
-        var pipeline = _factory.Create(evalSet, TestHelpers.MakeConfig());
+        var config = TestHelpers.MakeConfigWithPipeline("CSharpCoding");
+        var pipeline = _factory.Create(config);
 
         Assert.Equal("CSharpCoding", pipeline.PipelineName);
         Assert.Equal(2, pipeline.Stages.Count);
@@ -24,12 +24,12 @@ public sealed class CSharpCodingPipelineTests
     [Fact]
     public void Create_ScoreWithJudge_True_AddsJudgeStageAsThird()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CSharpCoding", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CSharpCoding", new Dictionary<string, object?>
         {
             ["scoreStyleWithJudge"] = true,
         });
 
-        var pipeline = _factory.Create(evalSet, TestHelpers.MakeConfig());
+        var pipeline = _factory.Create(config);
 
         Assert.Equal(3, pipeline.Stages.Count);
         Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
@@ -38,32 +38,32 @@ public sealed class CSharpCodingPipelineTests
     [Fact]
     public void DefaultDataSourceConfig_IsDirectoryKind()
     {
-        Assert.Equal(DataSourceKind.Directory, _factory.DefaultDataSourceConfig.Kind);
+        Assert.Equal(DataSourceKind.SplitDirectories, _factory.DefaultDataSourceConfig.Kind);
         Assert.Equal("./data/prompts", _factory.DefaultDataSourceConfig.PromptDirectory);
     }
 
     [Fact]
     public void Validate_InvalidCompileTimeout_ReturnsError()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CSharpCoding", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CSharpCoding", new Dictionary<string, object?>
         {
             ["compileTimeoutSeconds"] = new object(), // wrong type
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Contains(errors, static e => e.Field == "pipelineOptions.compileTimeoutSeconds");
     }
 
     [Fact]
     public void Validate_ValidOptions_ReturnsNoErrors()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CSharpCoding", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CSharpCoding", new Dictionary<string, object?>
         {
             ["compileTimeoutSeconds"] = 45.0,
             ["testTimeoutSeconds"] = 90.0,
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Empty(errors);
     }
 

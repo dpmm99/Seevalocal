@@ -122,7 +122,6 @@ public sealed partial class JudgeStage(
                 new ChatMessage { Role = "user",   Content = judgePrompt },
             ],
             MaxTokens = _config.JudgeMaxTokenCount,
-            Temperature = _config.JudgeSamplingTemperature,
         };
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -206,12 +205,12 @@ public sealed partial class JudgeStage(
         {
             ["JudgeStage.rawResponse"] = judgeText,
         };
-        
+
         if (!string.IsNullOrEmpty(parsed.Rationale))
         {
             outputs["JudgeStage.rationale"] = parsed.Rationale;
         }
-        
+
         return outputs;
     }
 

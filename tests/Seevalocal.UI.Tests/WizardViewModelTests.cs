@@ -153,11 +153,11 @@ public sealed class WizardViewModelTests
         vm.UseSingleFileDataSource = true;
         vm.DataFilePath = Path.GetTempFileName();
         await vm.GoForwardAsync(); // FieldMapping (no validation)
-        await vm.GoForwardAsync(); // PipelineConfiguration (no validation)
         await vm.GoForwardAsync(); // Scoring (no validation when judge disabled)
         await vm.GoForwardAsync(); // Output
 
-        // Assert
+        // Assert - Output step should auto-select shell target
+        // Note: PipelineConfiguration is skipped for CasualQA (default pipeline)
         _ = vm.CurrentStep.Should().Be(WizardStepKind.Output);
         _ = vm.ShellTarget.Should().NotBeNull();
     }
@@ -417,9 +417,10 @@ public sealed class WizardViewModelTests
         var config = vm.BuildPartialConfig();
 
         // Assert
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
-        _ = config.EvalSets[0].DataSource.PromptDirectory.Should().Be("/path/to/prompts");
-        _ = config.EvalSets[0].DataSource.ExpectedDirectory.Should().Be("/path/to/expected");
+        _ = config.DataSource.Should().NotBeNull();
+        _ = config.DataSource!.Kind.Should().Be(DataSourceKind.SplitDirectories);
+        _ = config.DataSource.PromptDirectory.Should().Be("/path/to/prompts");
+        _ = config.DataSource.ExpectedDirectory.Should().Be("/path/to/expected");
     }
 
     [Fact]
@@ -435,8 +436,9 @@ public sealed class WizardViewModelTests
         var config = vm.BuildPartialConfig();
 
         // Assert
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
-        _ = config.EvalSets[0].DataSource.FilePath.Should().Be("/path/to/data.jsonl");
+        _ = config.DataSource.Should().NotBeNull();
+        _ = config.DataSource!.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = config.DataSource.FilePath.Should().Be("/path/to/data.jsonl");
     }
 
     [Fact]
@@ -515,17 +517,11 @@ public sealed class WizardViewModelTests
         // Act
         var config = vm.BuildPartialConfig();
 
-        // Assert - unedited llama settings and judge should be null
-        // Server will have default Host/Port values
+        // EVERYTHING should be null since nothing was "modified" by the user
         _ = config.LlamaSettings.Should().BeNull();
         _ = config.Judge.Should().BeNull();
-        // DataSource should still be created with defaults
-        _ = config.EvalSets.Should().NotBeNull();
-
-        // Server config exists with default Manage=true (wizard manages server by default)
-        _ = config.Server.Should().NotBeNull();
-        _ = config.Server!.Manage.Should().BeTrue();  // Default is true, always included
-        _ = config.Server.Model.Should().BeNull();
+        _ = config.DataSource.Should().BeNull();
+        _ = config.Server.Should().BeNull();
     }
 
     [Fact]
@@ -734,52 +730,43 @@ public sealed class WizardViewModelTests
     {
         // Arrange
         var vm = new WizardViewModel(_filePicker, _toastService);
-        
+
         // Create a mock ResolvedConfig with field mappings
         var config = new ResolvedConfig
         {
             Run = new RunMeta
             {
                 RunName = "TestRun",
-                OutputDirectoryPath = "./test_output"
+                OutputDirectoryPath = "./test_output",
+                PipelineName = "CasualQA"
             },
             Server = new ServerConfig
             {
                 Manage = true,
-                Host = "localhost",
-                Port = 8080
+                BaseUrl = $"http://localhost:8080"
             },
             LlamaServer = new LlamaServerSettings
             {
                 ContextWindowTokens = 4096
             },
-            EvalSets =
-            [
-                new EvalSetConfig
+            DataSource = new DataSourceConfig
+            {
+                Kind = DataSourceKind.SingleFile,
+                FilePath = "./test_data.json",
+                FieldMapping = new FieldMapping
                 {
-                    Id = "test-eval-set",
-                    Name = "Test Eval Set",
-                    PipelineName = "CasualQA",
-                    DataSource = new DataSourceConfig
-                    {
-                        Kind = DataSourceKind.SingleFile,
-                        FilePath = "./test_data.json",
-                        FieldMapping = new FieldMapping
-                        {
-                            IdField = "id",
-                            UserPromptField = "prompt",
-                            ExpectedOutputField = "expected",
-                            SystemPromptField = "system_prompt"
-                        }
-                    }
+                    IdField = "id",
+                    UserPromptField = "prompt",
+                    ExpectedOutputField = "expected",
+                    SystemPromptField = "system_prompt"
                 }
-            ]
+            }
         };
 
         // Act - directly call the population method using reflection
-        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        
+
         // Verify method was found
         _ = methodInfo.Should().NotBeNull("PopulateFromCheckpointConfig method should exist");
         methodInfo!.Invoke(vm, [config]);
@@ -796,36 +783,29 @@ public sealed class WizardViewModelTests
     {
         // Arrange
         var vm = new WizardViewModel(_filePicker, _toastService);
-        
+
         var config = new ResolvedConfig
         {
-            Run = new RunMeta { RunName = "TranslationRun" },
+            Run = new RunMeta { RunName = "TranslationRun", PipelineName = "Translation" },
             Server = new ServerConfig { Manage = true },
             LlamaServer = new LlamaServerSettings(),
-            EvalSets =
-            [
-                new EvalSetConfig
+            DataSource = new DataSourceConfig
+            {
+                Kind = DataSourceKind.SingleFile,
+                FilePath = "./translation_data.json",
+                FieldMapping = new FieldMapping
                 {
-                    PipelineName = "Translation",
-                    DataSource = new DataSourceConfig
-                    {
-                        Kind = DataSourceKind.SingleFile,
-                        FilePath = "./translation_data.json",
-                        FieldMapping = new FieldMapping
-                        {
-                            IdField = "id",
-                            UserPromptField = "input",
-                            ExpectedOutputField = "output",
-                            SourceLanguageField = "source_lang",
-                            TargetLanguageField = "target_lang"
-                        }
-                    }
+                    IdField = "id",
+                    UserPromptField = "input",
+                    ExpectedOutputField = "output",
+                    SourceLanguageField = "source_lang",
+                    TargetLanguageField = "target_lang"
                 }
-            ]
+            }
         };
 
         // Act
-        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         methodInfo!.Invoke(vm, [config]);
 
@@ -839,35 +819,28 @@ public sealed class WizardViewModelTests
     {
         // Arrange
         var vm = new WizardViewModel(_filePicker, _toastService);
-        
+
         var config = new ResolvedConfig
         {
-            Run = new RunMeta { RunName = "DirRun" },
+            Run = new RunMeta { RunName = "DirRun", PipelineName = "CasualQA" },
             Server = new ServerConfig { Manage = true },
             LlamaServer = new LlamaServerSettings(),
-            EvalSets =
-            [
-                new EvalSetConfig
+            DataSource = new DataSourceConfig
+            {
+                Kind = DataSourceKind.SplitDirectories,
+                PromptDirectory = "./prompts",
+                ExpectedDirectory = "./expected",
+                FieldMapping = new FieldMapping
                 {
-                    PipelineName = "CasualQA",
-                    DataSource = new DataSourceConfig
-                    {
-                        Kind = DataSourceKind.SplitDirectories,
-                        PromptDirectory = "./prompts",
-                        ExpectedDirectory = "./expected",
-                        FieldMapping = new FieldMapping
-                        {
-                            IdField = "test_id",
-                            UserPromptField = "user_prompt",
-                            ExpectedOutputField = "expected_output"
-                        }
-                    }
+                    IdField = "test_id",
+                    UserPromptField = "user_prompt",
+                    ExpectedOutputField = "expected_output"
                 }
-            ]
+            }
         };
 
         // Act
-        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig", 
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromCheckpointConfig",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         methodInfo!.Invoke(vm, [config]);
 

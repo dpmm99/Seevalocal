@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
-using Seevalocal.Judge;
 using Xunit;
 
 namespace Seevalocal.Judge.Tests;
@@ -84,15 +83,15 @@ public class JudgeMetricExtractionTests
     public void Metrics_RationaleIsExtractedCaseInsensitively()
     {
         var parser = CreateParser();
-        
+
         var json1 = """{"Rationale": "test1", "score": 8}""";
         var result1 = parser.Parse(json1, DefaultConfig());
         _ = result1.Rationale.Should().Be("test1");
-        
+
         var json2 = """{"RATIONALE": "test2", "score": 9}""";
         var result2 = parser.Parse(json2, DefaultConfig());
         _ = result2.Rationale.Should().Be("test2");
-        
+
         var json3 = """{"rationale": "test3", "score": 7}""";
         var result3 = parser.Parse(json3, DefaultConfig());
         _ = result3.Rationale.Should().Be("test3");

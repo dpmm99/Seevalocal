@@ -4,7 +4,6 @@ namespace Seevalocal.Metrics.Models;
 
 public record RunSummary
 {
-    public string EvalSetId { get; init; } = "";
     public string RunName { get; init; } = "";
     public DateTimeOffset StartedAt { get; init; }
     public double TotalDurationSeconds { get; init; }

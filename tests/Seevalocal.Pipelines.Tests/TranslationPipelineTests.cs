@@ -11,10 +11,8 @@ public sealed class TranslationPipelineTests
     [Fact]
     public void Create_DefaultOptions_ProducesTwoStages_PromptAndJudge()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("Translation");
-        var config = TestHelpers.MakeConfig();
-
-        var pipeline = _factory.Create(evalSet, config);
+        var config = TestHelpers.MakeConfigWithPipeline("Translation");
+        var pipeline = _factory.Create(config);
 
         Assert.Equal("Translation", pipeline.PipelineName);
         Assert.Equal(2, pipeline.Stages.Count);
@@ -25,9 +23,8 @@ public sealed class TranslationPipelineTests
     [Fact]
     public void Create_StagesAreInCorrectOrder_PromptBeforeJudge()
     {
-        var pipeline = _factory.Create(
-            TestHelpers.MakeEvalSetConfig("Translation"),
-            TestHelpers.MakeConfig());
+        var config = TestHelpers.MakeConfigWithPipeline("Translation");
+        var pipeline = _factory.Create(config);
 
         Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
         Assert.Equal("JudgeStage", pipeline.Stages[1].StageName);
@@ -45,33 +42,33 @@ public sealed class TranslationPipelineTests
     [Fact]
     public void Validate_ValidOptions_ReturnsNoErrors()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("Translation", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("Translation", new Dictionary<string, object?>
         {
             ["sourceLanguage"] = "English",
             ["targetLanguage"] = "Spanish",
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Empty(errors);
     }
 
     [Fact]
     public void Validate_NullOptions_ReturnsNoErrors()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("Translation", opts: null);
-        var errors = _factory.Validate(evalSet);
+        var config = TestHelpers.MakeConfigWithPipeline("Translation", opts: null);
+        var errors = _factory.Validate(config);
         Assert.Empty(errors);
     }
 
     [Fact]
     public void Validate_InvalidTypeForSourceLanguage_ReturnsError()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("Translation", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("Translation", new Dictionary<string, object?>
         {
             ["sourceLanguage"] = 42, // wrong type
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Contains(errors, static e => e.Field == "pipelineOptions.sourceLanguage");
     }
 }

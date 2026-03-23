@@ -20,6 +20,8 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly ILogger<EvalGenRunViewModel> _logger;
     private EvalGenRun? _run;
     private bool _disposed;
+    private PeriodicTimer? _tokensPerSecondTimer;
+    private CancellationTokenSource? _timerCts;
 
     // ─── Properties ───────────────────────────────────────────────────────────
 
@@ -202,25 +204,31 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             TargetCategories = config.TargetCategoryCount;
             TargetProblems = config.TargetCategoryCount * config.TargetProblemsPerCategory;
 
+            // Start timer to periodically update tokens/sec (since it's not included in progress updates)
+            // Start AFTER IsRunning is set to true so the timer loop runs correctly
+            _timerCts = new CancellationTokenSource();
+            _tokensPerSecondTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            _ = UpdateTokensPerSecondPeriodicallyAsync(_timerCts.Token);
+
             // Load existing categories and progress from the shared collector
             if (_run.Collector != null)
             {
                 LoadCategoriesFromCheckpoint(_run.Collector);
-                
+
                 // Load progress from checkpoint if resuming
                 if (config.ContinueFromCheckpoint)
                 {
                     var categories = _run.Collector.GetCategories();
                     var problems = _run.Collector.GetProblems();
                     var fleshedOutCount = problems.Count(p => p.IsComplete);
-                    
+
                     CategoriesGenerated = categories.Count;
                     ProblemsGenerated = problems.Count;
                     ProblemsFleshedOut = fleshedOutCount;
-                    
+
                     _logger.LogInformation("Loaded from checkpoint: {Categories} categories, {Problems} problems ({FleshedOut} fleshed out)",
                         CategoriesGenerated, ProblemsGenerated, ProblemsFleshedOut);
-                    
+
                     StatusLine = $"Resumed from checkpoint: {CategoriesGenerated}/{TargetCategories} categories, {ProblemsGenerated}/{TargetProblems} problems";
                 }
             }
@@ -366,7 +374,7 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
             IsPausing = true;
             StatusLine = "Pausing...";
             _logger.LogInformation("Pausing eval generation");
-            
+
             // Schedule a check to see if pause has completed
             // Since eval gen doesn't track in-flight items, we poll the run's pause state
             CheckPauseCompletedAsync();
@@ -457,6 +465,12 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private void OnRunCompleted()
     {
+        // Stop the tokens/sec timer
+        _timerCts?.Cancel();
+        _tokensPerSecondTimer?.Dispose();
+        _timerCts = null;
+        _tokensPerSecondTimer = null;
+
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             IsRunning = false;
@@ -469,22 +483,13 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
                               (_run?.TotalProblemsFailed ?? 0) > 0 ||
                               (_run?.TotalFleshOutFailed ?? 0) > 0;
 
-            if (_run?.IsCancelled == true)
-            {
-                StatusLine = "Cancelled";
-            }
-            else if (!string.IsNullOrEmpty(_run?.Error))
-            {
-                StatusLine = "Error";
-            }
-            else if (hadFailures)
-            {
-                StatusLine = $"Completed with {_run?.TotalCategoriesFailed + _run?.TotalProblemsFailed + _run?.TotalFleshOutFailed} failures";
-            }
-            else
-            {
-                StatusLine = "Completed";
-            }
+            StatusLine = _run?.IsCancelled == true
+                ? "Cancelled"
+                : !string.IsNullOrEmpty(_run?.Error)
+                    ? "Error"
+                    : hadFailures
+                    ? $"Completed with {_run?.TotalCategoriesFailed + _run?.TotalProblemsFailed + _run?.TotalFleshOutFailed} failures"
+                    : "Completed";
 
             // Notify commands to re-evaluate CanExecute (disable pause/cancel buttons)
             ((RelayCommand)PauseCommand).NotifyCanExecuteChanged();
@@ -497,6 +502,38 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
                 _run?.Error,
                 _run?.TotalCategoriesFailed + _run?.TotalProblemsFailed + _run?.TotalFleshOutFailed);
         });
+    }
+
+    /// <summary>
+    /// Periodically updates the AverageTokensPerSecond property from the run.
+    /// This is needed because tokens/sec is updated after each LLM call, but progress
+    /// updates only happen at phase transitions.
+    /// </summary>
+    private async Task UpdateTokensPerSecondPeriodicallyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await _tokensPerSecondTimer!.WaitForNextTickAsync(cancellationToken);
+                
+                if (_run != null)
+                {
+                    var newTokensPerSec = _run.AverageTokensPerSecond;
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        if (Math.Abs(newTokensPerSec - AverageTokensPerSecond) > 0.01)
+                        {
+                            AverageTokensPerSecond = newTokensPerSec;
+                        }
+                    });
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when timer is cancelled
+        }
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -520,7 +557,13 @@ public sealed class EvalGenRunViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (!_disposed)
         {
             _disposed = true;
-            
+
+            // Stop the tokens/sec timer
+            _timerCts?.Cancel();
+            _tokensPerSecondTimer?.Dispose();
+            _timerCts = null;
+            _tokensPerSecondTimer = null;
+
             if (_run != null)
             {
                 _run.ProgressChanged -= OnProgressChanged;

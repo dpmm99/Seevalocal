@@ -12,11 +12,7 @@ public sealed class BoolStringConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is string s)
-        {
-            return s.Equals("true", StringComparison.InvariantCultureIgnoreCase);
-        }
-        return value is bool b && b;
+        return value is string s ? s.Equals("true", StringComparison.InvariantCultureIgnoreCase) : value is bool b && b;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

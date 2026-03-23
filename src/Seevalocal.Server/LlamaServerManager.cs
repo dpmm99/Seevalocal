@@ -182,7 +182,7 @@ public sealed partial class LlamaServerManager(
         _logger.LogInformation("llama-server process started (PID={Pid})", _process.Id);
 
         // 4. Wait for health (80-95%)
-        var baseUrl = $"http://{config.Host ?? "127.0.0.1"}:{config.Port ?? 8080}";
+        var baseUrl = config.BaseUrl ?? "http://127.0.0.1:8080";
         var healthy = await WaitForHealthAsync(baseUrl, DefaultHealthTimeoutSeconds, ct);
         if (!healthy)
         {
@@ -441,7 +441,7 @@ public sealed partial class LlamaServerManager(
                         HandleLoadingDot();  // real-time, no newline needed
                         lineBuffer.Append(ch);
                     }
-                    else if (ch == '\n' || ch == '\r')
+                    else if (ch is '\n' or '\r')
                     {
                         var line = lineBuffer.ToString().Trim();
                         lineBuffer.Clear();

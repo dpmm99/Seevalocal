@@ -84,9 +84,9 @@ public sealed class GpuDetector(ILogger<GpuDetector> logger)
 
             foreach (var hardware in computer.Hardware)
             {
-                if (hardware.HardwareType != HardwareType.GpuAmd &&
-                    hardware.HardwareType != HardwareType.GpuNvidia &&
-                    hardware.HardwareType != HardwareType.GpuIntel)
+                if (hardware.HardwareType is not HardwareType.GpuAmd and
+                    not HardwareType.GpuNvidia and
+                    not HardwareType.GpuIntel)
                 {
                     continue;
                 }

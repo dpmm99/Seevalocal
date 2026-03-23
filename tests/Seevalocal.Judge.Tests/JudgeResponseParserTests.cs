@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Seevalocal.Core;
 using Seevalocal.Core.Models;
-using Seevalocal.Judge;
 using Xunit;
 
 namespace Seevalocal.Judge.Tests;

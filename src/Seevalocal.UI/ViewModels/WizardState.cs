@@ -27,8 +27,6 @@ public class WizardState
     public string? HfToken;
     public string? ServerUrl;
     public string? LlamaServerExecutablePath;
-    public string Host = "127.0.0.1";
-    public int Port = 8080;
     public string? ApiKey;
 
     // ── Llama-server settings (main) ─────────────────────────────────────────
@@ -86,8 +84,8 @@ public class WizardState
     public string? FieldMappingBuildScript;
 
     // ── Pipeline-specific config ─────────────────────────────────────────────
-    public string? TranslationSourceLanguage = "English";
-    public string? TranslationTargetLanguage = "French";
+    public string? TranslationSourceLanguage = "the original";
+    public string? TranslationTargetLanguage = "the reference translation's language";
     public string? TranslationSystemPrompt;
     public string? CodeBuildScriptPath;
 
@@ -180,11 +178,11 @@ public class WizardState
             .ToDictionary(f => f.Name, f => f);
 
     /// <summary>Returns the value of the main llama-server field with the given name.</summary>
-    public static object? GetLlamaField(WizardState state, string settingName) =>
+    public static object? GetLlamaServerField(WizardState state, string settingName) =>
         _stateFields.TryGetValue(settingName, out var f) ? f.GetValue(state) : null;
 
     /// <summary>Returns the value of the judge llama-server field (name prefixed with "Judge").</summary>
-    public static object? GetJudgeLlamaField(WizardState state, string settingName) =>
+    public static object? GetJudgeLlamaServerField(WizardState state, string settingName) =>
         _stateFields.TryGetValue("Judge" + settingName, out var f) ? f.GetValue(state) : null;
 
     // ── Factory ───────────────────────────────────────────────────────────────
@@ -221,7 +219,7 @@ public class WizardState
         {
             if (!value.HasValue) return;
             if (onlyUnedited && editedFields.Contains(propName)) return;
-            if (_stateFields.TryGetValue(propName, out var f)) f.SetValue(state, (object)value.Value);
+            if (_stateFields.TryGetValue(propName, out var f)) f.SetValue(state, value.Value);
             if (!onlyUnedited) editedFields.Add(propName);
         }
 
@@ -230,8 +228,6 @@ public class WizardState
         {
             SetVal(nameof(state.ManageServer), srv.Manage);
             Set(nameof(state.LlamaServerExecutablePath), srv.ExecutablePath);
-            Set(nameof(state.Host), srv.Host);
-            SetVal(nameof(state.Port), srv.Port);
             Set(nameof(state.ApiKey), srv.ApiKey);
             Set(nameof(state.ServerUrl), srv.BaseUrl);
 
@@ -265,14 +261,14 @@ public class WizardState
         if (config.Judge is { } judge)
         {
             SetVal(nameof(state.EnableJudge), (bool?)judge.Enable);
-            SetVal(nameof(state.JudgeManageServer), (bool?)judge.Manage);
-            Set(nameof(state.JudgeServerUrl), judge.BaseUrl);
-            Set(nameof(state.JudgeTemplate), judge.JudgePromptTemplate);
+            // Skip judge prompt template because its *default* is based on the pipeline you selected. //TODO: I'm actually skipping it because it's "standard" by default in the input object here and I can't tell if the user did that himself/herself.
 
             if (judge.ServerConfig is { } jsc)
             {
+                SetVal(nameof(state.JudgeManageServer), jsc.Manage);
                 Set(nameof(state.JudgeExecutablePath), jsc.ExecutablePath);
                 Set(nameof(state.JudgeApiKey), jsc.ApiKey);
+                Set(nameof(state.JudgeServerUrl), judge.ServerConfig.BaseUrl);
 
                 ApplyModelSource(jsc.Model, onlyUnedited, editedFields,
                     nameof(state.JudgeUseLocalFile), nameof(state.JudgeLocalModelPath),
@@ -301,28 +297,15 @@ public class WizardState
         }
 
         // ── Run ───────────────────────────────────────────────────────────────
-        if (config.Run is { } run)
-        {
-            Set(nameof(state.RunName), run.RunName);
-            Set(nameof(state.OutputDir), run.OutputDirectoryPath);
-            SetVal(nameof(state.ShellTarget), run.ExportShellTarget);
-            SetVal(nameof(state.ContinueOnEvalFailure), run.ContinueOnEvalFailure);
-            SetVal(nameof(state.MaxConcurrentEvals), run.MaxConcurrentEvals);
-            Set(nameof(state.CheckpointDatabasePath), run.CheckpointDatabasePath);
-        }
+        Set(nameof(state.PipelineName), config.Run.PipelineName);
+        Set(nameof(state.RunName), config.Run.RunName);
+        Set(nameof(state.OutputDir), config.Run.OutputDirectoryPath);
+        SetVal(nameof(state.ShellTarget), config.Run.ExportShellTarget);
+        SetVal(nameof(state.ContinueOnEvalFailure), config.Run.ContinueOnEvalFailure);
+        SetVal(nameof(state.MaxConcurrentEvals), config.Run.MaxConcurrentEvals);
+        Set(nameof(state.CheckpointDatabasePath), config.Run.CheckpointDatabasePath);
+        ApplyPipelineOptions(config, state, editedFields, onlyUnedited);
 
-        // ── EvalSets / DataSource ─────────────────────────────────────────────
-        if (config.EvalSets.Count > 0)
-        {
-            var es = config.EvalSets[0];
-            Set(nameof(state.PipelineName), es.PipelineName);
-
-            var ds = es.DataSource;
-            ApplyDataSource(ds, state, editedFields, onlyUnedited);
-            ApplyPipelineOptions(es, state, editedFields, onlyUnedited);
-        }
-
-        // Also apply top-level DataSource if present (PartialConfig compatibility)
         if (config.DataSource is { } topDs && !string.IsNullOrEmpty(topDs.FilePath ?? topDs.PromptDirectory))
             ApplyDataSource(topDs, state, editedFields, onlyUnedited);
     }
@@ -392,10 +375,9 @@ public class WizardState
     {
         bool isSingleFile = ds.Kind is DataSourceKind.SingleFile or DataSourceKind.JsonFile
             or DataSourceKind.JsonlFile or DataSourceKind.YamlFile or DataSourceKind.CsvFile
-            or DataSourceKind.ParquetFile or DataSourceKind.File;
+            or DataSourceKind.ParquetFile;
 
-        bool isDirectory = ds.Kind is DataSourceKind.SplitDirectories or DataSourceKind.DirectoryPair
-            or DataSourceKind.Directory;
+        bool isDirectory = ds.Kind is DataSourceKind.SplitDirectories;
 
         void MaybeSet(string name, string? value)
         {
@@ -408,7 +390,7 @@ public class WizardState
         void MaybeSetBool(string name, bool value)
         {
             if (onlyUnedited && editedFields.Contains(name)) return;
-            if (_stateFields.TryGetValue(name, out var f)) f.SetValue(state, (object)value);
+            if (_stateFields.TryGetValue(name, out var f)) f.SetValue(state, value);
             if (!onlyUnedited) editedFields.Add(name);
         }
 
@@ -437,22 +419,20 @@ public class WizardState
     }
 
     private static void ApplyPipelineOptions(
-        EvalSetConfig es,
+        ResolvedConfig rc,
         WizardState state,
         HashSet<string> editedFields,
         bool onlyUnedited)
     {
-        if (es.PipelineOptions == null) return;
-
         void MaybeSet(string stateName, string optionKey)
         {
-            if (!es.PipelineOptions.TryGetValue(optionKey, out var val) || val is not string str) return;
+            if (!rc.PipelineOptions.TryGetValue(optionKey, out var val) || val is not string str) return;
             if (onlyUnedited && editedFields.Contains(stateName)) return;
             if (_stateFields.TryGetValue(stateName, out var f)) f.SetValue(state, str);
             if (!onlyUnedited) editedFields.Add(stateName);
         }
 
-        switch (es.PipelineName)
+        switch (rc.Run.PipelineName)
         {
             case "Translation":
                 MaybeSet(nameof(state.TranslationSourceLanguage), "sourceLanguage");

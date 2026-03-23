@@ -23,7 +23,7 @@ public sealed class ConfigValidator(
         ValidateServer(config.Server, errors);
         ValidateLlamaServer(config.LlamaServer, errors);
         ValidateRunMeta(config.Run, errors);
-        ValidateEvalSets(config.EvalSets, errors);
+        ValidateDataSourceConfig(config.DataSource, errors);
         ValidateJudge(config.Judge, errors);
 
         if (errors.Count > 0)
@@ -92,7 +92,7 @@ public sealed class ConfigValidator(
                 $"[ConfigValidator] llamaServer.parallelSlotCount must be > 0, got {ls.ParallelSlotCount.Value}"));
     }
 
-    private static void ValidateRunMeta(RunMeta run, List<ValidationError> errors)
+    private void ValidateRunMeta(RunMeta run, List<ValidationError> errors)
     {
         if (string.IsNullOrWhiteSpace(run.OutputDirectoryPath))
             errors.Add(new ValidationError(
@@ -114,62 +114,31 @@ public sealed class ConfigValidator(
             }
         }
 
+        if (string.IsNullOrWhiteSpace(run.PipelineName))
+        {
+            errors.Add(new ValidationError("run.pipelineName",
+                "[ConfigValidator] run.pipelineName must not be empty"));
+        }
+        else if (_registeredPipelineNames?.Contains(run.PipelineName) == false)
+        {
+            errors.Add(new ValidationError("run.pipelineName",
+                $"[ConfigValidator] run.pipelineName '{run.PipelineName}' is not a registered pipeline"));
+        }
+
         if (run.MaxConcurrentEvals <= 0)
             errors.Add(new ValidationError(
                 "run.maxConcurrentEvals",
                 $"[ConfigValidator] run.maxConcurrentEvals must be > 0, got {run.MaxConcurrentEvals.Value}"));
     }
 
-    private void ValidateEvalSets(IReadOnlyList<EvalSetConfig> evalSets, List<ValidationError> errors)
-    {
-        if (evalSets.Count == 0)
-        {
-            errors.Add(new ValidationError(
-                "evalSets",
-                "[ConfigValidator] At least one evalSet must be defined"));
-            return;
-        }
-
-        var seenIds = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i < evalSets.Count; i++)
-        {
-            var es = evalSets[i];
-            var prefix = $"evalSets[{i}]";
-
-            if (string.IsNullOrWhiteSpace(es.Id))
-            {
-                errors.Add(new ValidationError($"{prefix}.id",
-                    $"[ConfigValidator] {prefix}.id must not be empty"));
-            }
-            else if (!seenIds.Add(es.Id))
-            {
-                errors.Add(new ValidationError($"{prefix}.id",
-                    $"[ConfigValidator] Field '{prefix}.id' is not unique: '{es.Id}' appears more than once"));
-            }
-
-            if (string.IsNullOrWhiteSpace(es.PipelineName))
-            {
-                errors.Add(new ValidationError($"{prefix}.pipelineName",
-                    $"[ConfigValidator] {prefix}.pipelineName must not be empty"));
-            }
-            else if (_registeredPipelineNames?.Contains(es.PipelineName) == false)
-            {
-                errors.Add(new ValidationError($"{prefix}.pipelineName",
-                    $"[ConfigValidator] {prefix}.pipelineName '{es.PipelineName}' is not a registered pipeline"));
-            }
-
-            ValidateDataSourceConfig(es.DataSource, $"{prefix}.dataSource", errors);
-        }
-    }
-
-    private static void ValidateDataSourceConfig(DataSourceConfig ds, string prefix, List<ValidationError> errors)
+    private static void ValidateDataSourceConfig(DataSourceConfig ds, List<ValidationError> errors)
     {
         switch (ds.Kind)
         {
-            case DataSourceKind.Directory:
+            case DataSourceKind.SplitDirectories:
                 if (string.IsNullOrWhiteSpace(ds.PromptDirectory))
-                    errors.Add(new ValidationError($"{prefix}.PromptDirectory",
-                        $"[ConfigValidator] {prefix}.PromptDirectory must be set when kind is Directory"));
+                    errors.Add(new ValidationError($"dataSource.promptDirectory",
+                        $"[ConfigValidator] dataSource.promptDirectory must be set when kind is SplitDirectories"));
                 break;
 
             case DataSourceKind.SingleFile:
@@ -178,8 +147,8 @@ public sealed class ConfigValidator(
             case DataSourceKind.CsvFile:
             case DataSourceKind.ParquetFile:
                 if (string.IsNullOrWhiteSpace(ds.FilePath))
-                    errors.Add(new ValidationError($"{prefix}.filePath",
-                        $"[ConfigValidator] {prefix}.filePath must be set when kind is {ds.Kind}"));
+                    errors.Add(new ValidationError($"dataSource.filePath",
+                        $"[ConfigValidator] dataSource.filePath must be set when kind is {ds.Kind}"));
                 break;
         }
     }
@@ -189,19 +158,10 @@ public sealed class ConfigValidator(
         if (judge is null) return;
 
         // If managing a local judge server
-        if (judge.Manage)
+        if (judge.ServerConfig.Manage != false)
         {
-            // Validate judge server configuration
-            var serverConfig = judge.ServerConfig;
-            if (serverConfig?.Manage != true)
-            {
-                errors.Add(new ValidationError(
-                    "judge.serverConfig",
-                    "[ConfigValidator] judge.serverConfig.manage must be true when judge.manage is true"));
-            }
-
             // Judge model is required when managing
-            if (serverConfig?.Model is null)
+            if (judge.ServerConfig.Model is null)
             {
                 errors.Add(new ValidationError(
                     "judge.serverConfig.model",
@@ -217,26 +177,16 @@ public sealed class ConfigValidator(
         else
         {
             // When not managing, BaseUrl is required
-            if (string.IsNullOrWhiteSpace(judge.BaseUrl))
+            if (string.IsNullOrWhiteSpace(judge.ServerConfig?.BaseUrl))
                 errors.Add(new ValidationError(
                     "judge.baseUrl",
                     "[ConfigValidator] judge.baseUrl must be set when judge.manage is false"));
-            else if (!Uri.TryCreate(judge.BaseUrl, UriKind.Absolute, out _))
-                errors.Add(new ValidationError(
-                    "judge.baseUrl",
-                    $"[ConfigValidator] judge.baseUrl '{judge.BaseUrl}' is not a valid absolute URI"));
         }
 
-        // Validate sampling temperature (applies to both managed and external)
-        double? samplingTemp = judge.SamplingTemperature ?? judge.JudgeSamplingTemperature;
-        if (samplingTemp.HasValue)
-        {
-            var t = samplingTemp.Value;
-            if (t is < 0.0 or > 2.0)
-                errors.Add(new ValidationError(
-                    "judge.samplingTemperature",
-                    $"[ConfigValidator] judge.samplingTemperature must be in [0, 2], got {t}"));
-        }
+        if (!string.IsNullOrWhiteSpace(judge.ServerConfig?.BaseUrl) && !Uri.TryCreate(judge.ServerConfig?.BaseUrl, UriKind.Absolute, out _))
+            errors.Add(new ValidationError(
+                "judge.baseUrl",
+                $"[ConfigValidator] judge.baseUrl '{judge.ServerConfig?.BaseUrl}' is not a valid absolute URI"));
     }
 
     private static void ValidateLlamaServerSettings(LlamaServerSettings settings, string prefix, List<ValidationError> errors)

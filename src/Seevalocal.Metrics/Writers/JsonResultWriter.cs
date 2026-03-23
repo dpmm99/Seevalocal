@@ -93,7 +93,6 @@ public sealed class JsonResultWriter : IResultWriter
         return new EvalResultDto
         {
             EvalItemId = result.EvalItemId,
-            EvalSetId = result.EvalSetId,
             Succeeded = result.Succeeded,
             FailureReason = result.FailureReason,
             DurationSeconds = result.DurationSeconds,
@@ -112,7 +111,6 @@ public sealed class JsonResultWriter : IResultWriter
     private sealed class EvalResultDto
     {
         public string EvalItemId { get; init; } = "";
-        public string EvalSetId { get; init; } = "";
         public bool Succeeded { get; init; }
         public string? FailureReason { get; init; }
         public double DurationSeconds { get; init; }

@@ -21,7 +21,6 @@ public class JsonResultWriterTests : IDisposable
     private static EvalResult MakeResult(string id = "001") => new()
     {
         EvalItemId = id,
-        EvalSetId = "test-set",
         Succeeded = true,
         DurationSeconds = 1.24,
         StartedAt = new DateTimeOffset(2025, 3, 1, 12, 0, 0, TimeSpan.Zero),
@@ -57,7 +56,6 @@ public class JsonResultWriterTests : IDisposable
         var root = doc.RootElement;
 
         Assert.Equal("002", root.GetProperty("evalItemId").GetString());
-        Assert.Equal("test-set", root.GetProperty("evalSetId").GetString());
         Assert.True(root.GetProperty("succeeded").GetBoolean());
         Assert.Equal(1.24, root.GetProperty("durationSeconds").GetDouble(), precision: 5);
         Assert.True(root.TryGetProperty("metrics", out var metricsEl));
@@ -92,7 +90,6 @@ public class JsonResultWriterTests : IDisposable
         var writer = new JsonResultWriter(_tempDir);
         var summary = new RunSummary
         {
-            EvalSetId = "test-set",
             RunName = "run1",
             TotalItemCount = 5,
             SucceededItemCount = 4,
@@ -108,7 +105,7 @@ public class JsonResultWriterTests : IDisposable
         Assert.True(File.Exists(filePath));
         var json = await File.ReadAllTextAsync(filePath);
         using var doc = JsonDocument.Parse(json);
-        Assert.Equal("test-set", doc.RootElement.GetProperty("evalSetId").GetString());
+        Assert.Equal("run1", doc.RootElement.GetProperty("runName").GetString());
         Assert.Equal(5, doc.RootElement.GetProperty("totalItemCount").GetInt32());
     }
 

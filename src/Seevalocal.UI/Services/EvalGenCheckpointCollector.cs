@@ -238,12 +238,10 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
                 // If JSON deserialization fails, fall back to parsing individual fields (legacy support)
                 judgeConfig = new JudgeConfig
                 {
-                    BaseUrl = NullIfEmpty(values.GetValueOrDefault("JudgeBaseUrl", "")),
-                    Manage = ParseBool(values.GetValueOrDefault("JudgeManage", "false"), false),
                     ServerConfig = new ServerConfig
                     {
-                        Host = NullIfEmpty(values.GetValueOrDefault("JudgeHost", "localhost")),
-                        Port = ParseInt(values.GetValueOrDefault("JudgePort", "0"), 8081)
+                        Manage = ParseBool(values.GetValueOrDefault("JudgeManage", "false"), false),
+                        BaseUrl = NullIfEmpty(values.GetValueOrDefault("JudgeBaseUrl", "http://localhost:8081"))
                     },
                     ServerSettings = new LlamaServerSettings
                     {
@@ -274,7 +272,7 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
         cmd.Parameters.AddWithValue("@createdAt", DateTimeOffset.Now.ToString("O"));
 
         await cmd.ExecuteNonQueryAsync(cancellationToken);
-        
+
         // Update cache
         _categoriesCache[category.Id] = category;
     }
@@ -287,7 +285,7 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
         // Update problems for each category from cache
         var problemsByCategory = _problemsCache.Values.GroupBy(p => p.CategoryId)
             .ToDictionary(g => g.Key, g => g.ToList());
-        
+
         var categories = _categoriesCache.Values.ToList();
         foreach (var category in categories)
         {
@@ -340,10 +338,10 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
         cmd.Parameters.AddWithValue("@fullPrompt", problem.FullPrompt ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@expectedOutput", problem.ExpectedOutput ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@createdAt", DateTimeOffset.Now.ToString("O"));
-        cmd.Parameters.AddWithValue("@updatedAt", problem.IsComplete ? DateTimeOffset.Now.ToString("O") : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@updatedAt", problem.IsComplete ? DateTimeOffset.Now.ToString("O") : DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(cancellationToken);
-        
+
         // Update cache
         _problemsCache[problem.Id] = problem;
     }
@@ -370,7 +368,7 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
 
         var problems = new List<GeneratedProblem>();
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             problems.Add(new GeneratedProblem
@@ -435,10 +433,10 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
             FROM Problems
             GROUP BY CategoryId
             """;
-        
+
         var counts = new Dictionary<string, int>();
         using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             counts[reader.GetString(0)] = reader.GetInt32(1);

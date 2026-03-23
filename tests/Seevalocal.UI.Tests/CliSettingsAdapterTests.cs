@@ -84,14 +84,13 @@ public sealed class CliSettingsAdapterTests
     public void ToPartialConfig_Host_And_Port_Set_Correctly()
     {
         // Arrange
-        var settings = new RunCommandSettings { Host = "0.0.0.0", Port = 9000 };
+        var settings = new RunCommandSettings { ServerUrl = "http://0.0.0.0:9000" };
 
         // Act
         var config = CliSettingsAdapter.ToPartialConfig(settings);
 
         // Assert
-        _ = config.Server!.Host.Should().Be("0.0.0.0");
-        _ = config.Server.Port.Should().Be(9000);
+        _ = config.Server!.BaseUrl.Should().Be("http://0.0.0.0:9000");
     }
 
     [Fact]
@@ -121,11 +120,11 @@ public sealed class CliSettingsAdapterTests
         // Let's add a server setting to ensure Server config is created
         settings.Manage = true;
         config = CliSettingsAdapter.ToPartialConfig(settings);
-        
-        _ = config.LlamaServer!.ExtraArgs.Should().HaveCount(3);
-        _ = config.LlamaServer.ExtraArgs![0].Should().Be("--arg1");
-        _ = config.LlamaServer.ExtraArgs[1].Should().Be("--arg2");
-        _ = config.LlamaServer.ExtraArgs[2].Should().Be("value");
+
+        _ = config.LlamaSettings!.ExtraArgs.Should().HaveCount(3);
+        _ = config.LlamaSettings.ExtraArgs![0].Should().Be("--arg1");
+        _ = config.LlamaSettings.ExtraArgs[1].Should().Be("--arg2");
+        _ = config.LlamaSettings.ExtraArgs[2].Should().Be("value");
     }
 
     #endregion
@@ -424,7 +423,7 @@ public sealed class CliSettingsAdapterTests
 
         // Assert
         _ = config.Judge.Should().NotBeNull();
-        _ = config.Judge!.BaseUrl.Should().Be("http://localhost:8081");
+        _ = config.Judge!.ServerConfig!.BaseUrl.Should().Be("http://localhost:8081");
     }
 
     [Fact]
@@ -504,7 +503,7 @@ public sealed class CliSettingsAdapterTests
         var config = CliSettingsAdapter.ToPartialConfig(settings);
 
         // Assert
-        _ = config.EvalSets.Should().BeNull();
+        _ = config.Run.Should().BeNull();
     }
 
     [Fact]
@@ -521,7 +520,7 @@ public sealed class CliSettingsAdapterTests
         var config = CliSettingsAdapter.ToPartialConfig(settings);
 
         // Assert
-        _ = config.EvalSets![0].PipelineName.Should().Be("Translation");
+        _ = config.Run.PipelineName.Should().Be("Translation");
     }
 
     [Fact]
@@ -534,8 +533,8 @@ public sealed class CliSettingsAdapterTests
         var config = CliSettingsAdapter.ToPartialConfig(settings);
 
         // Assert
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.File);
-        _ = config.EvalSets[0].DataSource.FilePath.Should().Be("/data/evals.json");
+        _ = config.DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = config.DataSource.FilePath.Should().Be("/data/evals.json");
     }
 
     [Fact]
@@ -552,22 +551,9 @@ public sealed class CliSettingsAdapterTests
         var config = CliSettingsAdapter.ToPartialConfig(settings);
 
         // Assert
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.DirectoryPair);
-        _ = config.EvalSets[0].DataSource.PromptDirectory.Should().Be("/prompts");
-        _ = config.EvalSets[0].DataSource.ExpectedDirectory.Should().Be("/expected");
-    }
-
-    [Fact]
-    public void ToPartialConfig_Default_PipelineName_Is_CasualQA()
-    {
-        // Arrange
-        var settings = new RunCommandSettings { DataFilePath = "/data.json" };
-
-        // Act
-        var config = CliSettingsAdapter.ToPartialConfig(settings);
-
-        // Assert
-        _ = config.EvalSets![0].PipelineName.Should().Be("CasualQA");
+        _ = config.DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
+        _ = config.DataSource.PromptDirectory.Should().Be("/prompts");
+        _ = config.DataSource.ExpectedDirectory.Should().Be("/expected");
     }
 
     #endregion
@@ -708,45 +694,6 @@ public sealed class CliSettingsAdapterTests
         _ = config.Run!.ContinueOnEvalFailure.Should().BeFalse();
     }
 
-    [Fact]
-    public void ToPartialConfig_ContinueOnFailure_Sets_ContinueOnEvalFailure_True()
-    {
-        // Arrange
-        var settings = new RunCommandSettings { ContinueOnFailure = true };
-
-        // Act
-        var config = CliSettingsAdapter.ToPartialConfig(settings);
-
-        // Assert
-        _ = config.Run!.ContinueOnEvalFailure.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ToPartialConfig_TimeoutSeconds_Sets_Correctly()
-    {
-        // Arrange
-        var settings = new RunCommandSettings { TimeoutSeconds = 120.5 };
-
-        // Act
-        var config = CliSettingsAdapter.ToPartialConfig(settings);
-
-        // Assert
-        _ = config.Run!.TimeoutSeconds.Should().BeApproximately(120.5, 1e-9);
-    }
-
-    [Fact]
-    public void ToPartialConfig_RetryCount_Sets_Correctly()
-    {
-        // Arrange
-        var settings = new RunCommandSettings { RetryCount = 3 };
-
-        // Act
-        var config = CliSettingsAdapter.ToPartialConfig(settings);
-
-        // Assert
-        _ = config.Run!.RetryCount.Should().Be(3);
-    }
-
     #endregion
 
     #region Complex Scenarios
@@ -760,8 +707,7 @@ public sealed class CliSettingsAdapterTests
             // Server
             Manage = true,
             ModelFilePath = "/models/test.gguf",
-            Host = "0.0.0.0",
-            Port = 9000,
+            ServerUrl = "http://0.0.0.0:9000",
             ApiKey = "test-key",
 
             // Llama settings
@@ -787,7 +733,6 @@ public sealed class CliSettingsAdapterTests
 
             // Run control
             MaxConcurrent = 4,
-            TimeoutSeconds = 300
         };
 
         // Act
@@ -797,8 +742,7 @@ public sealed class CliSettingsAdapterTests
         _ = config.Server.Should().NotBeNull();
         _ = config.Server!.Manage.Should().BeTrue();
         _ = config.Server.Model!.Kind.Should().Be(ModelSourceKind.LocalFile);
-        _ = config.Server.Host.Should().Be("0.0.0.0");
-        _ = config.Server.Port.Should().Be(9000);
+        _ = config.Server.BaseUrl.Should().Be("http://0.0.0.0:9000");
 
         // Assert - Llama settings
         _ = config.LlamaSettings!.ContextWindowTokens.Should().Be(8192);
@@ -806,10 +750,10 @@ public sealed class CliSettingsAdapterTests
         _ = config.LlamaSettings.EnableFlashAttention.Should().BeTrue();
 
         // Assert - Eval
-        _ = config.EvalSets![0].PipelineName.Should().Be("Translation");
+        _ = config.Run.PipelineName.Should().Be("Translation");
 
         // Assert - Judge
-        _ = config.Judge!.BaseUrl.Should().Be("http://localhost:8081");
+        _ = config.Judge!.ServerConfig!.BaseUrl.Should().Be("http://localhost:8081");
 
         // Assert - Output
         _ = config.Output!.OutputDir.Should().Be("/results");
@@ -817,7 +761,6 @@ public sealed class CliSettingsAdapterTests
 
         // Assert - Run
         _ = config.Run!.MaxConcurrentEvals.Should().Be(4);
-        _ = config.Run.TimeoutSeconds.Should().BeApproximately(300, 1e-9);
     }
 
     #endregion

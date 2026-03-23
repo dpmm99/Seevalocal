@@ -14,21 +14,13 @@ public sealed class ConfigValidatorTests
     private static ResolvedConfig ValidConfig(string outputDir = "/tmp/seevalocal-test-output") =>
         new()
         {
-            Run = new RunMeta { OutputDirectoryPath = outputDir },
+            Run = new RunMeta { OutputDirectoryPath = outputDir, PipelineName = "TestPipeline" },
             Server = new ServerConfig { Manage = false, BaseUrl = "http://127.0.0.1:8080" },
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "set1",
-                    PipelineName = "TestPipeline",
-                    DataSource = new DataSourceConfig
-                    {
-                        Kind = DataSourceKind.Directory,
-                        PromptDirectory = "/tmp/prompts",
-                    },
-                },
-            ],
+            DataSource = new DataSourceConfig
+            {
+                Kind = DataSourceKind.SplitDirectories,
+                PromptDirectory = "/tmp/prompts",
+            },
         };
 
     // -------------------------------------------------------------------------
@@ -165,82 +157,49 @@ public sealed class ConfigValidatorTests
     }
 
     // -------------------------------------------------------------------------
-    // EvalSet validation
+    // DataSource validation
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Validate_EvalSets_Empty_ReturnsError()
-    {
-        var config = ValidConfig() with { EvalSets = [] };
-
-        var errors = MakeValidator().Validate(config);
-
-        _ = errors.Should().ContainSingle(static e => e.Field == "evalSets");
-    }
-
-    [Fact]
-    public void Validate_EvalSets_DuplicateId_ReturnsError()
+    public void Validate_DataSource_DirectoryKind_MissingPromptDirectory_ReturnsError()
     {
         var config = ValidConfig() with
         {
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "dup",
-                    PipelineName = "PipeA",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
-                },
-                new EvalSetConfig
-                {
-                    Id = "dup",
-                    PipelineName = "PipeB",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
-                },
-            ],
+            DataSource = new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectory = null },
         };
 
         var errors = MakeValidator().Validate(config);
 
-        _ = errors.Should().Contain(static e => e.Field.Contains("id") && e.MessageText.Contains("not unique"));
+        _ = errors.Should().Contain(static e => e.Field.Contains("promptDirectory"));
     }
 
-    [Fact]
-    public void Validate_EvalSets_EmptyId_ReturnsError()
+    [Theory]
+    [InlineData(DataSourceKind.JsonFile)]
+    [InlineData(DataSourceKind.YamlFile)]
+    [InlineData(DataSourceKind.CsvFile)]
+    [InlineData(DataSourceKind.ParquetFile)]
+    public void Validate_DataSource_FileKind_MissingFilePath_ReturnsError(DataSourceKind kind)
     {
         var config = ValidConfig() with
         {
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "",
-                    PipelineName = "PipeA",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
-                },
-            ],
+            DataSource = new DataSourceConfig { Kind = kind, FilePath = null },
         };
 
         var errors = MakeValidator().Validate(config);
 
-        _ = errors.Should().Contain(static e => e.Field.Contains("id"));
+        _ = errors.Should().Contain(static e => e.Field.Contains("filePath"));
     }
 
+    // Note: ConfigValidator only validates that paths are set, not that they exist.
+    // File/directory existence is checked at runtime.
+
     [Fact]
-    public void Validate_EvalSets_UnknownPipeline_ReturnsError()
+    public void Validate_Run_UnknownPipeline_ReturnsError()
     {
         HashSet<string> registered = ["KnownPipeline"];
         var config = ValidConfig() with
         {
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "set1",
-                    PipelineName = "UnknownPipeline",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = "/p" },
-                },
-            ],
+            Run = new RunMeta { PipelineName = "UnknownPipeline" },
         };
 
         var errors = MakeValidator(registered).Validate(config);
@@ -249,58 +208,12 @@ public sealed class ConfigValidatorTests
     }
 
     [Fact]
-    public void Validate_EvalSets_KnownPipeline_NoError()
+    public void Validate_Run_KnownPipeline_NoError()
     {
         HashSet<string> registered = ["TestPipeline"];
         var errors = MakeValidator(registered).Validate(ValidConfig());
 
         _ = errors.Should().NotContain(static e => e.Field.Contains("pipelineName"));
-    }
-
-    [Fact]
-    public void Validate_EvalSets_DirectoryKind_MissingPath_ReturnsError()
-    {
-        var config = ValidConfig() with
-        {
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "set1",
-                    PipelineName = "P",
-                    DataSource = new DataSourceConfig { Kind = DataSourceKind.Directory, PromptDirectory = null },
-                },
-            ],
-        };
-
-        var errors = MakeValidator().Validate(config);
-
-        _ = errors.Should().Contain(static e => e.Field.Contains("promptDirectoryPath"));
-    }
-
-    [Theory]
-    [InlineData(DataSourceKind.JsonFile)]
-    [InlineData(DataSourceKind.YamlFile)]
-    [InlineData(DataSourceKind.CsvFile)]
-    [InlineData(DataSourceKind.ParquetFile)]
-    public void Validate_EvalSets_FileKind_MissingFilePath_ReturnsError(DataSourceKind kind)
-    {
-        var config = ValidConfig() with
-        {
-            EvalSets =
-            [
-                new EvalSetConfig
-                {
-                    Id = "set1",
-                    PipelineName = "P",
-                    DataSource = new DataSourceConfig { Kind = kind, FilePath = null },
-                },
-            ],
-        };
-
-        var errors = MakeValidator().Validate(config);
-
-        _ = errors.Should().Contain(static e => e.Field.Contains("filePath"));
     }
 
     // -------------------------------------------------------------------------
@@ -333,7 +246,7 @@ public sealed class ConfigValidatorTests
     {
         var config = ValidConfig() with
         {
-            Judge = new JudgeConfig { BaseUrl = "http://judge:8080" },
+            Judge = new JudgeConfig { ServerConfig = new ServerConfig { BaseUrl = "http://judge:8080" } },
         };
 
         var errors = MakeValidator().Validate(config);
@@ -353,11 +266,10 @@ public sealed class ConfigValidatorTests
             Run = new RunMeta { OutputDirectoryPath = "/tmp/seevalocal-test-output" },
             Server = new ServerConfig { Manage = true, Model = null },   // error: model missing
             LlamaServer = new LlamaServerSettings { ContextWindowTokens = -1 }, // error: bad value
-            EvalSets = [],  // error: empty
         };
 
         var errors = MakeValidator().Validate(config);
 
-        _ = errors.Should().HaveCountGreaterThanOrEqualTo(3);
+        _ = errors.Should().HaveCount(3);
     }
 }

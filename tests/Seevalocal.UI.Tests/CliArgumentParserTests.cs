@@ -77,13 +77,6 @@ public sealed class CliArgumentParserTests
         _ = config.Server.Model.HfQuant.Should().Be("Q4_K_M");
     }
 
-    [Fact]
-    public void Port_Sets_ServerConfig_Port()
-    {
-        var config = Adapt(static s => s.Port = 9090);
-        _ = config.Server!.Port.Should().Be(9090);
-    }
-
     // ─── llama-server tuning flags ────────────────────────────────────────────
 
     [Fact]
@@ -143,22 +136,22 @@ public sealed class CliArgumentParserTests
     // ─── Eval options ─────────────────────────────────────────────────────────
 
     [Fact]
-    public void PipelineName_Sets_EvalSet_PipelineName()
+    public void PipelineName_Sets_Run_PipelineName()
     {
         var config = Adapt(static s =>
         {
             s.PipelineName = "Translation";
             s.DataFilePath = "/data/prompts.json";
         });
-        _ = config.EvalSets![0].PipelineName.Should().Be("Translation");
+        _ = config.Run.PipelineName.Should().Be("Translation");
     }
 
     [Fact]
     public void DataFilePath_Creates_File_DataSource()
     {
         var config = Adapt(static s => s.DataFilePath = "/data/evals.json");
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.File);
-        _ = config.EvalSets[0].DataSource.FilePath.Should().Be("/data/evals.json");
+        _ = config.DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = config.DataSource.FilePath.Should().Be("/data/evals.json");
     }
 
     [Fact]
@@ -169,9 +162,9 @@ public sealed class CliArgumentParserTests
             s.PromptDir = "/prompts";
             s.ExpectedDir = "/expected";
         });
-        _ = config.EvalSets![0].DataSource.Kind.Should().Be(DataSourceKind.DirectoryPair);
-        _ = config.EvalSets[0].DataSource.PromptDirectory.Should().Be("/prompts");
-        _ = config.EvalSets[0].DataSource.ExpectedDirectory.Should().Be("/expected");
+        _ = config.DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
+        _ = config.DataSource.PromptDirectory.Should().Be("/prompts");
+        _ = config.DataSource.ExpectedDirectory.Should().Be("/expected");
     }
 
     // ─── Judge flags ──────────────────────────────────────────────────────────
@@ -184,7 +177,7 @@ public sealed class CliArgumentParserTests
             s.JudgeUrl = "http://localhost:8081";
             s.DataFilePath = "/data.json";   // need eval settings to get judge attached
         });
-        _ = config.Judge!.BaseUrl.Should().Be("http://localhost:8081");
+        _ = config.Judge!.ServerConfig!.BaseUrl.Should().Be("http://localhost:8081");
     }
 
     // Note: ScoreMin/ScoreMax settings have been removed as they are not used by the field-agnostic judge
@@ -246,19 +239,5 @@ public sealed class CliArgumentParserTests
     {
         var config = Adapt(static s => s.StopOnFailure = true);
         _ = config.Run!.ContinueOnEvalFailure.Should().BeFalse();
-    }
-
-    [Fact]
-    public void TimeoutSeconds_Sets_RunMeta()
-    {
-        var config = Adapt(static s => s.TimeoutSeconds = 30.0);
-        _ = config.Run!.TimeoutSeconds.Should().BeApproximately(30.0, 1e-9);
-    }
-
-    [Fact]
-    public void RetryCount_Sets_RunMeta()
-    {
-        var config = Adapt(static s => s.RetryCount = 5);
-        _ = config.Run!.RetryCount.Should().Be(5);
     }
 }

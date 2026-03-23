@@ -31,10 +31,10 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         },
     };
 
-    public IReadOnlyList<ValidationError> Validate(EvalSetConfig evalSetConfig)
+    public IReadOnlyList<ValidationError> Validate(ResolvedConfig resolvedConfig)
     {
         List<ValidationError> errors = [];
-        var opts = evalSetConfig.PipelineOptions;
+        var opts = resolvedConfig.PipelineOptions;
         if (opts is null) return errors;
 
         if (opts.TryGetValue("judgeMaxScore", out var maxScore))
@@ -51,9 +51,9 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         return errors;
     }
 
-    public EvalPipeline Create(EvalSetConfig evalSetConfig, ResolvedConfig resolvedConfig)
+    public EvalPipeline Create(ResolvedConfig resolvedConfig)
     {
-        var opts = evalSetConfig.PipelineOptions ?? new Dictionary<string, object?>();
+        var opts = resolvedConfig.PipelineOptions;
 
         var enableExactMatch = ParseBool(opts, "enableExactMatch", false);
 
@@ -73,7 +73,7 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
             ScoreMinValue = 0,
             ScoreMaxValue = 10,
         };
-        
+
         stages.Add(new JudgeStage(
             judgeConfig,
             _loggerFactory.CreateLogger<JudgeStage>(),
@@ -87,7 +87,7 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
         };
     }
 
-    private static bool ParseBool(IReadOnlyDictionary<string, object?> opts, string key, bool fallback)
+    private static bool ParseBool(Dictionary<string, object?> opts, string key, bool fallback)
     {
         return !opts.TryGetValue(key, out var raw) || raw is null
             ? fallback

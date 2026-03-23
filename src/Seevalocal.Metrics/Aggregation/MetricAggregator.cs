@@ -16,7 +16,6 @@ public sealed class MetricAggregator
     /// Numeric metrics: min, max, mean, median, p25, p75, p95, stddev, sum.
     /// </summary>
     public static RunSummary Aggregate(
-        string evalSetId,
         IReadOnlyList<EvalResult> results,
         string runName = "",
         DateTimeOffset? startedAt = null)
@@ -48,7 +47,6 @@ public sealed class MetricAggregator
 
         return new RunSummary
         {
-            EvalSetId = evalSetId,
             RunName = runName,
             StartedAt = startedAt ?? DateTimeOffset.UtcNow,
             TotalDurationSeconds = totalDurationSeconds,

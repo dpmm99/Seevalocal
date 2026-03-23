@@ -26,7 +26,6 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
     public async Task<EvalResult> RunItemAsync(
         EvalStageContext context,
         bool continueOnStageFailure,
-        string evalSetId,
         CancellationToken ct = default)
     {
         var startedAt = DateTimeOffset.UtcNow;
@@ -154,7 +153,7 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
             if (ResultCollector != null)
             {
                 // Save partial progress in case of crash
-                await ResultCollector.SavePartialProgressAsync(context.Item.Id, evalSetId, stage.StageName, ct);
+                await ResultCollector.SavePartialProgressAsync(context.Item.Id, stage.StageName, ct);
 
                 // Save each stage output
                 foreach ((var key, var value) in stageResult.Outputs)
@@ -172,7 +171,6 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
         var result = new EvalResult
         {
             EvalItemId = context.Item.Id,
-            EvalSetId = evalSetId,
             Succeeded = overallSucceeded,
             FailureReason = firstFailureReason,
             Metrics = allMetrics,

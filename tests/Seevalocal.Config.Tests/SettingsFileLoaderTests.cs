@@ -50,7 +50,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
     public async Task Load_Yaml_ParsesLlamaServerSettings()
     {
         var yaml = """
-            llamaServer:
+            llamaSettings:
               contextWindowTokens: 4096
               samplingTemperature: 0.5
               enableFlashAttention: true
@@ -61,10 +61,10 @@ public sealed class SettingsFileLoaderTests : IDisposable
         var result = await _loader.LoadAsync(path);
 
         _ = result.IsSuccess.Should().BeTrue();
-        _ = result.Value.LlamaServer!.ContextWindowTokens.Should().Be(4096);
-        _ = result.Value.LlamaServer!.SamplingTemperature.Should().Be(0.5);
-        _ = result.Value.LlamaServer!.EnableFlashAttention.Should().BeTrue();
-        _ = result.Value.LlamaServer!.ParallelSlotCount.Should().Be(2);
+        _ = result.Value.LlamaSettings!.ContextWindowTokens.Should().Be(4096);
+        _ = result.Value.LlamaSettings!.SamplingTemperature.Should().Be(0.5);
+        _ = result.Value.LlamaSettings!.EnableFlashAttention.Should().BeTrue();
+        _ = result.Value.LlamaSettings!.ParallelSlotCount.Should().Be(2);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
     {
         var yaml = """
             unknownTopLevel: hello
-            llamaServer:
+            llamaSettings:
               contextWindowTokens: 1024
               completelyMadeUpField: 999
             """;
@@ -81,21 +81,19 @@ public sealed class SettingsFileLoaderTests : IDisposable
         var result = await _loader.LoadAsync(path);
 
         _ = result.IsSuccess.Should().BeTrue();
-        _ = result.Value.LlamaServer!.ContextWindowTokens.Should().Be(1024);
+        _ = result.Value.LlamaSettings!.ContextWindowTokens.Should().Be(1024);
     }
 
     [Fact]
-    public async Task Load_Yaml_ParsesEvalSets()
+    public async Task Load_Yaml_ParsesPipelineAndDataSource()
     {
         var yaml = """
-            evalSets:
-              - id: my-eval
-                name: "My Eval"
-                pipelineName: CSharpCoding
-                dataSource:
-                  kind: Directory
-                  promptDirectoryPath: ./prompts
-                  filePattern: "*"
+            run:
+              pipelineName: CSharpCoding
+            dataSource:
+              kind: SplitDirectories
+              promptDirectory: ./prompts
+              filePattern: "*"
             """;
 
         var path = WriteTemp(".yml", yaml);
@@ -110,10 +108,8 @@ public sealed class SettingsFileLoaderTests : IDisposable
         }
 
         _ = result.IsSuccess.Should().BeTrue();
-        _ = result.Value.EvalSets.Should().HaveCount(1);
-        _ = result.Value.EvalSets![0].Id.Should().Be("my-eval");
-        _ = result.Value.EvalSets![0].PipelineName.Should().Be("CSharpCoding");
-        _ = result.Value.EvalSets![0].DataSource.PromptDirectory.Should().Be("./prompts");
+        _ = result.Value.Run.PipelineName.Should().Be("CSharpCoding");
+        _ = result.Value.DataSource.PromptDirectory.Should().Be("./prompts");
     }
 
     // -------------------------------------------------------------------------
@@ -145,7 +141,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
     {
         var json = """
             {
-              "llamaServer": {
+              "llamaSettings": {
                 "contextWindowTokens": 8192,
                 "gpuLayerCount": 35
               }
@@ -156,8 +152,8 @@ public sealed class SettingsFileLoaderTests : IDisposable
         var result = await _loader.LoadAsync(path);
 
         _ = result.IsSuccess.Should().BeTrue();
-        _ = result.Value.LlamaServer!.ContextWindowTokens.Should().Be(8192);
-        _ = result.Value.LlamaServer!.GpuLayerCount.Should().Be(35);
+        _ = result.Value.LlamaSettings!.ContextWindowTokens.Should().Be(8192);
+        _ = result.Value.LlamaSettings!.GpuLayerCount.Should().Be(35);
     }
 
     // -------------------------------------------------------------------------
@@ -199,7 +195,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
         _ = result.IsSuccess.Should().BeTrue();
         _ = result.Value.Should().NotBeNull();
         _ = result.Value.Run.Should().BeNull();
-        _ = result.Value.LlamaServer.Should().BeNull();
+        _ = result.Value.LlamaSettings.Should().BeNull();
     }
 
     [Fact]
@@ -222,8 +218,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
         var yaml = """
             server:
               manage: true
-              host: 0.0.0.0
-              port: 9090
+              baseUrl: http://0.0.0.0:9090
               model:
                 kind: LocalFile
                 filePath: /models/test.gguf
@@ -234,8 +229,7 @@ public sealed class SettingsFileLoaderTests : IDisposable
 
         _ = result.IsSuccess.Should().BeTrue();
         _ = result.Value.Server!.Manage.Should().BeTrue();
-        _ = result.Value.Server!.Host.Should().Be("0.0.0.0");
-        _ = result.Value.Server!.Port.Should().Be(9090);
+        _ = result.Value.Server!.BaseUrl.Should().Be("http://0.0.0.0:9090");
         _ = result.Value.Server!.Model!.FilePath.Should().Be("/models/test.gguf");
     }
 }

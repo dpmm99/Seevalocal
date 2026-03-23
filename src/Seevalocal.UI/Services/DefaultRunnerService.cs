@@ -58,13 +58,9 @@ public sealed class DefaultRunnerService(
     {
         var runLogger = _loggerFactory.CreateLogger($"EvalRun.{config.Run.RunName ?? "unnamed"}");
 
-        // Get the first eval set (UI supports single eval set per run)
-        var evalSet = config.EvalSets.FirstOrDefault()
-            ?? throw new InvalidOperationException("No eval sets configured");
-
         // 1. Create the pipeline for the specified pipeline name
-        var pipelineFactory = _pipelineRegistry.Get(evalSet.PipelineName);
-        var fullPipeline = pipelineFactory.Create(evalSet, config);
+        var pipelineFactory = _pipelineRegistry.Get(config.Run.PipelineName);
+        var fullPipeline = pipelineFactory.Create(config);
 
         // 2. Create a primary-phase pipeline (without JudgeStage if both model-being-evaluated server and judge server are locally managed)
         // The judge stage should only run in phase 2 when judge server is started
@@ -75,8 +71,8 @@ public sealed class DefaultRunnerService(
 
         // 3. Create data source from config
         var dataSourceLogger = _loggerFactory.CreateLogger("DataSource");
-        var dsConfig = ConvertDataSourceConfig(evalSet.DataSource);
-        var dataSourceResult = _dataSourceFactory.Create(evalSet.Name, dsConfig);
+        var dsConfig = ConvertDataSourceConfig(config.DataSource);
+        var dataSourceResult = _dataSourceFactory.Create(config.DataSource.FilePath ?? config.DataSource.PromptDirectory ?? "dataset", dsConfig);
         var dataSource = dataSourceResult.IsSuccess
             ? dataSourceResult.Value
             : throw new InvalidOperationException($"Failed to create data source: {dataSourceResult.Errors[0].Message}");
@@ -95,8 +91,6 @@ public sealed class DefaultRunnerService(
             if (savedConfig != null)
             {
                 _logger.LogInformation("Continuing run from checkpoint: {RunName}", savedConfig.Run.RunName);
-                // Use the saved config for the run
-                config = savedConfig;
             }
             else
             {
@@ -115,7 +109,7 @@ public sealed class DefaultRunnerService(
         {
             var primaryServerInfo = new ServerInfo
             {
-                BaseUrl = config.Server.BaseUrl ?? $"http://{config.Server.Host}:{config.Server.Port}",
+                BaseUrl = config.Server.BaseUrl ?? $"http://127.0.0.1:8080",
                 ApiKey = config.Server.ApiKey,
                 TotalSlots = config.LlamaServer.ParallelSlotCount ?? 4,
                 ModelAlias = config.LlamaServer.ModelAlias ?? ""
@@ -137,7 +131,7 @@ public sealed class DefaultRunnerService(
         {
             // Judge stage is in the pipeline AND we're NOT doing two-phase execution,
             // so we need a judge client right now for one-phase execution
-            var judgeBaseUrl = config.Judge.BaseUrl;
+            var judgeBaseUrl = config.Judge.ServerConfig?.BaseUrl;
             if (!string.IsNullOrEmpty(judgeBaseUrl))
             {
                 var judgeServerInfo = new ServerInfo
@@ -169,7 +163,6 @@ public sealed class DefaultRunnerService(
         var primaryOrchestrator = await PipelineOrchestratorFactory.CreatePrimaryAsync(
             dataSource,
             primaryPipeline,
-            evalSet,
             config,
             primaryClient!,  // Will be null for managed servers - will be created in StartAsync
             collector,
@@ -185,7 +178,6 @@ public sealed class DefaultRunnerService(
             // Server will be started in StartAsync() so the view can show progress
             return new TwoPhaseEvalRunViewModel(
                 config,
-                evalSet,
                 fullPipeline,  // Full pipeline for judge phase
                 dataSource,
                 collector,
@@ -199,23 +191,22 @@ public sealed class DefaultRunnerService(
         {
             // SINGLE-PHASE EXECUTION (zero or one locally managed llama-server instance)
             // ViewModel will create orchestrator after starting managed servers
-            var serverLifecycle = config.Server.Manage != false || config.Judge?.Manage == true ? _serverLifecycleService : null;
+            var serverLifecycle = config.Server.Manage != false || config.Judge?.ServerConfig?.Manage == true ? _serverLifecycleService : null;
 
             return new EvalRunViewModel(
                 config,
                 fullPipeline,
                 dataSource,
                 collector,
-                evalSet,
                 _loggerFactory,
                 runLogger,
                 serverLifecycle,
                 config.Server.Manage != false ? config.Server : null,
                 config.Server.Manage != false ? config.LlamaServer : null,
-                config.Judge is { Manage: true } ? config.Judge.ServerConfig : null,
-                config.Judge is { Manage: true } ? config.Judge.ServerSettings : null,
+                config.Judge?.ServerConfig is { Manage: true } ? config.Judge.ServerConfig : null,
+                config.Judge?.ServerConfig is { Manage: true } ? config.Judge.ServerSettings : null,
                 config.Server.Manage == false ? primaryClient : null,
-                config.Judge is { Manage: false } ? judgeClient : null);
+                config.Judge?.ServerConfig is { Manage: false } ? judgeClient : null);
         }
     }
 
@@ -290,7 +281,7 @@ public sealed class DefaultRunnerService(
     {
         // Detect actual file type from extension if Kind is generic (SingleFile/File)
         var effectiveKind = coreConfig.Kind;
-        if (coreConfig.Kind is DataSourceKind.SingleFile or DataSourceKind.File)
+        if (coreConfig.Kind is DataSourceKind.SingleFile or DataSourceKind.SingleFile)
         {
             effectiveKind = DetectFileKindFromExtension(coreConfig.FilePath);
         }

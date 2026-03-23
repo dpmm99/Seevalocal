@@ -62,17 +62,26 @@ internal static class TestHelpers
             BaseUrl = "http://localhost:8080",
         },
         LlamaServer = new LlamaServerSettings(),
-        EvalSets = [],
     };
 
-    public static EvalSetConfig MakeEvalSetConfig(
-        string pipeline = "Translation",
-        IDictionary<string, object?>? opts = null) =>
+    public static ResolvedConfig MakeConfigWithPipeline(
+        string pipeline = "CasualQA",
+        Dictionary<string, object?>? opts = null) =>
         new()
         {
-            Id = "test-eval",
-            PipelineName = pipeline,
-            PipelineOptions = (IReadOnlyDictionary<string, object?>?)opts,
+            Run = new RunConfig
+            {
+                Id = "test-run",
+                PipelineName = pipeline,
+                ContinueOnEvalFailure = true,
+            },
+            Server = new ServerConfig
+            {
+                Manage = false,
+                BaseUrl = "http://localhost:8080",
+            },
+            LlamaServer = new LlamaServerSettings(),
+            PipelineOptions = opts ?? [],
         };
 
     /// <summary>Returns a stub client with no real HTTP connection.</summary>

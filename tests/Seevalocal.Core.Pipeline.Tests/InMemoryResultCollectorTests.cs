@@ -10,7 +10,6 @@ public class InMemoryResultCollectorTests
         new()
         {
             EvalItemId = id,
-            EvalSetId = "set1",
             Succeeded = succeeded,
             StartedAt = DateTimeOffset.UtcNow,
             DurationSeconds = 0.5

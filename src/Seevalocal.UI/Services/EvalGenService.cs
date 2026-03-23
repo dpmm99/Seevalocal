@@ -43,15 +43,9 @@ public sealed partial class EvalGenService(
         }
 
         // Get server URL from config
-        if (!string.IsNullOrEmpty(judgeConfig.BaseUrl))
+        if (judgeConfig.ServerConfig != null)
         {
-            _judgeBaseUrl = judgeConfig.BaseUrl;
-        }
-        else if (judgeConfig.ServerConfig != null)
-        {
-            var host = judgeConfig.ServerConfig.Host ?? "localhost";
-            var port = judgeConfig.ServerConfig.Port ?? 8081;
-            _judgeBaseUrl = $"http://{host}:{port}";
+            _judgeBaseUrl = judgeConfig.ServerConfig.BaseUrl ?? "http://localhost:8081";
         }
 
         // Get temperature from settings
@@ -59,7 +53,7 @@ public sealed partial class EvalGenService(
         {
             _judgeTemperature = judgeConfig.ServerSettings.SamplingTemperature ?? 0.7;
             _judgeParallelSlotCount = judgeConfig.ServerSettings.ParallelSlotCount ?? 4;
-            
+
             // Use context window as max tokens (leave some room for response)
             var contextTokens = judgeConfig.ServerSettings.ContextWindowTokens ?? 4096;
             _judgeMaxTokens = Math.Min(contextTokens, 8192); // Cap at 8K to leave room for prompt
@@ -86,12 +80,9 @@ public sealed partial class EvalGenService(
         return overlayConfig with
         {
             // Use overlay values, fall back to base for missing fields
-            BaseUrl = overlayConfig.BaseUrl ?? baseConfig.BaseUrl,
             ServerConfig = overlayConfig.ServerConfig with
             {
                 // Merge ServerConfig - overlay takes precedence but fill in missing from base
-                Host = overlayConfig.ServerConfig?.Host ?? baseConfig.ServerConfig?.Host ?? "localhost",
-                Port = overlayConfig.ServerConfig?.Port ?? baseConfig.ServerConfig?.Port ?? 8081,
                 ExecutablePath = overlayConfig.ServerConfig?.ExecutablePath ?? baseConfig.ServerConfig?.ExecutablePath,
                 Model = overlayConfig.ServerConfig?.Model ?? baseConfig.ServerConfig?.Model,
                 ApiKey = overlayConfig.ServerConfig?.ApiKey ?? baseConfig.ServerConfig?.ApiKey,
@@ -142,7 +133,6 @@ public sealed partial class EvalGenService(
             ScoreMaxValue = overlayConfig.ScoreMaxValue,
             JudgeSystemPrompt = overlayConfig.JudgeSystemPrompt,
             JudgeMaxTokenCount = overlayConfig.JudgeMaxTokenCount,
-            JudgeSamplingTemperature = overlayConfig.JudgeSamplingTemperature
         };
     }
 
@@ -215,8 +205,8 @@ public sealed partial class EvalGenService(
             {
                 logger.LogInformation("Continuing from checkpoint: {RunName}", savedParams.Value.Config.RunName);
                 logger.LogInformation("Checkpoint JudgeConfig: Manage={Manage}, BaseUrl={BaseUrl}, Model={Model}, ExecutablePath={ExecPath}",
-                    savedParams.Value.JudgeConfig?.Manage,
-                    savedParams.Value.JudgeConfig?.BaseUrl,
+                    savedParams.Value.JudgeConfig?.ServerConfig?.Manage,
+                    savedParams.Value.JudgeConfig?.ServerConfig?.BaseUrl,
                     savedParams.Value.JudgeConfig?.ServerConfig?.Model?.FilePath,
                     savedParams.Value.JudgeConfig?.ServerConfig?.ExecutablePath);
                 config = savedParams.Value.Config;
@@ -242,8 +232,8 @@ public sealed partial class EvalGenService(
             InitializeFromJudgeConfig(judgeConfig);
 
             logger.LogInformation("Judge config for this run: Manage={Manage}, BaseUrl={BaseUrl}, Model={Model}, ExecutablePath={ExecPath}",
-                judgeConfig?.Manage,
-                judgeConfig?.BaseUrl ?? $"{judgeConfig?.ServerConfig?.Host}:{judgeConfig?.ServerConfig?.Port}",
+                judgeConfig?.ServerConfig?.Manage,
+                judgeConfig?.ServerConfig?.BaseUrl,
                 judgeConfig?.ServerConfig?.Model?.FilePath,
                 judgeConfig?.ServerConfig?.ExecutablePath);
 
@@ -251,11 +241,11 @@ public sealed partial class EvalGenService(
             // When resuming from checkpoint, always start the server (don't try to connect to external)
             LlamaServerClient? judgeClientToUse = null;
             LlamaServerManager? judgeServerManager = null;
-            bool shouldManageServer = judgeConfig is { Manage: not false } || config.ContinueFromCheckpoint;
+            bool shouldManageServer = judgeConfig?.ServerConfig is { Manage: not false } || config.ContinueFromCheckpoint;
 
             if (shouldManageServer)
             {
-                logger.LogInformation("Starting judge llama-server (Manage={Manage})...", judgeConfig?.Manage);
+                logger.LogInformation("Starting judge llama-server (Manage={Manage})...", judgeConfig?.ServerConfig?.Manage);
                 _currentRun!.UpdateProgress(new EvalGenProgress
                 {
                     CurrentPhase = EvalGenPhase.GeneratingCategories,
@@ -274,8 +264,6 @@ public sealed partial class EvalGenService(
                     Manage = baseServerConfig?.Manage ?? true,
                     ExecutablePath = baseServerConfig?.ExecutablePath,
                     Model = baseServerConfig?.Model,
-                    Host = baseServerConfig?.Host ?? "localhost",
-                    Port = baseServerConfig?.Port ?? 8081,
                     ApiKey = baseServerConfig?.ApiKey,
                     BaseUrl = baseServerConfig?.BaseUrl,
                 };
@@ -506,7 +494,7 @@ public sealed partial class EvalGenService(
 
             var existingCategoryNames = categories.Select(c => c.Name).ToList();
             List<GeneratedCategory> newCategories;
-            
+
             try
             {
                 newCategories = await GenerateCategoryBatchAsync(
@@ -588,7 +576,7 @@ public sealed partial class EvalGenService(
     {
         // Use custom template if provided, otherwise use default
         var template = config.Phase1PromptTemplate ?? DefaultPhase1Prompt;
-        
+
         var existingSection = existingCategories.Count > 0
             ? $"""
             We already have these categories (do NOT duplicate them):
@@ -654,10 +642,10 @@ public sealed partial class EvalGenService(
             // Find <Categories> tags using IndexOf (more robust than regex)
             var openTag = "<Categories>";
             var closeTag = "</Categories>";
-            
+
             var startIndex = response.IndexOf(openTag, StringComparison.OrdinalIgnoreCase);
             var endIndex = response.IndexOf(closeTag, StringComparison.OrdinalIgnoreCase);
-            
+
             if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex)
             {
                 logger.LogWarning("No <Categories> tags found in LLM response");
@@ -676,12 +664,12 @@ public sealed partial class EvalGenService(
 
                 // Remove leading numbers/bullets
                 name = ListItemPrefixRegex().Replace(name, "").Trim();
-                
+
                 // Skip if too short or looks like XML/instructions
-                if (name.Length < 3 || name.Contains("</") || name.Contains(">/") || 
+                if (name.Length < 3 || name.Contains("</") || name.Contains(">/") ||
                     name.StartsWith("Here") || name.StartsWith("Sure") || name.StartsWith("Below"))
                     continue;
-                
+
                 // Skip duplicates
                 if (existingCategories.Any(c => c.Equals(name, StringComparison.OrdinalIgnoreCase)) ||
                     categories.Any(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
@@ -711,7 +699,7 @@ public sealed partial class EvalGenService(
     {
         // Track categories that have failed (for temp=0, we skip them after first failure)
         var failedCategories = new ConcurrentBag<string>();
-        
+
         // Loop until all categories have enough problems
         int maxIterations = config.TargetCategoryCount * 3; // Prevent infinite loops
         int emptyIterations = 0; // Track consecutive iterations with no new problems
@@ -726,7 +714,7 @@ public sealed partial class EvalGenService(
                 // Skip categories that failed if temperature is 0
                 if (_judgeTemperature == 0 && failedCategories.Contains(category.Id))
                     continue;
-                    
+
                 var existingProblems = problemsByCategory.GetValueOrDefault(category.Id) ?? [];
                 int existingCount = existingProblems.Count;
                 if (existingCount < config.TargetProblemsPerCategory)
@@ -780,10 +768,11 @@ public sealed partial class EvalGenService(
                             problemList.Add(problem);
                             totalNewProblems++;
 
+                            var newProblemsCount = _currentRun.Progress.ProblemsGenerated + 1;
                             _currentRun.UpdateProgress(_currentRun.Progress with
                             {
-                                ProblemsGenerated = _currentRun.Progress.ProblemsGenerated + 1,
-                                StatusMessage = $"Generated {_currentRun.Progress.ProblemsGenerated} problem statements"
+                                ProblemsGenerated = newProblemsCount,
+                                StatusMessage = $"Generated {newProblemsCount} problem statements"
                             });
                         }
                     }
@@ -914,10 +903,10 @@ public sealed partial class EvalGenService(
             // Find <ProblemStatements> tags using IndexOf (more robust than regex)
             var openTag = "<ProblemStatements>";
             var closeTag = "</ProblemStatements>";
-            
+
             var startIndex = response.IndexOf(openTag, StringComparison.OrdinalIgnoreCase);
             var endIndex = response.IndexOf(closeTag, StringComparison.OrdinalIgnoreCase);
-            
+
             if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex)
             {
                 logger.LogWarning("No <ProblemStatements> tags found in LLM response");
@@ -970,7 +959,7 @@ public sealed partial class EvalGenService(
     {
         // Track problems that have failed (for temp=0, we skip them after first failure)
         var failedProblems = new ConcurrentBag<string>();
-        
+
         // Loop until all problems are fleshed out
         int maxIterations = config.TargetProblemsPerCategory * 3; // Prevent infinite loops
         int emptyIterations = 0; // Track consecutive iterations with no progress
@@ -999,7 +988,7 @@ public sealed partial class EvalGenService(
                 // Skip problems that failed if temperature is 0
                 if (_judgeTemperature == 0 && failedProblems.Contains(problem.Id))
                     continue;
-                    
+
                 await semaphore.WaitAsync(cancellationToken);
 
                 tasks.Add(Task.Run(async () =>
@@ -1090,7 +1079,7 @@ public sealed partial class EvalGenService(
     {
         // Use custom template if provided, otherwise use default
         var template = config.Phase3PromptTemplate ?? DefaultPhase3Prompt;
-        
+
         var contextPromptSection = config.ContextPrompt != null
             ? $"Additional context: {config.ContextPrompt}"
             : "";
@@ -1149,20 +1138,20 @@ public sealed partial class EvalGenService(
             var promptClose = "</Prompt>";
             var responseOpen = "<Response>";
             var responseClose = "</Response>";
-            
+
             var promptStart = response.IndexOf(promptOpen, StringComparison.OrdinalIgnoreCase);
             var promptEnd = response.IndexOf(promptClose, StringComparison.OrdinalIgnoreCase);
             var responseStart = response.IndexOf(responseOpen, StringComparison.OrdinalIgnoreCase);
             var responseEnd = response.IndexOf(responseClose, StringComparison.OrdinalIgnoreCase);
-            
+
             var prompt = "";
             var expectedOutput = "";
-            
+
             if (promptStart >= 0 && promptEnd > promptStart)
             {
                 prompt = response.Substring(promptStart + promptOpen.Length, promptEnd - promptStart - promptOpen.Length).Trim();
             }
-            
+
             if (responseStart >= 0 && responseEnd > responseStart)
             {
                 expectedOutput = response.Substring(responseStart + responseOpen.Length, responseEnd - responseStart - responseOpen.Length).Trim();
@@ -1231,12 +1220,12 @@ public sealed partial class EvalGenService(
         {
             var totalTokens = usage.PromptTokens + usage.CompletionTokens;
             _currentRun!.TotalTokensUsed += totalTokens;
-            
+
             // Calculate average tokens/sec
-            var elapsedSeconds = (_currentRun.StartedAt - DateTimeOffset.Now).TotalSeconds;
+            var elapsedSeconds = (DateTimeOffset.Now - _currentRun.StartedAt).TotalSeconds;
             if (elapsedSeconds > 0)
             {
-                _currentRun.AverageTokensPerSecond = _currentRun.TotalTokensUsed / Math.Abs(elapsedSeconds);
+                _currentRun.AverageTokensPerSecond = _currentRun.TotalTokensUsed / elapsedSeconds;
             }
         }
 

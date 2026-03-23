@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="Seevalocal.Core.Abstractions/Seevalocal.Core.csproj" Id="83325da5-c9ef-4d77-b360-d24235b53730" />
     <Project Path="src/Seevalocal.Config/Seevalocal.Config.csproj" />
+    <Project Path="src/Seevalocal.Core/Seevalocal.Core.csproj" Id="83325da5-c9ef-4d77-b360-d24235b53730" />
     <Project Path="src/Seevalocal.Core.Pipeline/Seevalocal.Core.Pipeline.csproj" Id="e90018af-bc42-0a10-a70c-0572df139ea2" />
     <Project Path="src/Seevalocal.DataSources/Seevalocal.DataSources.csproj" />
     <Project Path="src/Seevalocal.Judge/Seevalocal.Judge.csproj" Id="172362f0-d53d-d753-0b30-2ce3fc374862" />

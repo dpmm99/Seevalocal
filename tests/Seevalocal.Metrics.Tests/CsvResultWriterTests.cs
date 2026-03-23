@@ -22,7 +22,6 @@ public class CsvResultWriterTests : IDisposable
         new()
         {
             EvalItemId = id,
-            EvalSetId = "test-set",
             Succeeded = succeeded,
             DurationSeconds = 1.0,
             StartedAt = DateTimeOffset.UtcNow,

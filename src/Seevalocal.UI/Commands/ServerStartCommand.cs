@@ -27,8 +27,7 @@ public sealed class ServerStartCommand(
             {
                 Manage = true,
                 ExecutablePath = settings.ExecutablePath,
-                Host = settings.Host ?? "127.0.0.1",
-                Port = settings.Port ?? 8080,
+                BaseUrl = (settings.Host ?? "http://127.0.0.1") + ":" + (settings.Port ?? 8080),
                 Model = settings.ModelFilePath != null
                     ? new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = settings.ModelFilePath }
                     : settings.HfRepo != null

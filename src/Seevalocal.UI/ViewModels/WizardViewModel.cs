@@ -18,10 +18,10 @@ public enum WizardStepKind
     ModelAndServer,
     PerformanceSettings,
     EvaluationDataset,
-    FieldMapping,
-    PipelineConfiguration,
+    FieldMapping,       // Skipped for split directories (field mapping not applicable)
     Scoring,
     Output,
+    PipelineConfiguration,  // Moved to end - only shown for specific pipelines
     ReviewAndRun
 }
 
@@ -43,9 +43,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
     // Track which fields have been explicitly edited by the user.
     private readonly HashSet<string> _editedFields = [];
 
-    // Checkpoint metadata (not part of config state)
-    private string? _checkpointEvalSetId;
-
     // Detected fields from data file (for ComboBox suggestions)
     private List<string>? _detectedFields;
 
@@ -54,6 +51,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public ICommand GoBackCommand { get; }
     public ICommand GoForwardCommand { get; }
     public ICommand ExportScriptCommand { get; }
+    public ICommand ExportSettingsCommand { get; }
     public ICommand ResetToDefaultsCommand { get; }
 
     // Browse commands
@@ -95,6 +93,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         GoBackCommand = new RelayCommand(GoBack, () => CanGoBack);
         GoForwardCommand = new RelayCommand(async () => await GoForwardAsync(), () => CanGoForward);
         ExportScriptCommand = new RelayCommand(() => OnExportScript?.Invoke());
+        ExportSettingsCommand = new RelayCommand(async () => await ExportSettingsAsync());
         ResetToDefaultsCommand = new RelayCommand(ResetToDefaults);
 
         BrowseLocalModelCommand = new RelayCommand<string>(async (param) => await BrowseLocalModelAsync(param));
@@ -129,7 +128,18 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public void GoBack()
     {
         if (!CanGoBack) return;
-        CurrentStep = (WizardStepKind)((int)CurrentStep - 1);
+
+        var prevStep = (WizardStepKind)((int)CurrentStep - 1);
+
+        // Skip PipelineConfiguration step for CasualQA when going back
+        if (prevStep == WizardStepKind.PipelineConfiguration && PipelineName == "CasualQA")
+            prevStep = (WizardStepKind)((int)prevStep - 1);
+
+        // Skip FieldMapping step for split directories when going back
+        if (prevStep == WizardStepKind.FieldMapping && !UseSingleFileDataSource)
+            prevStep = (WizardStepKind)((int)prevStep - 1);
+
+        CurrentStep = prevStep;
         RefreshNavigationState();
     }
 
@@ -150,6 +160,14 @@ public sealed partial class WizardViewModel : IWizardViewModel
         }
 
         var nextStep = (WizardStepKind)((int)CurrentStep + 1);
+
+        // Skip FieldMapping step for split directories (field mapping not applicable)
+        if (nextStep == WizardStepKind.FieldMapping && !UseSingleFileDataSource)
+            nextStep = (WizardStepKind)((int)nextStep + 1);
+
+        // Skip PipelineConfiguration step for CasualQA (no pipeline-specific config)
+        if (nextStep == WizardStepKind.PipelineConfiguration && PipelineName == "CasualQA")
+            nextStep = (WizardStepKind)((int)nextStep + 1);
 
         // Auto-select shell dialect when navigating to Output step if not already set
         if (nextStep == WizardStepKind.Output && ShellTarget == null)
@@ -191,12 +209,13 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
     private List<string> ValidateContinueRunStep()
     {
-        if (!_state.ContinueFromCheckpoint) return [];
-        if (string.IsNullOrWhiteSpace(_state.CheckpointDatabasePath))
-            return ["Checkpoint database file path is required when continuing from a checkpoint."];
-        if (!File.Exists(_state.CheckpointDatabasePath))
-            return [$"Checkpoint database file does not exist: {_state.CheckpointDatabasePath}"];
-        return [];
+        return !_state.ContinueFromCheckpoint
+            ? []
+            : string.IsNullOrWhiteSpace(_state.CheckpointDatabasePath)
+            ? ["Checkpoint database file path is required when continuing from a checkpoint."]
+            : !File.Exists(_state.CheckpointDatabasePath)
+            ? [$"Checkpoint database file does not exist: {_state.CheckpointDatabasePath}"]
+            : [];
     }
 
     private List<string> ValidateServerStep()
@@ -277,8 +296,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public string? HfToken { get => _state.HfToken; set => SetState(ref _state.HfToken, value); }
     public string? ServerUrl { get => _state.ServerUrl; set => SetState(ref _state.ServerUrl, value); }
     public string? LlamaServerExecutablePath { get => _state.LlamaServerExecutablePath; set => SetState(ref _state.LlamaServerExecutablePath, value); }
-    public string Host { get => _state.Host; set => SetState(ref _state.Host, value); }
-    public int Port { get => _state.Port; set => SetState(ref _state.Port, value); }
     public string? ApiKey { get => _state.ApiKey; set => SetState(ref _state.ApiKey, value); }
 
     // ─── Step 2: Performance ─────────────────────────────────────────────────
@@ -415,7 +432,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     public string? JudgeApiKey { get => _state.JudgeApiKey; set => SetState(ref _state.JudgeApiKey, value); }
     public string? JudgeServerUrl { get => _state.JudgeServerUrl; set => SetState(ref _state.JudgeServerUrl, value); }
     public string? JudgeExecutablePath { get => _state.JudgeExecutablePath; set => SetState(ref _state.JudgeExecutablePath, value); }
-    
+
     // Judge performance — mirrors main server fields
     public int? JudgeContextWindowTokens { get => _state.JudgeContextWindowTokens; set => SetState(ref _state.JudgeContextWindowTokens, value); }
     public int? JudgeBatchSizeTokens { get => _state.JudgeBatchSizeTokens; set => SetState(ref _state.JudgeBatchSizeTokens, value); }
@@ -561,8 +578,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         bool Edited(string name) => ef.Contains(name);
 
         // Server model source
-        var hasModelField = !string.IsNullOrEmpty(s.LocalModelPath) || !string.IsNullOrEmpty(s.HfRepo)
-            || Edited(nameof(ManageServer)) || Edited(nameof(UseLocalFile))
+        var hasModelField = Edited(nameof(UseLocalFile))
             || Edited(nameof(LocalModelPath)) || Edited(nameof(HfRepo)) || Edited(nameof(HfToken));
 
         ModelSource? model = null;
@@ -574,9 +590,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 model = new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = s.HfRepo, HfToken = s.HfToken };
         }
 
-        var hasServerField = !string.IsNullOrEmpty(s.Host) || s.Port != 8080 || !string.IsNullOrEmpty(s.ApiKey)
-            || !string.IsNullOrEmpty(s.ServerUrl) || !string.IsNullOrEmpty(s.LlamaServerExecutablePath)
-            || Edited(nameof(ManageServer)) || Edited(nameof(Host)) || Edited(nameof(Port))
+        var hasServerField = Edited(nameof(ManageServer))
             || Edited(nameof(ApiKey)) || Edited(nameof(ServerUrl)) || Edited(nameof(LlamaServerExecutablePath));
 
         var server = hasServerField || model != null
@@ -584,8 +598,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
             {
                 Manage = s.ManageServer,
                 Model = model,
-                Host = Edited(nameof(Host)) && s.ManageServer ? s.Host : null,
-                Port = Edited(nameof(Port)) && s.ManageServer ? s.Port : null,
                 ApiKey = Edited(nameof(ApiKey)) ? s.ApiKey : null,
                 ExecutablePath = Edited(nameof(LlamaServerExecutablePath)) ? s.LlamaServerExecutablePath : null,
                 BaseUrl = Edited(nameof(ServerUrl)) && !s.ManageServer ? s.ServerUrl : null,
@@ -595,12 +607,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
         var llamaSettings = BuildLlamaServerSettings();
 
         // Judge
-        var hasJudgeField = s.EnableJudge
-            || !string.IsNullOrEmpty(s.JudgeLocalModelPath) || !string.IsNullOrEmpty(s.JudgeHfRepo)
-            || !string.IsNullOrEmpty(s.JudgeServerUrl) || !string.IsNullOrEmpty(s.JudgeApiKey)
-            || Edited(nameof(EnableJudge)) || Edited(nameof(JudgeManageServer))
-            || Edited(nameof(JudgeLocalModelPath)) || Edited(nameof(JudgeHfRepo))
-            || Edited(nameof(JudgeApiKey)) || Edited(nameof(JudgeServerUrl))
+        var hasJudgeField = Edited(nameof(JudgeLocalModelPath)) || Edited(nameof(JudgeHfRepo))
+            || Edited(nameof(JudgeServerUrl)) || Edited(nameof(JudgeApiKey))
+            || Edited(nameof(JudgeManageServer))
             || Edited(nameof(SelectedJudgeTemplateIndex));
 
         var judge = hasJudgeField
@@ -610,12 +619,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
         // Data source
         var dataSourceEdited = Edited(nameof(UseSingleFileDataSource)) || Edited(nameof(DataFilePath))
             || Edited(nameof(PromptDir)) || Edited(nameof(ExpectedDir));
-        var hasValidDataSource = s.UseSingleFileDataSource
-            ? !string.IsNullOrEmpty(s.DataFilePath)
-            : !string.IsNullOrEmpty(s.PromptDir);
 
-        DataSourceConfig? dataSource = null;
-        if (dataSourceEdited || hasValidDataSource)
+        PartialDataSourceConfig? dataSource = null;
+        if (dataSourceEdited)
         {
             var fieldMapping = new FieldMapping
             {
@@ -628,31 +634,24 @@ public sealed partial class WizardViewModel : IWizardViewModel
             };
 
             string? defaultSystemPrompt = s.PipelineName == "Translation" && string.IsNullOrEmpty(s.FieldMappingSystemPrompt)
-                ? $"You are a professional translator. Translate the following text from {s.TranslationSourceLanguage ?? "English"} to {s.TranslationTargetLanguage ?? "French"} accurately and naturally. Output only the translation, with no explanation or preamble."
+                ? $"You are a professional translator. Translate the following text from {s.TranslationSourceLanguage ?? "the original"} to {s.TranslationTargetLanguage ?? "the reference translation's language"} accurately and naturally. Output only the translation, with no explanation or preamble."
                 : null;
 
             dataSource = s.UseSingleFileDataSource
-                ? new DataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = s.DataFilePath, FieldMapping = fieldMapping, DefaultSystemPrompt = defaultSystemPrompt }
-                : new DataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectory = s.PromptDir, ExpectedDirectory = s.ExpectedDir, FieldMapping = fieldMapping, DefaultSystemPrompt = defaultSystemPrompt };
+                ? new PartialDataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = s.DataFilePath, FieldMapping = fieldMapping, DefaultSystemPrompt = defaultSystemPrompt }
+                : new PartialDataSourceConfig { Kind = DataSourceKind.SplitDirectories, PromptDirectory = s.PromptDir, ExpectedDirectory = s.ExpectedDir, FieldMapping = fieldMapping, DefaultSystemPrompt = defaultSystemPrompt };
         }
 
-        var evalSet = dataSource != null || Edited(nameof(PipelineName))
-            ? new EvalSetConfig
-            {
-                Id = _checkpointEvalSetId ?? Guid.NewGuid().ToString(),
-                PipelineName = Edited(nameof(PipelineName)) ? s.PipelineName : "CasualQA",
-                DataSource = dataSource ?? new DataSourceConfig { Kind = DataSourceKind.SingleFile },
-                PipelineOptions = BuildPipelineOptions()
-            }
-            : null;
+        var pipelineOptions = BuildPipelineOptions();
 
         // Run meta
-        var runEdited = Edited(nameof(RunName)) || Edited(nameof(OutputDir)) || Edited(nameof(ShellTarget))
+        var runEdited = Edited(PipelineName) || Edited(nameof(RunName)) || Edited(nameof(OutputDir)) || Edited(nameof(ShellTarget))
             || Edited(nameof(ContinueFromCheckpoint)) || Edited(nameof(ContinueOnEvalFailure))
             || Edited(nameof(MaxConcurrentEvals)) || Edited(nameof(CheckpointDatabasePath));
 
         var run = runEdited ? new PartialRunMeta
         {
+            PipelineName = Edited(nameof(PipelineName)) ? s.PipelineName : null,
             RunName = Edited(nameof(RunName)) ? s.RunName : null,
             OutputDirectoryPath = Edited(nameof(OutputDir)) ? s.OutputDir : null,
             ExportShellTarget = Edited(nameof(ShellTarget)) ? s.ShellTarget : null,
@@ -681,11 +680,12 @@ public sealed partial class WizardViewModel : IWizardViewModel
         return new PartialConfig
         {
             Server = server,
-            LlamaServer = llamaSettings,
-            EvalSets = evalSet != null ? [evalSet] : [],
+            LlamaSettings = llamaSettings,
             Judge = judge,
             Run = run,
             Output = output,
+            DataSource = dataSource,
+            PipelineOptions = pipelineOptions
         };
     }
 
@@ -695,7 +695,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
         // avoiding the need to manually list every field twice.
         return BuildServerSettingsFromState(
             fieldPrefix: "",
-            stateGetter: name => WizardState.GetLlamaField(_state, name),
+            stateGetter: name => WizardState.GetLlamaServerField(_state, name),
             editedFields: _editedFields,
             extraArgs: _state.ExtraLlamaArgs);
     }
@@ -704,7 +704,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     {
         return BuildServerSettingsFromState(
             fieldPrefix: "Judge",
-            stateGetter: name => WizardState.GetJudgeLlamaField(_state, name),
+            stateGetter: name => WizardState.GetJudgeLlamaServerField(_state, name),
             editedFields: _editedFields,
             extraArgs: _state.JudgeExtraLlamaArgs);
     }
@@ -729,14 +729,12 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
         T? Get<T>(string name) where T : struct
         {
-            if (!editedFields.Contains(fieldPrefix + name)) return null;
-            return stateGetter(name) is T v ? v : null;
+            return !editedFields.Contains(fieldPrefix + name) ? (T?)null : (T?)(stateGetter(name) is T v ? v : null);
         }
 
         string? GetStr(string name)
         {
-            if (!editedFields.Contains(fieldPrefix + name)) return null;
-            return stateGetter(name) as string;
+            return !editedFields.Contains(fieldPrefix + name) ? null : stateGetter(name) as string;
         }
 
         return new PartialLlamaServerSettings
@@ -831,8 +829,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 judgeModel = new ModelSource { Kind = ModelSourceKind.HuggingFace, HfRepo = s.JudgeHfRepo, HfToken = s.JudgeHfToken };
         }
 
-        var judgeExecutablePath = Edited(nameof(JudgeExecutablePath)) ? s.JudgeExecutablePath : s.LlamaServerExecutablePath;
-
         return new PartialJudgeConfig
         {
             Enable = EnableJudge,
@@ -840,16 +836,29 @@ public sealed partial class WizardViewModel : IWizardViewModel
             {
                 Manage = s.JudgeManageServer,
                 Model = judgeModel,
-                Host = Edited(nameof(JudgeManageServer)) && s.JudgeManageServer ? "127.0.0.1" : null,
-                Port = Edited(nameof(JudgeManageServer)) && s.JudgeManageServer ? 8081 : null,
                 ApiKey = Edited(nameof(JudgeApiKey)) ? s.JudgeApiKey : null,
-                ExecutablePath = judgeExecutablePath,
-                BaseUrl = Edited(nameof(JudgeManageServer)) && !s.JudgeManageServer ? s.JudgeServerUrl : null
+                ExecutablePath = Edited(nameof(JudgeExecutablePath)) ? s.JudgeExecutablePath : null,
+                BaseUrl = Edited(nameof(JudgeServerUrl)) ? s.JudgeServerUrl : null
             },
             ServerSettings = BuildJudgeLlamaServerSettings(),
-            BaseUrl = Edited(nameof(JudgeServerUrl)) && !s.JudgeManageServer ? s.JudgeServerUrl : null,
             JudgePromptTemplate = Edited(nameof(JudgeTemplate)) ? s.JudgeTemplate : null
         };
+    }
+
+    private async Task ExportSettingsAsync()
+    {
+        if (_filePicker == null) return;
+        var path = await _filePicker.ShowSaveFileDialogAsync(
+            "Save Settings File",
+            "YAML Files|*.yml;*.yaml|All Files|*.*");
+
+        if (string.IsNullOrEmpty(path)) return;
+
+        // Build PartialConfig from SettingsViewModel fields ONLY (not wizard state)
+        var partialConfig = BuildPartialConfig();
+
+        await File.WriteAllTextAsync(path, SerializeToYaml(partialConfig));
+        _logger?.LogInformation("Settings saved to {Path}", path);
     }
 
     // ─── Browse actions ───────────────────────────────────────────────────────
@@ -859,12 +868,18 @@ public sealed partial class WizardViewModel : IWizardViewModel
         if (_filePicker == null) return;
         if (parameter == "executable")
         {
-            var path = await _filePicker.ShowOpenFileDialogAsync("Select llama-server Executable", "Executable Files|llama-server;llama-server.exe|All Files|*.*");
+            var path = await _filePicker.ShowOpenFileDialogAsync(
+                "Select llama-server Executable",
+                "Executable Files|llama-server;llama-server.exe|All Files|*.*",
+                dialogIdentifier: "llama-server");
             if (path != null) LlamaServerExecutablePath = path;
         }
         else
         {
-            var path = await _filePicker.ShowOpenFileDialogAsync("Select Model File", "Model Files|*.gguf|All Files|*.*");
+            var path = await _filePicker.ShowOpenFileDialogAsync(
+                "Select Model File",
+                "Model Files|*.gguf|All Files|*.*",
+                dialogIdentifier: "model-file");
             if (path != null) LocalModelPath = path;
         }
     }
@@ -872,28 +887,37 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private async Task BrowseDataFileAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFileDialogAsync("Select Data File", "Data Files|*.json;*.yaml;*.yml;*.csv;*.parquet;*.jsonl|All Files|*.*");
-        DataFilePath = path;
+        var path = await _filePicker.ShowOpenFileDialogAsync(
+            "Select Data File",
+            "Data Files|*.json;*.yaml;*.yml;*.csv;*.parquet;*.jsonl|All Files|*.*",
+            dialogIdentifier: "data-file");
+        if (path != null) DataFilePath = path;
     }
 
     private async Task BrowsePromptDirAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFolderDialogAsync("Select Prompt Directory");
-        PromptDir = path;
+        var path = await _filePicker.ShowOpenFolderDialogAsync(
+            "Select Prompt Directory",
+            dialogIdentifier: "output");
+        if (path != null) PromptDir = path;
     }
 
     private async Task BrowseExpectedDirAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFolderDialogAsync("Select Expected Output Directory");
-        ExpectedDir = path;
+        var path = await _filePicker.ShowOpenFolderDialogAsync(
+            "Select Expected Output Directory",
+            dialogIdentifier: "output");
+        if (path != null) ExpectedDir = path;
     }
 
     private async Task BrowseOutputDirAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFolderDialogAsync("Select Output Directory");
+        var path = await _filePicker.ShowOpenFolderDialogAsync(
+            "Select Output Directory",
+            dialogIdentifier: "output");
         if (path != null) OutputDir = path;
     }
 
@@ -902,12 +926,18 @@ public sealed partial class WizardViewModel : IWizardViewModel
         if (_filePicker == null) return;
         if (parameter == "executable")
         {
-            var path = await _filePicker.ShowOpenFileDialogAsync("Select Judge llama-server Executable", "Executable Files|llama-server;llama-server.exe|All Files|*.*");
+            var path = await _filePicker.ShowOpenFileDialogAsync(
+                "Select Judge llama-server Executable",
+                "Executable Files|llama-server;llama-server.exe|All Files|*.*",
+                dialogIdentifier: "llama-server");
             if (path != null) JudgeExecutablePath = path;
         }
         else
         {
-            var path = await _filePicker.ShowOpenFileDialogAsync("Select Judge Model File", "Model Files|*.gguf|All Files|*.*");
+            var path = await _filePicker.ShowOpenFileDialogAsync(
+                "Select Judge Model File",
+                "Model Files|*.gguf|All Files|*.*",
+                dialogIdentifier: "model-file");
             if (path != null) JudgeLocalModelPath = path;
         }
     }
@@ -915,14 +945,19 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private async Task BrowseBuildScriptAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFileDialogAsync("Select Build Script", "Script Files|*.sh;*.bat;*.ps1;*.cmd|All Files|*.*");
+        var path = await _filePicker.ShowOpenFileDialogAsync(
+            "Select Build Script",
+            "Script Files|*.sh;*.bat;*.ps1;*.cmd|All Files|*.*");
         if (path != null) CodeBuildScriptPath = path;
     }
 
     private async Task BrowseCheckpointDbAsync()
     {
         if (_filePicker == null) return;
-        var path = await _filePicker.ShowOpenFileDialogAsync("Select Checkpoint Database", "SQLite Database|*.db|All Files|*.*");
+        var path = await _filePicker.ShowOpenFileDialogAsync(
+            "Select Checkpoint Database",
+            "SQLite Database|*.db|All Files|*.*",
+            dialogIdentifier: "output");
         if (path != null)
         {
             CheckpointDatabasePath = path;
@@ -1046,7 +1081,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 var judgeConfig = System.Text.Json.JsonSerializer.Deserialize<JudgeConfig>(judgeConfigJson);
                 if (judgeConfig != null)
                 {
-                    _state.JudgeManageServer = judgeConfig.Manage;
+                    _state.JudgeManageServer = judgeConfig.ServerConfig?.Manage ?? false;
                     _editedFields.Add(nameof(JudgeManageServer));
 
                     if (!string.IsNullOrEmpty(judgeConfig.ServerConfig?.ExecutablePath))
@@ -1079,7 +1114,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
     private void PopulateFromCheckpointConfig(ResolvedConfig config)
     {
         WizardState.ApplyResolvedConfig(_state, config, _editedFields);
-        _checkpointEvalSetId = config.EvalSets.Count > 0 ? config.EvalSets[0].Id : null;
 
         // Notify all properties first
         NotifyAllProperties();
@@ -1139,7 +1173,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
     {
         _state = WizardState.CreateDefaults();
         _currentStep = WizardStepKind.ContinueRun;
-        _checkpointEvalSetId = null;
         _editedFields.Clear();
 
         ResetToDefaultsCompleted?.Invoke(this, EventArgs.Empty);

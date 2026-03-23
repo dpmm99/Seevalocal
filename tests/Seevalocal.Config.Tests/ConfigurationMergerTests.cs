@@ -18,7 +18,7 @@ public sealed class ConfigurationMergerTests
     {
         var first = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings
+            LlamaSettings = new PartialLlamaServerSettings
             {
                 ContextWindowTokens = 4096,
                 SamplingTemperature = 0.5,
@@ -27,7 +27,7 @@ public sealed class ConfigurationMergerTests
 
         var second = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings
+            LlamaSettings = new PartialLlamaServerSettings
             {
                 ContextWindowTokens = 8192, // overrides first
                 // SamplingTemperature not set → falls back to first
@@ -45,11 +45,11 @@ public sealed class ConfigurationMergerTests
     {
         var first = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { TopK = 40 },
+            LlamaSettings = new PartialLlamaServerSettings { TopK = 40 },
         };
         var second = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings(), // no TopK
+            LlamaSettings = new PartialLlamaServerSettings(), // no TopK
         };
 
         var result = _merger.Merge([first, second]);
@@ -66,11 +66,11 @@ public sealed class ConfigurationMergerTests
     {
         var file = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { ParallelSlotCount = 2 },
+            LlamaSettings = new PartialLlamaServerSettings { ParallelSlotCount = 2 },
         };
         var cli = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { ParallelSlotCount = 8 },
+            LlamaSettings = new PartialLlamaServerSettings { ParallelSlotCount = 8 },
         };
 
         var result = _merger.Merge([file], cli);
@@ -83,7 +83,7 @@ public sealed class ConfigurationMergerTests
     {
         var file = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { ParallelSlotCount = 4 },
+            LlamaSettings = new PartialLlamaServerSettings { ParallelSlotCount = 4 },
         };
         var cli = new PartialConfig(); // no LlamaServer override
 
@@ -131,46 +131,35 @@ public sealed class ConfigurationMergerTests
     }
 
     // -------------------------------------------------------------------------
-    // EvalSets come from highest-priority file that defines them
+    // PipelineName comes from highest-priority file that defines it
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void Merge_EvalSets_TakenFromLastFileWithSets()
+    public void Merge_PipelineName_TakenFromLastFile()
     {
         var first = new PartialConfig
         {
-            EvalSets =
-            [
-                new EvalSetConfig { Id = "first-set", PipelineName = "PipeA" },
-            ],
+            Run = new PartialRunMeta { PipelineName = "PipeA" },
         };
         var second = new PartialConfig
         {
-            EvalSets =
-            [
-                new EvalSetConfig { Id = "second-set", PipelineName = "PipeB" },
-            ],
+            Run = new PartialRunMeta { PipelineName = "PipeB" },
         };
 
         var result = _merger.Merge([first, second]);
 
-        _ = result.EvalSets.Should().HaveCount(1);
-        _ = result.EvalSets[0].Id.Should().Be("second-set");
+        _ = result.Run.PipelineName.Should().Be("PipeB");
     }
 
     [Fact]
-    public void Merge_EvalSets_FallsBackToFirstFile_WhenSecondHasNone()
+    public void Merge_PipelineName_FallsBackToFirstFile_WhenSecondHasNone()
     {
-        var first = new PartialConfig
-        {
-            EvalSets = [new EvalSetConfig { Id = "from-first", PipelineName = "PipeA" }],
-        };
-        var second = new PartialConfig(); // no EvalSets
+        var first = new PartialConfig { Run = new PartialRunMeta { PipelineName = "PipeA" } };
+        var second = new PartialConfig(); // no pipeline name
 
         var result = _merger.Merge([first, second]);
 
-        _ = result.EvalSets.Should().HaveCount(1);
-        _ = result.EvalSets[0].Id.Should().Be("from-first");
+        _ = result.Run.PipelineName.Should().Be("PipeA");
     }
 
     // -------------------------------------------------------------------------
@@ -182,8 +171,6 @@ public sealed class ConfigurationMergerTests
     {
         var result = _merger.Merge([]);
 
-        _ = result.Server.Host.Should().BeNull();
-        _ = result.Server.Port.Should().BeNull();
         _ = result.Server.Manage.Should().BeNull();
     }
 
@@ -195,8 +182,7 @@ public sealed class ConfigurationMergerTests
             Server = new PartialServerConfig
             {
                 Manage = true,
-                Host = "0.0.0.0",
-                Port = 9090,
+                BaseUrl = "http://localhost:8080",
                 Model = new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = "/models/model.gguf" },
             },
         };
@@ -204,8 +190,7 @@ public sealed class ConfigurationMergerTests
         var result = _merger.Merge([file]);
 
         _ = result.Server.Manage.Should().BeTrue();
-        _ = result.Server.Host.Should().Be("0.0.0.0");
-        _ = result.Server.Port.Should().Be(9090);
+        _ = result.Server.BaseUrl.Should().Be("http://localhost:8080");
         _ = result.Server.Model.Should().NotBeNull();
         _ = result.Server.Model!.FilePath.Should().Be("/models/model.gguf");
     }
@@ -226,16 +211,16 @@ public sealed class ConfigurationMergerTests
     {
         var first = new PartialConfig
         {
-            Judge = new PartialJudgeConfig { BaseUrl = "http://judge1:8080" },
+            Judge = new PartialJudgeConfig { ServerConfig = new PartialServerConfig { BaseUrl = "http://judge1:8080" } },
         };
         var second = new PartialConfig
         {
-            Judge = new PartialJudgeConfig { BaseUrl = "http://judge2:8080" },
+            Judge = new PartialJudgeConfig { ServerConfig = new PartialServerConfig { BaseUrl = "http://judge2:8080" } },
         };
 
         var result = _merger.Merge([first, second]);
 
-        _ = result.Judge!.BaseUrl.Should().Be("http://judge2:8080");
+        _ = result.Judge!.ServerConfig.BaseUrl.Should().Be("http://judge2:8080");
     }
 
     // -------------------------------------------------------------------------
@@ -250,7 +235,6 @@ public sealed class ConfigurationMergerTests
         _ = result.LlamaServer.ContextWindowTokens.Should().BeNull();
         _ = result.LlamaServer.SamplingTemperature.Should().BeNull();
         _ = result.LlamaServer.ExtraArgs.Should().BeEmpty();
-        _ = result.EvalSets.Should().BeEmpty();
         _ = result.Judge.Should().BeNull();
     }
 
@@ -263,11 +247,11 @@ public sealed class ConfigurationMergerTests
     {
         var first = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { ExtraArgs = ["--arg-from-first"] },
+            LlamaSettings = new PartialLlamaServerSettings { ExtraArgs = ["--arg-from-first"] },
         };
         var second = new PartialConfig
         {
-            LlamaServer = new PartialLlamaServerSettings { ExtraArgs = ["--arg-from-second"] },
+            LlamaSettings = new PartialLlamaServerSettings { ExtraArgs = ["--arg-from-second"] },
         };
 
         var result = _merger.Merge([first, second]);
@@ -283,7 +267,7 @@ public sealed class ConfigurationMergerTests
     public void Merge_DataSource_NullByDefault()
     {
         var result = _merger.Merge([]);
-        _ = result.DataSource.Kind.Should().Be(DataSourceKind.SingleFile);
+        _ = result.DataSource.Kind.Should().Be(DataSourceKind.SplitDirectories);
         _ = result.DataSource.FilePath.Should().BeNull();
     }
 
@@ -385,8 +369,7 @@ public sealed class ConfigurationMergerTests
                 Enable = true,
                 ServerConfig = new PartialServerConfig
                 {
-                    Host = "127.0.0.1",
-                    Port = 8081,
+                    BaseUrl = "http://localhost:8080",
                     ApiKey = "key1",
                     Model = new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = "/judge1.gguf" },
                 },
@@ -398,8 +381,7 @@ public sealed class ConfigurationMergerTests
             {
                 ServerConfig = new PartialServerConfig
                 {
-                    Host = "0.0.0.0", // overrides first
-                    Port = 9090,      // overrides first
+                    BaseUrl = "http://127.0.0.1:9090", // overrides first
                     // ApiKey and Model not set → falls back to first
                 },
             },
@@ -407,8 +389,7 @@ public sealed class ConfigurationMergerTests
 
         var result = _merger.Merge([first, second]);
 
-        _ = result.Judge!.ServerConfig!.Host.Should().Be("0.0.0.0");
-        _ = result.Judge.ServerConfig.Port.Should().Be(9090);
+        _ = result.Judge!.ServerConfig!.BaseUrl.Should().Be("http://127.0.0.1:9090");
         _ = result.Judge.ServerConfig.ApiKey.Should().Be("key1");
         _ = result.Judge.ServerConfig.Model!.FilePath.Should().Be("/judge1.gguf");
     }

@@ -1,12 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Server;
 using Seevalocal.UI.Services;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using Xunit;
 
@@ -33,7 +31,7 @@ public class EvalGenServiceTests : IAsyncLifetime
         _logger = NullLogger<EvalGenService>.Instance;
         _tempDir = Path.Combine(Path.GetTempPath(), $"eval_gen_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_tempDir);
-        
+
         // Create mock server manager
         var gpuDetector = new GpuDetector(NullLogger<GpuDetector>.Instance);
         var downloader = new LlamaServerDownloader(_httpClient, NullLogger<LlamaServerDownloader>.Instance);

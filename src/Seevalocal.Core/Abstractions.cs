@@ -96,7 +96,6 @@ public record StageResult
 public record EvalResult
 {
     public required string EvalItemId { get; init; }
-    public required string EvalSetId { get; init; }
     public bool Succeeded { get; init; }
     public string? FailureReason { get; init; }
 

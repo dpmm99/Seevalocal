@@ -44,7 +44,7 @@ public class DirectoryDataSourceTests : IDisposable
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
         var config = new DataSourceConfig
         {
-            Kind = DataSourceKind.Directory,
+            Kind = DataSourceKind.SplitDirectories,
             PromptDirectory = promptDir,
         };
         var ds = factory.Create("test", config).Value;
@@ -94,7 +94,7 @@ public class DirectoryDataSourceTests : IDisposable
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
         var config = new DataSourceConfig
         {
-            Kind = DataSourceKind.Directory,
+            Kind = DataSourceKind.SplitDirectories,
             PromptDirectory = promptDir,
             SystemPromptFilePath = sysFile,
         };
@@ -117,7 +117,7 @@ public class DirectoryDataSourceTests : IDisposable
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
         var config = new DataSourceConfig
         {
-            Kind = DataSourceKind.Directory,
+            Kind = DataSourceKind.SplitDirectories,
             PromptDirectory = promptDir,
             FileExtensionFilter = "*.txt",
         };
@@ -136,7 +136,7 @@ public class DirectoryDataSourceTests : IDisposable
         var factory = new DataSourceFactory(TestHelpers.NullLoggerFactory);
         var config = new DataSourceConfig
         {
-            Kind = DataSourceKind.Directory,
+            Kind = DataSourceKind.SplitDirectories,
             PromptDirectory = promptDir,
         };
         var ds = factory.Create("test", config).Value;

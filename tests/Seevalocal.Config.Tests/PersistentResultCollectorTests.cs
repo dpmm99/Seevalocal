@@ -29,14 +29,12 @@ public sealed class PersistentResultCollectorTests : IDisposable
             Server = new ServerConfig
             {
                 Manage = true,
-                Host = "127.0.0.1",
-                Port = 8080,
+                BaseUrl = "http://127.0.0.1:8080",
             },
             LlamaServer = new LlamaServerSettings
             {
                 ContextWindowTokens = 8192,
             },
-            EvalSets = [],
         };
     }
 
@@ -70,7 +68,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         loadedConfig.Should().NotBeNull();
         loadedConfig!.Run.RunName.Should().Be("test-run");
         loadedConfig.Run.OutputDirectoryPath.Should().Be("./results");
-        loadedConfig.Server.Host.Should().Be("127.0.0.1");
+        loadedConfig.Server.BaseUrl.Should().Be("http://127.0.0.1:8080");
         loadedConfig.LlamaServer.ContextWindowTokens.Should().Be(8192);
     }
 
@@ -81,7 +79,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
         const string stageName = "PromptStage";
         const string outputKey = "PromptStage.response";  // Production uses prefixed keys
         const string outputValue = "test response content";
@@ -90,7 +87,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var result = new EvalResult
         {
             EvalItemId = evalItemId,
-            EvalSetId = evalSetId,
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -115,7 +111,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
         const string stageName = "JudgeStage";
         const string outputKey = "JudgeStage.score";  // Production uses prefixed keys
         var outputValue = new { score = 8.5, rationale = "Good response" };
@@ -124,7 +119,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var result = new EvalResult
         {
             EvalItemId = evalItemId,
-            EvalSetId = evalSetId,
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -148,10 +142,9 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
 
         // Act - simulate partial progress
-        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "PromptStage", cts.Token);
+        await collector.SavePartialProgressAsync(evalItemId, "PromptStage", cts.Token);
 
         // Assert
         var lastStage = await collector.GetLastCompletedStageAsync(evalItemId, cts.Token);
@@ -165,11 +158,10 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
 
         // Act - simulate progressing through stages
-        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "PromptStage", cts.Token);
-        await collector.SavePartialProgressAsync(evalItemId, evalSetId, "JudgeStage", cts.Token);
+        await collector.SavePartialProgressAsync(evalItemId, "PromptStage", cts.Token);
+        await collector.SavePartialProgressAsync(evalItemId, "JudgeStage", cts.Token);
 
         // Assert
         var lastStage = await collector.GetLastCompletedStageAsync(evalItemId, cts.Token);
@@ -185,7 +177,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var result = new EvalResult
         {
             EvalItemId = "item-1",
-            EvalSetId = "eval-set-1",
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -212,7 +203,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var primaryResult = new EvalResult
         {
             EvalItemId = "item-1",
-            EvalSetId = "eval-set-1",
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -225,7 +215,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         var judgeResult = new EvalResult
         {
             EvalItemId = "item-1",
-            EvalSetId = "eval-set-1",
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -303,13 +292,11 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
 
         // Create a result with empty AllStageOutputs (simulating what CollectAsync does now)
         var result = new EvalResult
         {
             EvalItemId = evalItemId,
-            EvalSetId = evalSetId,
             Succeeded = true,
             FailureReason = null,
             Metrics = [],
@@ -328,7 +315,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await collector.SaveStageOutputAsync(evalItemId, "JudgeStage", "JudgeStage.rationale", "Good answer", cts.Token);
 
         // Act
-        var results = await collector.GetResultsForPhaseAsync(evalSetId, "primary", cts.Token);
+        var results = await collector.GetResultsForPhaseAsync("primary", cts.Token);
 
         // Assert
         results.Should().HaveCount(1);
@@ -356,7 +343,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
         // Arrange
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        const string evalSetId = "eval-set-1";
 
         // Create multiple results
         for (int i = 1; i <= 3; i++)
@@ -364,7 +350,6 @@ public sealed class PersistentResultCollectorTests : IDisposable
             var result = new EvalResult
             {
                 EvalItemId = $"item-{i}",
-                EvalSetId = evalSetId,
                 Succeeded = true,
                 Metrics = [],
                 AllStageOutputs = new Dictionary<string, object?>(),
@@ -379,7 +364,7 @@ public sealed class PersistentResultCollectorTests : IDisposable
         }
 
         // Act
-        var results = await collector.GetResultsForPhaseAsync(evalSetId, "primary", cts.Token);
+        var results = await collector.GetResultsForPhaseAsync("primary", cts.Token);
 
         // Assert
         results.Should().HaveCount(3);
@@ -440,12 +425,10 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
 
         var result = new EvalResult
         {
             EvalItemId = evalItemId,
-            EvalSetId = evalSetId,
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),
@@ -470,12 +453,10 @@ public sealed class PersistentResultCollectorTests : IDisposable
         await using var collector = new PersistentResultCollector(_dbPath);
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         const string evalItemId = "item-1";
-        const string evalSetId = "eval-set-1";
 
         var result = new EvalResult
         {
             EvalItemId = evalItemId,
-            EvalSetId = evalSetId,
             Succeeded = true,
             Metrics = [],
             AllStageOutputs = new Dictionary<string, object?>(),

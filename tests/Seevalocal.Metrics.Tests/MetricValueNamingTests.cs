@@ -79,7 +79,6 @@ public class ParquetResultWriterTests : IDisposable
         new()
         {
             EvalItemId = id,
-            EvalSetId = "test-set",
             Succeeded = true,
             DurationSeconds = 1.0,
             StartedAt = DateTimeOffset.UtcNow,

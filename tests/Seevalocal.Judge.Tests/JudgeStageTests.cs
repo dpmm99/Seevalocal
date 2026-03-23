@@ -18,7 +18,6 @@ public class JudgeStageTests
             ResponseFormat = format,
             ScoreMinValue = 0,
             ScoreMaxValue = 10,
-            JudgeSamplingTemperature = 0.0,
             JudgeMaxTokenCount = 512,
             JudgeSystemPrompt = systemPrompt,
             JudgePromptTemplate = DefaultTemplates.StructuredJson,
@@ -142,7 +141,7 @@ public class JudgeStageTests
     public async Task ExecuteAsync_MissingPromptStageOutput_SkipsItem()
     {
         var judgeClientMock = Substitute.For<ILlamaServerClient>();
-        
+
         // StageOutputs does NOT contain PromptStage.response
         var context = new EvalStageContext
         {
@@ -160,7 +159,7 @@ public class JudgeStageTests
         // Should fail (skip) when prompt stage output is missing
         _ = result.Succeeded.Should().BeFalse();
         _ = result.FailureReason.Should().Contain("primary LLM output is missing or empty");
-        
+
         // Judge client should NOT have been called
         await judgeClientMock.DidNotReceive().ChatCompletionAsync(Arg.Any<ChatCompletionRequest>(), Arg.Any<CancellationToken>());
     }
@@ -185,11 +184,11 @@ public class JudgeStageTests
             "JudgeStage.rationale",
         ]);
         _ = result.Outputs["JudgeStage.rationale"].Should().Be("great");
-        
+
         // Metrics should contain judge.score and judge.passed
         var scoreMetric = result.Metrics.FirstOrDefault(m => m.Name == "judge.score");
         var passedMetric = result.Metrics.FirstOrDefault(m => m.Name == "judge.passed");
-        
+
         _ = scoreMetric.Should().NotBeNull();
         _ = passedMetric.Should().NotBeNull();
         _ = scoreMetric!.Value.ToString().Should().Be("10");

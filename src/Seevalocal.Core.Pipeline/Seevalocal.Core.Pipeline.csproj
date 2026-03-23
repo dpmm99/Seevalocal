@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core\Seevalocal.Core.csproj" />
     <ProjectReference Include="..\Seevalocal.Server\Seevalocal.Server.csproj" />
   </ItemGroup>
 

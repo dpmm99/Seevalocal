@@ -23,7 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Seevalocal.Config\Seevalocal.Config.csproj" />
     <ProjectReference Include="..\..\src\Seevalocal.Core.Pipeline\Seevalocal.Core.Pipeline.csproj" />
-    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core\Seevalocal.Core.csproj" />
   </ItemGroup>
 
 </Project>

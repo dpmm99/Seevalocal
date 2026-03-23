@@ -67,12 +67,11 @@ public static class CommonAutoSetup
             "=== Auto-Setup Summary ===\n" +
             "  GPU:             {GpuKind}\n" +
             "  Manage Server:   {Manage}\n" +
-            "  Host:            {Host}:{Port}\n" +
+            "  URL:             {Url}\n" +
             "==========================",
             gpuKind,
             config.Server?.Manage,
-            config.Server?.Host ?? "127.0.0.1",
-            config.Server?.Port ?? 8080);
+            config.Server?.BaseUrl ?? "http://127.0.0.1:8080");
     }
 }
 

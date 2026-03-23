@@ -19,8 +19,7 @@ public sealed class ShellScriptExporterTests
         Server = new ServerConfig
         {
             Manage = true,
-            Host = "127.0.0.1",
-            Port = 8080,
+            BaseUrl = "http://127.0.0.1:8080",
             Model = new ModelSource
             {
                 Kind = ModelSourceKind.LocalFile,
@@ -34,7 +33,6 @@ public sealed class ShellScriptExporterTests
             EnableFlashAttention = true,
             SamplingTemperature = 0.2,
         },
-        EvalSets = [],
     };
 
     private static ResolvedConfig UnmanagedConfig() => new()
@@ -42,7 +40,6 @@ public sealed class ShellScriptExporterTests
         Run = new RunMeta { RunName = "ext-run", OutputDirectoryPath = "./out" },
         Server = new ServerConfig { Manage = false, BaseUrl = "http://remote:8080" },
         LlamaServer = new LlamaServerSettings(),
-        EvalSets = [],
     };
 
     // -------------------------------------------------------------------------
@@ -210,8 +207,7 @@ public sealed class ShellScriptExporterTests
             Server = new ServerConfig
             {
                 Manage = true,
-                Host = "127.0.0.1",
-                Port = 8080,
+                BaseUrl = "http://127.0.0.1:8080",
                 Model = new ModelSource
                 {
                     Kind = ModelSourceKind.LocalFile,
@@ -238,8 +234,7 @@ public sealed class ShellScriptExporterTests
             Server = new ServerConfig
             {
                 Manage = true,
-                Host = "127.0.0.1",
-                Port = 8080,
+                BaseUrl = "http://127.0.0.1:8080",
                 Model = new ModelSource
                 {
                     Kind = ModelSourceKind.HuggingFace,

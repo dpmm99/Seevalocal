@@ -1,6 +1,6 @@
-using System.ComponentModel;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.ComponentModel;
 
 namespace Seevalocal.UI.Commands;
 
@@ -53,21 +53,12 @@ public sealed class EvalGenCommandSettings : CommandSettings
 
     public override ValidationResult Validate()
     {
-        if (string.IsNullOrEmpty(OutputDirectory) && !ContinueFromCheckpoint)
-        {
-            return ValidationResult.Error("Output directory is required unless continuing from checkpoint.");
-        }
-
-        if (TargetCategoryCount < 1 || TargetCategoryCount > 100)
-        {
-            return ValidationResult.Error("Target category count must be between 1 and 100.");
-        }
-
-        if (TargetProblemsPerCategory < 1 || TargetProblemsPerCategory > 50)
-        {
-            return ValidationResult.Error("Target problems per category must be between 1 and 50.");
-        }
-
-        return ValidationResult.Success();
+        return string.IsNullOrEmpty(OutputDirectory) && !ContinueFromCheckpoint
+            ? ValidationResult.Error("Output directory is required unless continuing from checkpoint.")
+            : TargetCategoryCount is < 1 or > 100
+            ? ValidationResult.Error("Target category count must be between 1 and 100.")
+            : TargetProblemsPerCategory is < 1 or > 50
+            ? ValidationResult.Error("Target problems per category must be between 1 and 50.")
+            : ValidationResult.Success();
     }
 }

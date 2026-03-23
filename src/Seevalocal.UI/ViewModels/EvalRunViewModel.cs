@@ -23,7 +23,6 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     private readonly EvalPipeline _pipeline;
     private readonly IDataSource _dataSource;
     private readonly PersistentResultCollector _collector;
-    private readonly EvalSetConfig _evalSet;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly IServerLifecycleService? _serverLifecycle;
@@ -50,7 +49,6 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         EvalPipeline pipeline,
         IDataSource dataSource,
         PersistentResultCollector collector,
-        EvalSetConfig evalSet,
         ILoggerFactory loggerFactory,
         ILogger logger,
         IServerLifecycleService? serverLifecycle = null,
@@ -65,7 +63,6 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         _pipeline = pipeline;
         _dataSource = dataSource;
         _collector = collector;
-        _evalSet = evalSet;
         _loggerFactory = loggerFactory;
         _logger = logger;
         _serverLifecycle = serverLifecycle;
@@ -166,16 +163,13 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
             // Get total token count from metrics
             var totalTokenMetric = result.Metrics.FirstOrDefault(m => m.Name == "totalTokenCount");
             var tokenCount = totalTokenMetric?.Value is MetricScalar.IntMetric intMetric ? intMetric.Value : 0;
-            
+
             totalTokens += tokenCount;
             totalDuration += result.DurationSeconds;
         }
 
         // Avoid division by zero
-        if (totalDuration <= 0)
-            return 0.0;
-
-        return totalTokens / totalDuration;
+        return totalDuration <= 0 ? 0.0 : totalTokens / totalDuration;
     }
 
     private void OnOrchestratorProgressChanged(EvalProgress progress)
@@ -222,7 +216,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         // Use this for the final refresh after the run completes
         try
         {
-            var allResults = await _collector.GetResultsAsync(_evalSet.Id, "primary", default);
+            var allResults = await _collector.GetResultsAsync("primary", default);
 
             // Clear and rebuild the Results collection
             Results.Clear();
@@ -259,7 +253,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         StatusLine = IsPaused ? "Paused" : "Running...";
         OnPropertyChanged(nameof(IsPaused));
         OnPropertyChanged(nameof(StatusLine));
-        
+
         // Tell the orchestrator to pause/resume
         _orchestrator?.SetPaused(IsPaused);
     }
@@ -374,7 +368,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
     {
         // Sync EarlyCompletions with first N items from Results
         var newEarlyCompletions = Results.Take(EarlyCompletionsLimit).ToList();
-        
+
         // Remove items that are no longer in the first N
         for (int i = EarlyCompletions.Count - 1; i >= 0; i--)
         {
@@ -383,7 +377,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
                 EarlyCompletions.RemoveAt(i);
             }
         }
-        
+
         // Add new items
         for (int i = EarlyCompletions.Count; i < newEarlyCompletions.Count; i++)
         {
@@ -397,11 +391,11 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         {
             var count = Results.Count;
             if (count == 0) return "No completions yet...";
-            
+
             // Show count and last item info
             var lastResult = Results.LastOrDefault();
             if (lastResult == null) return $"{count} items loaded...";
-            
+
             var promptPreview = lastResult.UserPrompt?.Length > 40
                 ? $"{lastResult.UserPrompt.AsSpan(0, 40)}..."
                 : lastResult.UserPrompt ?? "N/A";
@@ -626,7 +620,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 
         try
         {
-            var completedIds = await persistentCollector.GetCompletedItemIdsAsync(_evalSet.Id, "primary", default);
+            var completedIds = await persistentCollector.GetCompletedItemIdsAsync("primary", default);
             _logger.LogInformation("Checkpoint loaded: {Count} already-completed items", completedIds.Count);
             return completedIds.Count;
         }
@@ -649,12 +643,12 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
         {
             // Populate the collector's in-memory cache with checkpoint data
             // This ensures RefreshResultsFromCache() will display checkpoint completions
-            await persistentCollector.PopulateCacheFromCheckpointAsync(_evalSet.Id, default);
-            
+            await persistentCollector.PopulateCacheFromCheckpointAsync(default);
+
             // Debug: log what was loaded
             var cacheCount = persistentCollector.GetResults().Count;
-            _logger.LogInformation("Checkpoint loaded: {Count} results in cache, EvalSetId={EvalSetId}", cacheCount, _evalSet.Id);
-            
+            _logger.LogInformation("Checkpoint loaded: {Count} results in cache", cacheCount);
+
             // Refresh the UI from the cache (same as live completions)
             RefreshResultsFromCache();
 
@@ -717,24 +711,46 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 /// <summary>
 /// A flat view of a single <see cref="EvalResult"/> for list display.
 /// </summary>
-public sealed class EvalResultViewModel(EvalResult result)
+public sealed class EvalResultViewModel(EvalResult result, bool isJudgePhaseRunning = false)
 {
-    private readonly EvalResult _result = result;
-
-    public string Id => _result.EvalItemId;
-    public string EvalSetId => _result.EvalSetId;
-    public bool Succeeded => _result.Succeeded;
+    public string Id => result.EvalItemId;
+    public bool Succeeded => result.Succeeded;
     public bool IsPassFailFormat => CheckIsPassFailFormat();
-    
+
     /// <summary>
-    /// Pipeline execution status: "Pending", "Succeeded", or "Failed".
+    /// Pipeline execution status: "Pending", "Running", "Succeeded", or "Failed".
+    /// Shows "Running" when a phase is in progress and the item has started but not completed that phase.
+    /// Shows "Pending" until the entire pipeline (including judge phase if applicable) completes.
     /// </summary>
-    public string PipelineStatus => _result.Succeeded ? "Succeeded" : (_result.StartedAt == default ? "Pending" : "Failed");
-    
-    public string? FailureReason => _result.FailureReason;
-    public double DurationSeconds => _result.DurationSeconds;
-    public DateTimeOffset StartedAt => _result.StartedAt;
-    public string? RawResponse => _result.RawLlmResponse;
+    public string PipelineStatus
+    {
+        get
+        {
+            // Check if judge stage output exists (indicates judge phase completed for this item)
+            var hasJudgeOutput = result.AllStageOutputs.ContainsKey("JudgeStage.rationale") ||
+                                 result.AllStageOutputs.ContainsKey("JudgeStage.score");
+
+            // If judge phase is running and item completed primary but not judge, show "Running"
+            if (isJudgePhaseRunning && result.StartedAt != default && !hasJudgeOutput)
+                return "Running";
+
+            // Item fully completed
+            if (result.Succeeded)
+                return "Succeeded";
+
+            // Item never started
+            if (result.StartedAt == default)
+                return "Pending";
+
+            // Item started but failed
+            return "Failed";
+        }
+    }
+
+    public string? FailureReason => result.FailureReason;
+    public double DurationSeconds => result.DurationSeconds;
+    public DateTimeOffset StartedAt => result.StartedAt;
+    public string? RawResponse => result.RawLlmResponse;
 
     /// <summary>
     /// Checks if the judge is using pass/fail format (vs numeric score).
@@ -742,8 +758,8 @@ public sealed class EvalResultViewModel(EvalResult result)
     private bool CheckIsPassFailFormat()
     {
         // Check if there's a numeric score metric - if so, it's not pass/fail
-        var hasNumericScore = _result.Metrics.Any(m => 
-            m.Name.Contains("Score", StringComparison.OrdinalIgnoreCase) && 
+        var hasNumericScore = result.Metrics.Any(m =>
+            m.Name.Contains("Score", StringComparison.OrdinalIgnoreCase) &&
             m.Value is MetricScalar.DoubleMetric);
         return !hasNumericScore;
     }
@@ -751,25 +767,25 @@ public sealed class EvalResultViewModel(EvalResult result)
     /// <summary>
     /// Exposes the underlying metrics for programmatic access (e.g., calculating tokens/sec).
     /// </summary>
-    public IReadOnlyList<MetricValue> Metrics => _result.Metrics;
+    public IReadOnlyList<MetricValue> Metrics => result.Metrics;
 
     public string? UserPrompt =>
-        _result.AllStageOutputs.TryGetValue("PromptStage.userPrompt", out var val)
+        result.AllStageOutputs.TryGetValue("PromptStage.userPrompt", out var val)
             ? val?.ToString() : null;
 
     public string? ExpectedOutput =>
-        _result.AllStageOutputs.TryGetValue("PromptStage.expectedOutput", out var val)
+        result.AllStageOutputs.TryGetValue("PromptStage.expectedOutput", out var val)
             ? val?.ToString() : null;
 
     public string? JudgeRationale =>
-        _result.AllStageOutputs.TryGetValue("JudgeStage.rationale", out var val)
+        result.AllStageOutputs.TryGetValue("JudgeStage.rationale", out var val)
             ? val?.ToString() : null;
 
     public double? JudgeScore =>
-         (_result.Metrics.FirstOrDefault(static m => m.Name.Contains("Score") && m.Value is MetricScalar.DoubleMetric)?.Value as MetricScalar.DoubleMetric)?.Value;
+         (result.Metrics.FirstOrDefault(static m => m.Name.Contains("Score") && m.Value is MetricScalar.DoubleMetric)?.Value as MetricScalar.DoubleMetric)?.Value;
 
     public IEnumerable<MetricDisplayItem> MetricDisplay =>
-        _result.Metrics
+        result.Metrics
             .Select(static m => new MetricDisplayItem(m.Name, m.Value?.ToString() ?? ""))
             .Where(static m => !string.IsNullOrEmpty(m.Value));
 }

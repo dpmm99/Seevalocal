@@ -6,14 +6,12 @@ using Microsoft.Extensions.Logging;
 using Seevalocal.Config.Loading;
 using Seevalocal.Config.Merging;
 using Seevalocal.Config.Validation;
-using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.DataSources;
 using Seevalocal.Pipelines;
 using Seevalocal.Pipelines.Factories;
 using Seevalocal.Server;
-using Seevalocal.Server.Models;
 using Seevalocal.UI.Services;
 using Seevalocal.UI.ViewModels;
 using Serilog;
@@ -155,8 +153,12 @@ public partial class App : Application
         // Runner service (UI version uses logging instead of console)
         _ = services.AddSingleton<IRunnerService, DefaultRunnerService>();
 
-        // File picker service
-        _ = services.AddSingleton<IFilePickerService, DefaultFilePickerService>();
+        // File picker service with dialog directory persistence
+        _ = services.AddSingleton<IDialogDirectoryService, DialogDirectoryService>();
+        _ = services.AddSingleton<IFilePickerService>(sp =>
+            new DefaultFilePickerService(
+                null,
+                sp.GetRequiredService<IDialogDirectoryService>()));
 
         // Toast notification service
         _ = services.AddSingleton<IToastService, ToastService>();

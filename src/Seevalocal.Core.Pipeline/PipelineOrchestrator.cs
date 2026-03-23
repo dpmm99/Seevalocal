@@ -41,7 +41,6 @@ namespace Seevalocal.Core.Pipeline;
 public sealed class PipelineOrchestrator(
     IDataSource dataSource,
     EvalPipeline pipeline,
-    EvalSetConfig? evalSetConfig,
     ResolvedConfig resolvedConfig,
     LlamaServerClient? primaryClient,
     LlamaServerClient? judgeClient,
@@ -54,7 +53,6 @@ public sealed class PipelineOrchestrator(
 {
     private readonly IDataSource _dataSource = dataSource;
     private readonly EvalPipeline _pipeline = pipeline;
-    private readonly EvalSetConfig? _evalSetConfig = evalSetConfig;
     private readonly ResolvedConfig _resolvedConfig = resolvedConfig;
     private readonly LlamaServerClient? _primaryClient = primaryClient;
     private readonly LlamaServerClient? _judgeClient = judgeClient;
@@ -126,7 +124,6 @@ public sealed class PipelineOrchestrator(
         : this(
             dataSource,
             pipeline,
-            null,  // evalSetConfig
             config,
             primaryClient,
             judgeClient,
@@ -277,7 +274,6 @@ public sealed class PipelineOrchestrator(
                     var failedResult = new EvalResult
                     {
                         EvalItemId = capturedItem.Id,
-                        EvalSetId = _evalSetConfig?.Id ?? "",
                         Succeeded = false,
                         FailureReason = ex.Message,
                         Metrics = [],
@@ -342,7 +338,7 @@ public sealed class PipelineOrchestrator(
         };
 
         var continueOnStageFailure = _resolvedConfig.Run?.ContinueOnEvalFailure ?? true;
-        return await _pipeline.RunItemAsync(context, continueOnStageFailure, evalSetId: _evalSetConfig?.Id ?? "", ct: ct);
+        return await _pipeline.RunItemAsync(context, continueOnStageFailure, ct: ct);
     }
 
     /// <summary>
@@ -357,8 +353,8 @@ public sealed class PipelineOrchestrator(
         var effectiveTotal = totalCount.HasValue ? totalCount.Value - skippedCount : totalCount;
 
         _logger.LogInformation(
-            "Orchestrator starting: EvalSet={EvalSetId}, Pipeline={PipelineName}, Phase={Phase}, MaxConcurrent={MaxConcurrentCount}, TotalItems={TotalItems}, Skipped={SkippedCount}",
-            _evalSetConfig?.Id ?? "unknown", _pipeline.PipelineName, _phase, maxConcurrentCount, effectiveTotal?.ToString() ?? "unknown", skippedCount);
+            "Orchestrator starting: Pipeline={PipelineName}, Phase={Phase}, MaxConcurrent={MaxConcurrentCount}, TotalItems={TotalItems}, Skipped={SkippedCount}",
+            _pipeline.PipelineName, _phase, maxConcurrentCount, effectiveTotal?.ToString() ?? "unknown", skippedCount);
 
         // Set result collector on pipeline for checkpoint saving
         if (_resultCollector is PersistentResultCollector persistentCollector)
@@ -396,7 +392,7 @@ public sealed class PipelineOrchestrator(
                         _logger.LogDebug("Skipping already completed item {EvalItemId} (phase={Phase})", item.Id, _phase);
                         continue;
                     }
-                    
+
                     // In 2-phase mode, also skip items completed in the OTHER phase
                     // For primary phase: skip if any stage was completed (including JudgeStage from previous run)
                     // For judge phase: skip if JudgeStage was completed
@@ -408,7 +404,7 @@ public sealed class PipelineOrchestrator(
                             if (_phase == "primary")
                             {
                                 // Primary phase: skip if ANY stage was completed (item was processed before)
-                                _logger.LogDebug("Skipping item {EvalItemId} - already processed (last={LastCompletedStage})", 
+                                _logger.LogDebug("Skipping item {EvalItemId} - already processed (last={LastCompletedStage})",
                                     item.Id, lastCompletedStage);
                                 continue;
                             }
@@ -458,8 +454,8 @@ public sealed class PipelineOrchestrator(
 
         runSw.Stop();
         _logger.LogInformation(
-            "Orchestrator finished: EvalSet={EvalSetId}, Phase={Phase}, Completed={CompletedCount}, Skipped={SkippedCount}, Elapsed={ElapsedSeconds:F2}s",
-            _evalSetConfig?.Id ?? "unknown", _phase, localCompletedCount, skippedCount, runSw.Elapsed.TotalSeconds);
+            "Orchestrator finished: Phase={Phase}, Completed={CompletedCount}, Skipped={SkippedCount}, Elapsed={ElapsedSeconds:F2}s",
+            _phase, localCompletedCount, skippedCount, runSw.Elapsed.TotalSeconds);
     }
 
     private async Task ConsumeAsync(
@@ -563,7 +559,6 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"llama-server crashed {MaxConsecutiveServerCrashes} consecutive times. Server may be unstable or misconfigured.",
                     Metrics = [],
@@ -601,7 +596,7 @@ public sealed class PipelineOrchestrator(
             EvalResult result;
             try
             {
-                result = await _pipeline.RunItemAsync(context, _resolvedConfig.Run?.ContinueOnEvalFailure ?? true, _evalSetConfig?.Id ?? "", ct);
+                result = await _pipeline.RunItemAsync(context, _resolvedConfig.Run?.ContinueOnEvalFailure ?? true, ct);
             }
             catch (HttpRequestException httpEx) when (IsServerCrashException(httpEx))
             {
@@ -635,7 +630,6 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"llama-server crashed {retryConfig.MaxRetryCount + 1} times. Server may be unstable.",
                     Metrics = [],
@@ -664,7 +658,6 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = $"Transient failure after {retryConfig.MaxRetryCount + 1} attempts: {ex.Message}",
                     Metrics = [],
@@ -680,7 +673,6 @@ public sealed class PipelineOrchestrator(
                 return new EvalResult
                 {
                     EvalItemId = item.Id,
-                    EvalSetId = _evalSetConfig?.Id ?? "",
                     Succeeded = false,
                     FailureReason = ex.Message,
                     Metrics = [],
@@ -747,7 +739,6 @@ public static class PipelineOrchestratorFactory
     public static async Task<PipelineOrchestrator> CreatePrimaryAsync(
         IDataSource dataSource,
         EvalPipeline pipeline,
-        EvalSetConfig evalSetConfig,
         ResolvedConfig resolvedConfig,
         LlamaServerClient primaryClient,
         PersistentResultCollector resultCollector,
@@ -756,31 +747,13 @@ public static class PipelineOrchestratorFactory
         CancellationToken ct,
         LlamaServerClient? judgeClient = null)
     {
-        logger.LogInformation("CreatePrimaryAsync: evalSetConfig.Id = {EvalSetId}", evalSetConfig.Id);
+        var allCompletedItemIds = await resultCollector.GetCompletedItemIdsAsync("primary", ct);
 
-        // Log all eval set IDs in the checkpoint database for debugging
-        var dbEvalSetIds = await resultCollector.GetEvalSetIdsAsync(ct);
-        logger.LogInformation("Checkpoint database contains EvalSetIds: {EvalSetIds}", string.Join(", ", dbEvalSetIds));
-
-        // Query completed items for ALL EvalSetIds in the database (not just the current one)
-        // This handles the case where previous runs used different EvalSetIds
-        var allCompletedItemIds = new HashSet<string>();
-        foreach (var dbEvalSetId in dbEvalSetIds)
-        {
-            var completedForThisId = await resultCollector.GetCompletedItemIdsAsync(dbEvalSetId, "primary", ct);
-            logger.LogInformation("EvalSetId {EvalSetId}: {CompletedCount} primary items completed", dbEvalSetId, completedForThisId.Count);
-            foreach (var id in completedForThisId)
-            {
-                allCompletedItemIds.Add(id);
-            }
-        }
-
-        logger.LogInformation("Primary phase: {CompletedCount} total items already completed across all EvalSetIds (will resume from checkpoint)", allCompletedItemIds.Count);
+        logger.LogInformation("Primary phase: {CompletedCount} total items already completed (will resume from checkpoint)", allCompletedItemIds.Count);
 
         return new PipelineOrchestrator(
             dataSource,
             pipeline,
-            evalSetConfig,
             resolvedConfig,
             primaryClient,
             judgeClient,
@@ -798,7 +771,6 @@ public static class PipelineOrchestratorFactory
     public static async Task<PipelineOrchestrator> CreateJudgeAsync(
         IDataSource dataSource,
         EvalPipeline pipeline,
-        EvalSetConfig evalSetConfig,
         ResolvedConfig resolvedConfig,
         LlamaServerClient judgeClient,
         PersistentResultCollector resultCollector,
@@ -814,7 +786,6 @@ public static class PipelineOrchestratorFactory
         return new PipelineOrchestrator(
             dataSource,
             pipeline,
-            evalSetConfig,
             resolvedConfig,
             primaryClient: null,
             judgeClient,
@@ -830,7 +801,7 @@ public static class PipelineOrchestratorFactory
     /// </summary>
     public static bool NeedsJudgePhase(ResolvedConfig config)
     {
-        return config.Judge is { Manage: true } && config.Server is { Manage: true };
+        return config.Judge?.ServerConfig is { Manage: true } && config.Server is { Manage: true };
     }
 
     /// <summary>
@@ -838,14 +809,13 @@ public static class PipelineOrchestratorFactory
     /// </summary>
     public static async Task<bool> IsPrimaryPhaseCompleteAsync(
         PersistentResultCollector resultCollector,
-        EvalSetConfig evalSetConfig,
         IDataSource dataSource,
         CancellationToken ct)
     {
         var totalCount = await dataSource.GetCountAsync(ct);
         if (!totalCount.HasValue) return false;
 
-        var completedItemIds = await resultCollector.GetCompletedItemIdsAsync(evalSetConfig.Id, "primary", ct);
+        var completedItemIds = await resultCollector.GetCompletedItemIdsAsync("primary", ct);
         return completedItemIds.Count >= totalCount.Value;
     }
 }

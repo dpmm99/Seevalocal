@@ -8,7 +8,6 @@ using Seevalocal.UI.Services;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Windows.Input;
 
 namespace Seevalocal.UI.ViewModels;
 
@@ -201,6 +200,7 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string StatusLine => _runViewModel.StatusLine;
     public EvalGenPhase CurrentPhase => _runViewModel.CurrentPhase;
     public ObservableCollection<GeneratedCategoryViewModel> Categories => _runViewModel.Categories;
+    public double AverageTokensPerSecond => _runViewModel.AverageTokensPerSecond;
 
     public EvalGenViewModel(
         IEvalGenService evalGenService,
@@ -439,7 +439,7 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
         IsCompleted = false;
         IsCancelled = false;
         Error = null;
-        
+
         // Reset to new default directory
         OutputDirectoryPath = Path.Combine(Directory.GetCurrentDirectory(), "generated_evals", $"eval_{DateTime.Now:yyyyMMdd_HHmmss}");
         CheckpointDatabasePath = "";
@@ -460,6 +460,7 @@ public sealed class EvalGenViewModel : INotifyPropertyChanged, IAsyncDisposable
                 case nameof(EvalGenRunViewModel.StatusLine):
                 case nameof(EvalGenRunViewModel.CurrentPhase):
                 case nameof(EvalGenRunViewModel.Categories):
+                case nameof(EvalGenRunViewModel.AverageTokensPerSecond):
                     OnPropertyChanged(e.PropertyName);
                     break;
                 case nameof(EvalGenRunViewModel.IsRunning):

@@ -41,15 +41,13 @@ public static class CliSettingsAdapter
             };
         }
 
-        var serverConfig = manage != null || s.Host != null || s.Port != null || model != null
+        var serverConfig = manage != null || model != null
                             || s.ServerUrl != null || s.ApiKey != null
             ? new PartialServerConfig
             {
                 Manage = manage,
                 ExecutablePath = s.ExecutablePath,
                 Model = model,
-                Host = s.Host,
-                Port = s.Port,
                 ApiKey = s.ApiKey,
                 BaseUrl = s.ServerUrl,
             }
@@ -89,9 +87,8 @@ public static class CliSettingsAdapter
                 {
                     Manage = false,
                     BaseUrl = s.JudgeUrl,
-                    ApiKey = s.JudgeApiKey
+                    ApiKey = s.JudgeApiKey,
                 },
-                BaseUrl = s.JudgeUrl,
                 JudgePromptTemplate = s.JudgeTemplate ?? "standard",
                 ServerSettings = s.JudgeModelFilePath != null || s.JudgeHfRepo != null
                     ? new PartialLlamaServerSettings
@@ -102,24 +99,16 @@ public static class CliSettingsAdapter
             }
             : null;
 
-        var runMeta = s.MaxConcurrent != null || s.StopOnFailure || s.ContinueOnFailure || s.TimeoutSeconds != null || s.RetryCount != null
+        var runMeta = s.PipelineName != null || s.MaxConcurrent != null || s.StopOnFailure || s.ContinueOnFailure
             ? new PartialRunMeta
             {
+                PipelineName = s.PipelineName ?? "CasualQA",
                 MaxConcurrentEvals = s.MaxConcurrent,
                 ContinueOnEvalFailure = !s.StopOnFailure,
-                TimeoutSeconds = s.TimeoutSeconds,
-                RetryCount = s.RetryCount,
             }
             : null;
 
-        // Build a single EvalSetConfig if any eval options are present
-        var evalSet = HasAnyEvalSettings(s)
-            ? new EvalSetConfig
-            {
-                PipelineName = s.PipelineName ?? "CasualQA",
-                DataSource = BuildDataSourceConfig(s),
-            }
-            : null;
+        var dataSource = BuildDataSourceConfig(s);
 
         // Build OutputConfig if any output options are present
         var outputConfig = HasAnyOutputSettings(s)
@@ -135,11 +124,11 @@ public static class CliSettingsAdapter
         return new PartialConfig
         {
             Server = serverConfig,
-            LlamaServer = llamaSettings,
-            EvalSets = evalSet != null ? [evalSet] : null,
+            LlamaSettings = llamaSettings,
             Run = runMeta,
             Judge = judgeConfig,  // Also keep at top level for backward compatibility
             Output = outputConfig,
+            DataSource = dataSource
         };
     }
 
@@ -154,22 +143,18 @@ public static class CliSettingsAdapter
         || s.TopP != null || s.TopK != null || s.MinP != null || s.Seed != null
         || s.ChatTemplate != null || s.ReasoningFormat != null || s.LogVerbosity != null || s.ExtraArgs != null;
 
-    private static bool HasAnyEvalSettings(RunCommandSettings s) =>
-        s.PipelineName != null || s.PromptDir != null || s.ExpectedDir != null
-        || s.DataFilePath != null;
-
-    private static DataSourceConfig BuildDataSourceConfig(RunCommandSettings s)
+    private static PartialDataSourceConfig? BuildDataSourceConfig(RunCommandSettings s)
     {
         return s.DataFilePath != null
-            ? new DataSourceConfig { Kind = DataSourceKind.File, FilePath = s.DataFilePath }
+            ? new PartialDataSourceConfig { Kind = DataSourceKind.SingleFile, FilePath = s.DataFilePath }
             : s.PromptDir != null
-            ? new DataSourceConfig
+            ? new PartialDataSourceConfig
             {
-                Kind = DataSourceKind.DirectoryPair,
+                Kind = DataSourceKind.SplitDirectories,
                 PromptDirectory = s.PromptDir,
                 ExpectedDirectory = s.ExpectedDir
             }
-            : new DataSourceConfig { Kind = DataSourceKind.SingleFile };
+            : null;
     }
 
     private static ShellTarget? ParseShellTarget(string? dialect) => dialect?.ToLowerInvariant() switch

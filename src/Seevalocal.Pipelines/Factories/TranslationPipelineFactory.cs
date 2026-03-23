@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Core.Pipeline;
 using Seevalocal.Core.Pipeline.Stages;
@@ -30,10 +29,10 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         FilePattern = "*.txt",
     };
 
-    public IReadOnlyList<ValidationError> Validate(EvalSetConfig evalSetConfig)
+    public IReadOnlyList<ValidationError> Validate(ResolvedConfig config)
     {
         List<ValidationError> errors = [];
-        var opts = evalSetConfig.PipelineOptions;
+        var opts = config.PipelineOptions;
 
         if (opts is not null)
         {
@@ -46,7 +45,7 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         return errors;
     }
 
-    public EvalPipeline Create(EvalSetConfig evalSetConfig, ResolvedConfig resolvedConfig)
+    public EvalPipeline Create(ResolvedConfig resolvedConfig)
     {
         // Note: System prompt is now handled by the data source via DataSourceConfig.DefaultSystemPrompt
         // The data source will use per-item SystemPromptField if provided, otherwise fall back to
@@ -83,7 +82,6 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
     /// Checks that the judge endpoint is configured and that the data directories exist.
     /// </summary>
     public static FluentResults.Result EnsurePrerequisites(
-        EvalSetConfig evalSetConfig,
         ResolvedConfig resolvedConfig)
     {
         List<string> errors = [];
@@ -91,8 +89,8 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         if (resolvedConfig.Judge is null)
             errors.Add("[TranslationPipelineFactory] Judge endpoint is not configured. Set 'judge' in settings.");
 
-        var sourceDir = evalSetConfig.DataSource?.PromptDirectory ?? "./data/source";
-        var refDir = evalSetConfig.DataSource?.ExpectedDirectory ?? "./data/reference";
+        var sourceDir = resolvedConfig.DataSource?.PromptDirectory ?? "./data/source";
+        var refDir = resolvedConfig.DataSource?.ExpectedDirectory ?? "./data/reference";
 
         if (!Directory.Exists(sourceDir))
             errors.Add($"[TranslationPipelineFactory] Source directory not found: {Path.GetFullPath(sourceDir)}");

@@ -128,11 +128,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     /// <summary>
     /// Gets the current results view model - either from an active run or loaded results.
     /// </summary>
-    public IEvalRunViewModel? CurrentResultsRun => ActiveRun ?? (IEvalRunViewModel?)LoadedResultsRun;
+    public IEvalRunViewModel? CurrentResultsRun => ActiveRun ?? LoadedResultsRun;
 
     private void OnLoadedResultsRunPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == "Results" || e.PropertyName == "EarlyCompletionsLimit")
+        if (e.PropertyName is "Results" or "EarlyCompletionsLimit")
         {
             // Notify on UI thread for Avalonia binding
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -372,17 +372,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task HandleBrowseRequestAsync(SettingsViewModel.BrowseEventArgs args)
     {
-        string? path = null;
-
-        if (args.IsFolder)
+        // Determine dialog identifier based on field key
+        string? dialogIdentifier = args.FieldKey switch
         {
-            path = await _filePicker.ShowOpenFolderDialogAsync("Select Folder", args.InitialPath);
-        }
-        else
-        {
-            path = await _filePicker.ShowOpenFileDialogAsync("Select File", args.Filter ?? "All Files|*.*", args.InitialPath);
-        }
+            // llama-server executable paths
+            "server.executablePath" or "judge.executablePath" => "llama-server",
+            
+            // Model file paths
+            "server.modelFile" or "judge.modelFile" => "model-file",
+            
+            // Output/checkpoint paths and split directories data source
+            "run.outputDirectoryPath" or "run.checkpointDatabasePath" or
+            "dataSource.promptDirectory" or "dataSource.expectedDirectory" => "output",
+            
+            // Single file data source
+            "dataSource.filePath" => "data-file",
+            
+            // Settings save/load (detected by filter containing "Settings")
+            _ when args.Filter?.Contains("Settings", StringComparison.OrdinalIgnoreCase) == true => "settings",
+            
+            // Default: no identifier
+            _ => null
+        };
 
+        string? path = args.IsFolder
+            ? await _filePicker.ShowOpenFolderDialogAsync("Select Folder", args.InitialPath, dialogIdentifier)
+            : await _filePicker.ShowOpenFileDialogAsync("Select File", args.Filter ?? "All Files|*.*", args.InitialPath, dialogIdentifier);
         if (path != null)
         {
             // Find the field and update its value
@@ -407,45 +422,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         foreach (var field in SettingsViewModel.SettingsFields)
         {
             UpdateWizardStateFromSettingsField(field);
-        }
-
-        // If continuing from checkpoint, load the original EvalSetId from the checkpoint database
-        if (WizardState is WizardViewModel wizardVm &&
-            wizardVm.ContinueFromCheckpoint &&
-            !string.IsNullOrEmpty(wizardVm.CheckpointDatabasePath) &&
-            File.Exists(wizardVm.CheckpointDatabasePath))
-        {
-            LoadCheckpointEvalSetId(wizardVm.CheckpointDatabasePath);
-        }
-    }
-
-    /// <summary>
-    /// Loads the original EvalSetId from a checkpoint database.
-    /// </summary>
-    private void LoadCheckpointEvalSetId(string dbPath)
-    {
-        try
-        {
-            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
-            connection.Open();
-
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT DISTINCT EvalSetId FROM EvalResults LIMIT 1";
-            var result = cmd.ExecuteScalar();
-
-            if (result is string evalSetId && !string.IsNullOrEmpty(evalSetId))
-            {
-                // Use reflection to set the private _checkpointEvalSetId field
-                var field = typeof(WizardViewModel).GetField("_checkpointEvalSetId",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                field?.SetValue(WizardState, evalSetId);
-
-                _logger.LogInformation("Loaded checkpoint EvalSetId: {EvalSetId}", evalSetId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load EvalSetId from checkpoint database {DbPath}", dbPath);
         }
     }
 
@@ -511,6 +487,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(resolveResult.Value.Run.RunName))
+        {
+            resolveResult = resolveResult.Value with { Run = resolveResult.Value.Run with { RunName = $"run_{DateTime.Now:yyyyMMdd_HHmmss}" } };
+        }
+
         // Switch to Run Dashboard BEFORE creating the VM so users can see llama-server loading progress
         CurrentView = AppView.RunDashboard;
 
@@ -565,7 +546,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         var path = await _filePicker.ShowSaveFileDialogAsync(
             "Save Settings File",
-            "YAML Files|*.yml;*.yaml|JSON Files|*.json|All Files|*.*");
+            "YAML Files|*.yml;*.yaml|JSON Files|*.json|All Files|*.*",
+            dialogIdentifier: "settings");
 
         if (string.IsNullOrEmpty(path)) return;
 
@@ -582,7 +564,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         var path = await _filePicker.ShowSaveFileDialogAsync(
             "Save Materialized Settings File",
-            "YAML Files|*.yml;*.yaml|JSON Files|*.json|All Files|*.*");
+            "YAML Files|*.yml;*.yaml|All Files|*.*",
+            dialogIdentifier: "settings");
 
         if (string.IsNullOrEmpty(path)) return;
 
@@ -616,8 +599,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 Manage = SettingsFieldMapping.ParseBool(F("judge.manage")),
                 ExecutablePath = F("judge.executablePath"),
-                Host = F("judge.host"),
-                Port = int.TryParse(F("judge.port"), out var p) ? p : null,
                 ApiKey = F("judge.apiKey"),
                 BaseUrl = F("judge.baseUrl"),
                 Model = new ModelSource
@@ -647,12 +628,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 Manage = SettingsFieldMapping.ParseBool(F("server.manage")),
                 ExecutablePath = F("server.executablePath"),
-                Host = F("server.host"),
-                Port = int.TryParse(F("server.port"), out var sp) ? sp : null,
                 ApiKey = F("server.apiKey"),
                 BaseUrl = F("server.baseUrl"),
             },
-            LlamaServer = llamaServerSettings,
+            LlamaSettings = llamaServerSettings,
             Judge = judge,
             Run = new PartialRunMeta
             {
@@ -670,8 +649,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 WriteResultsParquet = SettingsFieldMapping.ParseBool(F("output.writeParquet")) ?? false,
                 IncludeRawLlmResponse = SettingsFieldMapping.ParseBool(F("output.includeRawResponse")) ?? true,
             },
-            EvalSets = [],
             DataSource = dataSource,
+            //TODO: PipelineOptions is a dictionary. See SettingsViewModel.
         };
     }
 
@@ -701,8 +680,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 Manage = SettingsFieldMapping.ParseBool(F("judge.manage")),
                 ExecutablePath = F("judge.executablePath"),
-                Host = F("judge.host"),
-                Port = int.TryParse(F("judge.port"), out var p) ? p : null,
                 ApiKey = F("judge.apiKey"),
                 BaseUrl = F("judge.baseUrl"),
                 Model = new ModelSource
@@ -732,12 +709,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 Manage = SettingsFieldMapping.ParseBool(F("server.manage")),
                 ExecutablePath = F("server.executablePath"),
-                Host = F("server.host"),
-                Port = int.TryParse(F("server.port"), out var sp) ? sp : null,
                 ApiKey = F("server.apiKey"),
                 BaseUrl = F("server.baseUrl"),
             },
-            LlamaServer = llamaServerSettings,
+            LlamaSettings = llamaServerSettings,
             Judge = judge,
             Run = new PartialRunMeta
             {
@@ -755,17 +730,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 WriteResultsParquet = SettingsFieldMapping.ParseBool(F("output.writeParquet")) ?? false,
                 IncludeRawLlmResponse = SettingsFieldMapping.ParseBool(F("output.includeRawResponse")) ?? true,
             },
-            EvalSets = [],
             DataSource = dataSource,
+            //TODO: PipelineOptions is a dictionary. See SettingsViewModel.
         };
     }
-
-    private static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
-    {
-        "bash" => ShellTarget.Bash,
-        "powershell" => ShellTarget.PowerShell,
-        _ => null
-    };
 
     // ─── Results View Methods ─────────────────────────────────────────────────
 
@@ -826,21 +794,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            // Get all eval sets from the database
-            var evalSets = await collector.GetAllEvalSetsAsync(default);
-            if (evalSets.Count == 0)
-            {
-                _toastService.Show("No evaluation runs found in database", 5000);
-                return;
-            }
-
-            // Use the most recent eval set (last one in the list)
-            var evalSet = evalSets.Last();
-            _logger.LogInformation("Loading results from eval set: {EvalSetId}", evalSet.Id);
+            _logger.LogInformation("Loading eval results");
 
             // Load ALL results merged from all phases (primary, judge, etc.)
             // This ensures we get complete data including metrics and stage outputs from all phases
-            var results = await collector.GetAllResultsMergedAsync(evalSet.Id, default);
+            var results = await collector.GetAllResultsMergedAsync(default);
             _logger.LogInformation("Loaded {Count} merged results from checkpoint: {Path}", results.Count, dbPath);
 
             if (results.Count == 0)
@@ -850,7 +808,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             // Create a temporary view model to display results
-            var tempRunVm = new TempEvalRunViewModel(evalSet, results);
+            var tempRunVm = new TempEvalRunViewModel(results);
             _logger.LogInformation("Created TempEvalRunViewModel with {Count} results", tempRunVm.Results.Count);
 
             // Store in a property for the Results view to access
@@ -900,7 +858,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             var exportData = results.Select(r => new
             {
                 r.Id,
-                r.EvalSetId,
                 r.Succeeded,
                 r.FailureReason,
                 r.DurationSeconds,
@@ -1038,13 +995,13 @@ public sealed class TempEvalRunViewModel : IEvalRunViewModel, INotifyPropertyCha
 {
     private int _earlyCompletionsLimit = 10;
 
-    public TempEvalRunViewModel(EvalSetConfig evalSet, IReadOnlyList<EvalResult> results)
+    public TempEvalRunViewModel(IReadOnlyList<EvalResult> results)
     {
         Results = new ObservableCollection<EvalResultViewModel>(results.Select(r => new EvalResultViewModel(r)));
         EarlyCompletions = [];
         TotalCount = results.Count;
         CompletedCount = results.Count;
-        StatusLine = $"Loaded from checkpoint: {evalSet.Id}";
+        StatusLine = "Loaded from checkpoint";
         Config = new ResolvedConfig();
 
         // Initialize EarlyCompletions with first N items

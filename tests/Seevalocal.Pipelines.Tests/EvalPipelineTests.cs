@@ -26,7 +26,7 @@ public sealed class EvalPipelineTests
         };
 
         var ctx = TestHelpers.MakeContext();
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "eval-1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.True(result.Succeeded);
         Assert.Null(result.FailureReason);
@@ -49,7 +49,7 @@ public sealed class EvalPipelineTests
         };
 
         var ctx = TestHelpers.MakeContext();
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "eval-1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.False(result.Succeeded);
         Assert.False(stage2.Executed);
@@ -68,7 +68,7 @@ public sealed class EvalPipelineTests
         };
 
         var ctx = TestHelpers.MakeContext();
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "eval-1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.False(result.Succeeded);
         Assert.True(stage2.Executed);
@@ -82,7 +82,7 @@ public sealed class EvalPipelineTests
 
         var pipeline = new EvalPipeline(NullLogger<EvalPipeline>.Instance) { PipelineName = "Test", Stages = [stage] };
         var ctx = TestHelpers.MakeContext();
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "eval-1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.Equal("The answer is 42.", result.RawLlmResponse);
     }
@@ -94,7 +94,7 @@ public sealed class EvalPipelineTests
         var pipeline = new EvalPipeline(NullLogger<EvalPipeline>.Instance) { PipelineName = "Test", Stages = [throwingStage] };
 
         var ctx = TestHelpers.MakeContext();
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "eval-1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         // Should not throw; instead returns failure
         Assert.False(result.Succeeded);
@@ -108,10 +108,9 @@ public sealed class EvalPipelineTests
         var item = TestHelpers.MakeItem(id: "item-007");
         var ctx = TestHelpers.MakeContext(item: item);
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "eval-set-A");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.Equal("item-007", result.EvalItemId);
-        Assert.Equal("eval-set-A", result.EvalSetId);
     }
 
     [Fact]
@@ -124,7 +123,7 @@ public sealed class EvalPipelineTests
 
         var pipeline = new EvalPipeline(NullLogger<EvalPipeline>.Instance) { PipelineName = "Test", Stages = [stage1, capturingStage] };
         var ctx = TestHelpers.MakeContext();
-        _ = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "eval-1");
+        _ = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.Equal("from-a", capturingStage.CapturedOutputs?.GetValueOrDefault("StageA.value") as string);
     }

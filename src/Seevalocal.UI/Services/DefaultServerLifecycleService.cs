@@ -84,10 +84,7 @@ public sealed class DefaultServerLifecycleService(
 
     public async Task<Result<ServerProps>> GetPropsAsync(CancellationToken cancellationToken)
     {
-        if (ActiveManager == null)
-            return Result.Fail<ServerProps>("No server started");
-
-        return await ActiveManager.GetPropsAsync(cancellationToken);
+        return ActiveManager == null ? Result.Fail<ServerProps>("No server started") : await ActiveManager.GetPropsAsync(cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

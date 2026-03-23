@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Seevalocal.Core.Abstractions\Seevalocal.Core.csproj" />
+    <ProjectReference Include="..\Seevalocal.Core\Seevalocal.Core.csproj" />
   </ItemGroup>
 
 </Project>

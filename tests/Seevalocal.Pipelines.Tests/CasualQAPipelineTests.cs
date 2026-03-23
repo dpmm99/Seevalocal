@@ -11,12 +11,12 @@ public sealed class CasualQAPipelineTests
     [Fact]
     public void Create_ExactMatchDisabled_ProducesTwoStages_PromptAndJudge()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CasualQA", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CasualQA", new Dictionary<string, object?>
         {
             ["enableExactMatch"] = false,
         });
 
-        var pipeline = _factory.Create(evalSet, TestHelpers.MakeConfig());
+        var pipeline = _factory.Create(config);
 
         Assert.Equal("CasualQA", pipeline.PipelineName);
         Assert.Equal(2, pipeline.Stages.Count);
@@ -27,12 +27,12 @@ public sealed class CasualQAPipelineTests
     [Fact]
     public void Create_ExactMatchEnabled_ProducesThreeStages()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CasualQA", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CasualQA", new Dictionary<string, object?>
         {
             ["enableExactMatch"] = true,
         });
 
-        var pipeline = _factory.Create(evalSet, TestHelpers.MakeConfig());
+        var pipeline = _factory.Create(config);
 
         Assert.Equal(3, pipeline.Stages.Count);
         Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
@@ -43,8 +43,8 @@ public sealed class CasualQAPipelineTests
     [Fact]
     public void Create_DefaultOptions_ExactMatchSkippedByDefault()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CasualQA");
-        var pipeline = _factory.Create(evalSet, TestHelpers.MakeConfig());
+        var config = TestHelpers.MakeConfigWithPipeline("CasualQA");
+        var pipeline = _factory.Create(config);
 
         // ExactMatchStage must not be present
         Assert.DoesNotContain(pipeline.Stages, static s => s.StageName == "ExactMatchStage");
@@ -64,25 +64,25 @@ public sealed class CasualQAPipelineTests
     [Fact]
     public void Validate_ValidOptions_ReturnsNoErrors()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CasualQA", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CasualQA", new Dictionary<string, object?>
         {
             ["judgeMaxScore"] = 10,
             ["judgePassThresholdRatio"] = 0.7,
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Empty(errors);
     }
 
     [Fact]
     public void Validate_InvalidJudgeMaxScore_ReturnsError()
     {
-        var evalSet = TestHelpers.MakeEvalSetConfig("CasualQA", new Dictionary<string, object?>
+        var config = TestHelpers.MakeConfigWithPipeline("CasualQA", new Dictionary<string, object?>
         {
             ["judgeMaxScore"] = new object(), // wrong type
         });
 
-        var errors = _factory.Validate(evalSet);
+        var errors = _factory.Validate(config);
         Assert.Contains(errors, static e => e.Field == "pipelineOptions.judgeMaxScore");
     }
 }

@@ -9,7 +9,7 @@ public sealed class LlamaServerArgBuilderTests
     private readonly LlamaServerArgBuilder _builder = new();
 
     private static ServerConfig DefaultServerConfig(string host = "127.0.0.1", int port = 8080) =>
-        new() { Manage = true, Host = host, Port = port };
+        new() { Manage = true, BaseUrl = $"http://{host}:{port}" };
 
     // ── Null settings emit minimal args ──────────────────────────────────────
 
@@ -200,7 +200,7 @@ public sealed class LlamaServerArgBuilderTests
     [Fact]
     public void Build_ApiKeyInConfig_EmitsApiKeyFlag()
     {
-        var config = new ServerConfig { Manage = true, Host = "127.0.0.1", Port = 8080, ApiKey = "sk-test" };
+        var config = new ServerConfig { Manage = true, BaseUrl = "http://127.0.0.1:8080", ApiKey = "sk-test" };
         var args = LlamaServerArgBuilder.Build(new LlamaServerSettings(), config);
 
         AssertFlagValue(args, "--api-key", "sk-test");

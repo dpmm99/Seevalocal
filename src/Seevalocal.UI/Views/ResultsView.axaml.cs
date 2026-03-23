@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using System.Linq;
 
 namespace Seevalocal.UI.Views;
 

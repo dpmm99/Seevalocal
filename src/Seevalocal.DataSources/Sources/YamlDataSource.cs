@@ -91,6 +91,6 @@ internal sealed class YamlDataSource(string name, DataSourceConfig config, ILogg
         var yaml = await File.ReadAllTextAsync(filePath, ct);
         YamlStream stream = [];
         stream.Load(new StringReader(yaml));
-        return stream.Documents.Count == 0 ? 0 : stream.Documents[0].RootNode is YamlSequenceNode seq ? seq.Children.Count : (int?)null;
+        return stream.Documents.Count == 0 ? 0 : stream.Documents[0].RootNode is YamlSequenceNode seq ? seq.Children.Count : null;
     }
 }

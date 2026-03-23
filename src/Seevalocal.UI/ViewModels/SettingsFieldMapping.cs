@@ -24,16 +24,12 @@ public static class SettingsFieldMapping
         // Server settings
         { "server.manage", nameof(WizardViewModel.ManageServer) },
         { "server.executablePath", nameof(WizardViewModel.LlamaServerExecutablePath) },
-        { "server.host", nameof(WizardViewModel.Host) },
-        { "server.port", nameof(WizardViewModel.Port) },
         { "server.apiKey", nameof(WizardViewModel.ApiKey) },
         { "server.baseUrl", nameof(WizardViewModel.ServerUrl) },
 
         // Judge server settings (non-llama)
         { "judge.manage", nameof(WizardViewModel.JudgeManageServer) },
         { "judge.executablePath", nameof(WizardViewModel.JudgeExecutablePath) },
-        { "judge.host", nameof(WizardViewModel.Host) }, // Judge uses same host field //TODO: no, it doesn't. There is no "host" or "port" field in the UI; it's just "URL".
-        { "judge.port", nameof(WizardViewModel.Port) }, // Judge uses same port field
         { "judge.apiKey", nameof(WizardViewModel.JudgeApiKey) },
         { "judge.baseUrl", nameof(WizardViewModel.JudgeServerUrl) },
         { "judge.modelFile", nameof(WizardViewModel.JudgeLocalModelPath) },
@@ -164,10 +160,7 @@ public static class SettingsFieldMapping
     /// </summary>
     private static object? GetDefaultValueForType(Type targetType)
     {
-        if (Nullable.GetUnderlyingType(targetType) != null)
-            return null;
-
-        return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+        return Nullable.GetUnderlyingType(targetType) != null ? null : targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
     }
 
     /// <summary>
@@ -289,7 +282,7 @@ public static class SettingsFieldMapping
         "singlefile" => DataSourceKind.SingleFile,
         "jsonlfile" => DataSourceKind.JsonlFile,
         "splitdirectories" => DataSourceKind.SplitDirectories,
-        "directory" => DataSourceKind.Directory,
+        "directory" => DataSourceKind.SplitDirectories,
         _ => null
     };
 }

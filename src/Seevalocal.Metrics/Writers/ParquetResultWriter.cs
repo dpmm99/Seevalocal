@@ -49,7 +49,6 @@ public sealed class ParquetResultWriter(
         List<Field> fields =
         [
             new DataField<string>("evalItemId"),
-            new DataField<string>("evalSetId"),
             new DataField<bool>("succeeded"),
             new DataField<double>("durationSeconds"),
         ];
@@ -76,17 +75,15 @@ public sealed class ParquetResultWriter(
 
         // Standard columns
         var evalItemIds = snapshot.Select(r => r.EvalItemId).ToArray();
-        var evalSetIds = snapshot.Select(r => r.EvalSetId).ToArray();
         var succeeded = snapshot.Select(r => r.Succeeded).ToArray();
         var durations = snapshot.Select(r => r.DurationSeconds).ToArray();
 
         await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[0], evalItemIds), ct).ConfigureAwait(false);
-        await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[1], evalSetIds), ct).ConfigureAwait(false);
-        await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[2], succeeded), ct).ConfigureAwait(false);
-        await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[3], durations), ct).ConfigureAwait(false);
+        await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[1], succeeded), ct).ConfigureAwait(false);
+        await groupWriter.WriteColumnAsync(new DataColumn((DataField)fields[2], durations), ct).ConfigureAwait(false);
 
         // Metric columns
-        var fieldIndex = 4;
+        var fieldIndex = 3;
         foreach ((var name, var type) in metricTypeMap)
         {
             var field = (DataField)fields[fieldIndex++];

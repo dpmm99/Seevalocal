@@ -68,7 +68,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         await collector.InitializeAsync(CancellationToken.None);
         await collector.InitializeAsync(CancellationToken.None);
         await collector.InitializeAsync(CancellationToken.None);
-        
+
         await DisposeCollectorAsync(collector);
     }
 
@@ -94,8 +94,11 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         };
         var judgeConfig = new JudgeConfig
         {
-            BaseUrl = "http://localhost:8081",
-            Manage = false
+            ServerConfig = new ServerConfig
+            {
+                BaseUrl = "http://localhost:8081",
+                Manage = false
+            }
         };
 
         // Act
@@ -151,7 +154,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
             TargetProblemsPerCategory = 5,
             OutputDirectoryPath = "./output2"
         };
-        var judgeConfig = new JudgeConfig { Manage = false };
+        var judgeConfig = new JudgeConfig { ServerConfig = new ServerConfig { Manage = false } };
 
         // Act
         await collector.SaveStartupParametersAsync(config1, judgeConfig, CancellationToken.None);
@@ -251,7 +254,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         var collector = new EvalGenCheckpointCollector(_dbPath);
         // First save the parent category
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-1", Name = "Test Category" }, CancellationToken.None);
-        
+
         var problem = new GeneratedProblem
         {
             Id = "prob-123",
@@ -280,7 +283,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         var collector = new EvalGenCheckpointCollector(_dbPath);
         // First save the parent category
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-1", Name = "Test Category" }, CancellationToken.None);
-        
+
         var problem = new GeneratedProblem
         {
             Id = "prob-123",
@@ -311,7 +314,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         // First save the parent categories
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-1", Name = "Category 1" }, CancellationToken.None);
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-2", Name = "Category 2" }, CancellationToken.None);
-        
+
         var problems = new List<GeneratedProblem>
         {
             new GeneratedProblem { Id = "p1", CategoryId = "cat-1", OneLineStatement = "Problem 1" },
@@ -339,7 +342,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         var collector = new EvalGenCheckpointCollector(_dbPath);
         // First save the parent category
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-1", Name = "Test Category" }, CancellationToken.None);
-        
+
         var incomplete = new GeneratedProblem
         {
             Id = "prob-1",
@@ -433,7 +436,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         var collector = new EvalGenCheckpointCollector(_dbPath);
         // First save the parent category
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "c1", Name = "Test Category" }, CancellationToken.None);
-        
+
         var problems = new List<GeneratedProblem>
         {
             new GeneratedProblem { Id = "p1", CategoryId = "c1", OneLineStatement = "P1", FullPrompt = "F1", ExpectedOutput = "E1" },
@@ -463,7 +466,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         // First save the parent categories
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-1", Name = "Category 1" }, CancellationToken.None);
         await collector.SaveCategoryAsync(new GeneratedCategory { Id = "cat-2", Name = "Category 2" }, CancellationToken.None);
-        
+
         var problems = new List<GeneratedProblem>
         {
             new GeneratedProblem { Id = "p1", CategoryId = "cat-1", OneLineStatement = "P1" },
@@ -504,7 +507,7 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         var collector2 = new EvalGenCheckpointCollector(_dbPath);
         var categories = await collector2.LoadCategoriesAsync(CancellationToken.None);
         categories.Should().ContainSingle();
-        
+
         await DisposeCollectorAsync(collector2);
     }
 

@@ -58,7 +58,6 @@ public sealed class CsvResultWriter(
 
         // Write header
         csv.WriteField("evalItemId");
-        csv.WriteField("evalSetId");
         csv.WriteField("succeeded");
         csv.WriteField("durationSeconds");
         foreach (var name in metricNames)
@@ -74,7 +73,6 @@ public sealed class CsvResultWriter(
                 .ToDictionary(static g => g.Key, static g => g.Last().Value.ToObject());
 
             csv.WriteField(result.EvalItemId);
-            csv.WriteField(result.EvalSetId);
             csv.WriteField(result.Succeeded ? "true" : "false");
             csv.WriteField(result.DurationSeconds.ToString("F6", CultureInfo.InvariantCulture));
 

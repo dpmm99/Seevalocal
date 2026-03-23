@@ -12,13 +12,13 @@ public interface IBuiltinPipelineFactory
     string Description { get; }
 
     /// <summary>Builds an EvalPipeline from the merged config.</summary>
-    EvalPipeline Create(EvalSetConfig evalSetConfig, ResolvedConfig resolvedConfig);
+    EvalPipeline Create(ResolvedConfig resolvedConfig);
 
     /// <summary>
-    /// Validates pipeline-specific options in EvalSetConfig.PipelineOptions.
+    /// Validates pipeline-specific options in ResolvedConfig.PipelineOptions.
     /// Returns empty list on success.
     /// </summary>
-    IReadOnlyList<ValidationError> Validate(EvalSetConfig evalSetConfig);
+    IReadOnlyList<ValidationError> Validate(ResolvedConfig resolvedConfig);
 
     /// <summary>
     /// Returns the default DataSourceConfig for this pipeline type.

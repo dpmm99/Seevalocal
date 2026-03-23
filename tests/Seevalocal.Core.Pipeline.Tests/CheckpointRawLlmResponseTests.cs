@@ -1,7 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Seevalocal.Core.Models;
-using Seevalocal.Core.Pipeline.Stages;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -34,7 +33,6 @@ public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLif
         var result = new EvalResult
         {
             EvalItemId = "test-item-1",
-            EvalSetId = "test-eval-set",
             Succeeded = true,
             RawLlmResponse = "This is the original LLM response from primary phase",
             AllStageOutputs = new Dictionary<string, object?>
@@ -72,7 +70,6 @@ public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLif
         var primaryResult = new EvalResult
         {
             EvalItemId = "test-item-1",
-            EvalSetId = "test-eval-set",
             Succeeded = true,
             RawLlmResponse = "Original LLM response from primary phase",
             AllStageOutputs = new Dictionary<string, object?>
@@ -97,7 +94,6 @@ public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLif
         var judgeResult = new EvalResult
         {
             EvalItemId = "test-item-1",
-            EvalSetId = "test-eval-set",
             Succeeded = true,
             RawLlmResponse = "abc",
             AllStageOutputs = new Dictionary<string, object?>
@@ -139,7 +135,6 @@ public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLif
         var primaryResult = new EvalResult
         {
             EvalItemId = "test-item-1",
-            EvalSetId = "test-eval-set",
             Succeeded = true,
             RawLlmResponse = null,  // Primary phase somehow has NULL
             AllStageOutputs = new Dictionary<string, object?>
@@ -163,7 +158,6 @@ public class CheckpointRawLlmResponseTests(ITestOutputHelper output) : IAsyncLif
         var judgeResult = new EvalResult
         {
             EvalItemId = "test-item-1",
-            EvalSetId = "test-eval-set",
             Succeeded = true,
             RawLlmResponse = null,
             AllStageOutputs = new Dictionary<string, object?>

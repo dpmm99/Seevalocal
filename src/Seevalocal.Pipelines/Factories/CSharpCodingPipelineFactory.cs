@@ -20,14 +20,14 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
 
     public DataSourceConfig DefaultDataSourceConfig => new()
     {
-        Kind = DataSourceKind.Directory,
+        Kind = DataSourceKind.SplitDirectories,
         PromptDirectory = "./data/prompts",
     };
 
-    public IReadOnlyList<ValidationError> Validate(EvalSetConfig evalSetConfig)
+    public IReadOnlyList<ValidationError> Validate(ResolvedConfig resolvedConfig)
     {
         List<ValidationError> errors = [];
-        var opts = evalSetConfig.PipelineOptions;
+        var opts = resolvedConfig.PipelineOptions;
         if (opts is null) return errors;
 
         if (opts.TryGetValue("compileTimeoutSeconds", out var cts))
@@ -44,9 +44,9 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
         return errors;
     }
 
-    public EvalPipeline Create(EvalSetConfig evalSetConfig, ResolvedConfig resolvedConfig)
+    public EvalPipeline Create(ResolvedConfig resolvedConfig)
     {
-        var opts = evalSetConfig.PipelineOptions ?? new Dictionary<string, object?>();
+        var opts = resolvedConfig.PipelineOptions;
 
         var compileTimeoutSeconds = ParseDouble(opts, "compileTimeoutSeconds", 30.0);
         var testTimeoutSeconds = ParseDouble(opts, "testTimeoutSeconds", 60.0);
@@ -86,7 +86,7 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
                 ScoreMinValue = 0,
                 ScoreMaxValue = 10,
             };
-            
+
             stages.Add(new JudgeStage(
                 judgeConfig,
                 _loggerFactory.CreateLogger<JudgeStage>(),

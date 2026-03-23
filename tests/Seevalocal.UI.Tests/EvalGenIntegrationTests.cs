@@ -1,10 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Seevalocal.Core;
 using Seevalocal.Core.Models;
 using Seevalocal.Server;
-using Seevalocal.Server.Models;
 using Seevalocal.UI.Services;
 using Xunit;
 using Xunit.Abstractions;
@@ -37,7 +35,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         _serverPort = 8081;
         _testOutputDir = Path.Combine(Path.GetTempPath(), $"eval_gen_integration_{Guid.NewGuid()}");
         _checkpointDbPath = Path.Combine(_testOutputDir, "checkpoint.db");
-        
+
         Directory.CreateDirectory(_testOutputDir);
 
         // Create logger factory that writes to test output
@@ -100,8 +98,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         {
             Manage = true,
             Model = new ModelSource { Kind = ModelSourceKind.LocalFile, FilePath = _modelPath },
-            Host = "localhost",
-            Port = _serverPort
+            BaseUrl = $"http://localhost:{_serverPort}",
         };
 
         var llamaSettings = new LlamaServerSettings
@@ -116,7 +113,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
         var argBuilder = new LlamaServerArgBuilder();
         var gpuDetector = new GpuDetector(NullLogger<GpuDetector>.Instance);
         var downloader = new LlamaServerDownloader(new HttpClient(), NullLogger<LlamaServerDownloader>.Instance);
-        
+
         _serverManager = new LlamaServerManager(
             downloader,
             gpuDetector,
@@ -124,7 +121,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
             _loggerFactory.CreateLogger<LlamaServerManager>());
 
         var result = await _serverManager.StartAsync(config, llamaSettings, CancellationToken.None);
-        
+
         if (!result.IsSuccess)
         {
             _output.WriteLine($"Failed to start server: {string.Join(", ", result.Errors.Select(e => e.Message))}");
@@ -148,7 +145,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
     private async Task WaitForServerHealthyAsync()
     {
         _output.WriteLine("Waiting for server to become healthy and model loaded...");
-        
+
         for (int i = 0; i < 300; i++) // Wait up to 300 seconds (5 minutes) for model load
         {
             try
@@ -157,14 +154,14 @@ public class EvalGenIntegrationTests : IAsyncLifetime
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    
+
                     // Check for model_loaded or similar indicator that model is ready
                     if (content.Contains("model_loaded", StringComparison.OrdinalIgnoreCase) ||
                         content.Contains("\"ok\"", StringComparison.OrdinalIgnoreCase) ||
                         content.Contains("\"Healthy\"", StringComparison.OrdinalIgnoreCase))
                     {
                         _output.WriteLine($"Server is healthy after {i + 1} seconds!");
-                        
+
                         // Additional check - try /props endpoint to confirm model is ready
                         try
                         {
@@ -183,10 +180,10 @@ public class EvalGenIntegrationTests : IAsyncLifetime
             {
                 _output.WriteLine($"Health check attempt {i + 1} failed: {ex.Message}");
             }
-            
+
             await Task.Delay(1000);
         }
-        
+
         throw new TimeoutException("Server did not become healthy within 300 seconds");
     }
 
@@ -203,7 +200,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
 
         // Act - health check already passed in InitializeAsync
         var response = await _httpClient.GetAsync("/health");
-        
+
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue("Server should respond to health check");
     }
@@ -242,7 +239,7 @@ public class EvalGenIntegrationTests : IAsyncLifetime
 
         Directory.Exists(promptsDir).Should().BeTrue("Prompts directory should exist");
         Directory.Exists(expectedDir).Should().BeTrue("Expected outputs directory should exist");
-        
+
         // Checkpoint database should be created
         File.Exists(_checkpointDbPath).Should().BeTrue("Checkpoint database should exist");
     }

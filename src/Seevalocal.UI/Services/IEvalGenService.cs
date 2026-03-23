@@ -93,12 +93,12 @@ public sealed class EvalGenRun(EvalGenConfig config, Func<CancellationToken, Tas
     public int TotalCategoriesFailed { get; set; }
     public int TotalProblemsFailed { get; set; }
     public int TotalFleshOutFailed { get; set; }
-    
+
     /// <summary>
     /// Total tokens used across all LLM calls.
     /// </summary>
     public int TotalTokensUsed { get; set; }
-    
+
     /// <summary>
     /// Average tokens per second across all LLM calls.
     /// </summary>

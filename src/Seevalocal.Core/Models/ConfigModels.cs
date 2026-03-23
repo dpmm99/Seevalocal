@@ -79,7 +79,6 @@ public record LlamaServerSettings
 
 public enum DataSourceKind
 {
-    Directory,
     SplitDirectories,
     SingleFile,
     JsonFile,
@@ -88,8 +87,6 @@ public enum DataSourceKind
     CsvFile,
     ParquetFile,
     InlineList,
-    File,        // Alias for SingleFile
-    DirectoryPair,  // Alias for SplitDirectories
 }
 
 public record FieldMapping
@@ -104,16 +101,17 @@ public record FieldMapping
 
 public record DataSourceConfig
 {
-    public DataSourceKind Kind { get; init; } = DataSourceKind.Directory;
+    [MergeDefault(DataSourceKind.SplitDirectories)]
+    public DataSourceKind Kind { get; init; } = DataSourceKind.SplitDirectories;
+
+    /// <summary>Path to a single file (JSON, YAML, CSV, Parquet, or raw text).</summary>
+    public string? FilePath { get; init; }
 
     /// <summary>Path to prompt directory (for directory-based data sources).</summary>
     public string? PromptDirectory { get; init; }
 
     /// <summary>Path to expected output directory (optional, for directory-based data sources).</summary>
     public string? ExpectedDirectory { get; init; }
-
-    /// <summary>Path to a single file (JSON, YAML, CSV, Parquet, or raw text).</summary>
-    public string? FilePath { get; init; }
 
     /// <summary>Optional default system prompt applied to all items from this source.</summary>
     public string? DefaultSystemPrompt { get; init; }
@@ -135,12 +133,6 @@ public record DataSourceConfig
 // PipelineConfig / OutputConfig
 // ---------------------------------------------------------------------------
 
-public record PipelineConfig
-{
-    // Pipeline-specific options are passed via EvalSetConfig.PipelineOptions.
-    // This record is intentionally open for future base options.
-}
-
 public record OutputConfig
 {
     public bool WritePerEvalJson { get; init; } = true;
@@ -158,43 +150,13 @@ public record OutputConfig
 }
 
 // ---------------------------------------------------------------------------
-// EvalSetConfig
-// ---------------------------------------------------------------------------
-
-public record EvalSetConfig
-{
-    /// <summary>
-    /// Unique identifier for this eval set.
-    /// When continuing from checkpoint, this MUST match the original run's EvalSetId.
-    /// Default: new GUID (for new runs).
-    /// </summary>
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-    public string Name { get; init; } = "";
-    public string PipelineName { get; init; } = "";
-    public DataSourceConfig DataSource { get; init; } = new();
-    public PipelineConfig Pipeline { get; init; } = new();
-    public OutputConfig Output { get; init; } = new();
-
-    /// <summary>
-    /// Pipeline-specific options forwarded to IBuiltinPipelineFactory.Create().
-    /// Keys/values are pipeline-defined.
-    /// </summary>
-    public IReadOnlyDictionary<string, object?>? PipelineOptions { get; init; }
-
-    /// <summary>Optional endpoint name override. Null = use primary server.</summary>
-    public string? EndpointName { get; init; }
-
-    /// <summary>Optional judge configuration for this eval set.</summary>
-    public JudgeConfig? Judge { get; init; }
-}
-
-// ---------------------------------------------------------------------------
 // RunMeta
 // ---------------------------------------------------------------------------
 
 public record RunMeta
 {
     public string Id { get; init; } = "";
+    public string PipelineName { get; init; } = "CasualQA";
     public string? RunName { get; init; }
     public string? OutputDirectoryPath { get; init; }
     public ShellTarget? ExportShellTarget { get; init; }
@@ -221,15 +183,8 @@ public record JudgeConfig
     /// When false, judge scoring is completely disabled.
     /// When true, uses either managed or external judge endpoint.
     /// </summary>
+    [MergeDefault(false)]
     public bool Enable { get; init; }
-
-    /// <summary>
-    /// Whether to manage a local llama-server instance for the judge.
-    /// When true, a second llama-server process is started with the configured settings.
-    /// When false, connects to an existing judge endpoint via BaseUrl.
-    /// Only used when Enable = true.
-    /// </summary>
-    public bool Manage { get; init; }
 
     /// <summary>
     /// Server configuration for the judge (host, port, model, etc.).
@@ -241,64 +196,32 @@ public record JudgeConfig
     public LlamaServerSettings? ServerSettings { get; init; }
 
     /// <summary>
-    /// Jinja2-style template for the judge prompt.
+    /// Interpolated string-style template for the judge prompt.
     /// Available variables: {prompt}, {expectedOutput}, {actualOutput}, {metadata.*}
     /// Can be a template name ("standard", "pass-fail", "structured-json") or full template content.
     /// </summary>
+    [MergeDefault("standard")]
     public string JudgePromptTemplate { get; init; } = "standard";
 
     /// <summary>How to parse the judge's response.</summary>
+    [MergeDefault(JudgeResponseFormat.StructuredJson)]
     public JudgeResponseFormat ResponseFormat { get; init; } = JudgeResponseFormat.StructuredJson;
 
     /// <summary>
     /// For NumericScore/StructuredJson format: the score range expected from the judge.
     /// The raw score is used directly for the judgeScore metric (e.g., 7/10 displays as 7.0).
     /// </summary>
+    [MergeDefault(0.0)]
     public double ScoreMinValue { get; init; } = 0.0;
+    [MergeDefault(10.0)]
     public double ScoreMaxValue { get; init; } = 10.0;
 
     /// <summary>System prompt for the judge LLM.</summary>
     public string? JudgeSystemPrompt { get; init; }
 
     /// <summary>Max tokens the judge is allowed to generate.</summary>
-    public int JudgeMaxTokenCount { get; init; } = 512;
-
-    /// <summary>Temperature for judge responses. Lower = more deterministic scoring.</summary>
-    public double JudgeSamplingTemperature { get; init; } = 0.0;
-
-    /// <summary>Base URL for the judge endpoint. Used when Manage = false.</summary>
-    public string? BaseUrl { get; init; }
-
-    /// <summary>Sampling temperature for judge. Alias for JudgeSamplingTemperature.</summary>
-    public double? SamplingTemperature { get; init; }
-
-    /// <summary>Alias for BaseUrl (for CLI compatibility).</summary>
-    public string? JudgeUrl
-    {
-        get => BaseUrl;
-        init => BaseUrl = value;
-    }
-
-    /// <summary>Alias for ScoreMinValue (for CLI compatibility).</summary>
-    public double? ScoreMin
-    {
-        get => ScoreMinValue;
-        init { if (value.HasValue) ScoreMinValue = value.Value; }
-    }
-
-    /// <summary>Alias for ScoreMaxValue (for CLI compatibility).</summary>
-    public double? ScoreMax
-    {
-        get => ScoreMaxValue;
-        init { if (value.HasValue) ScoreMaxValue = value.Value; }
-    }
+    public int? JudgeMaxTokenCount { get; init; }
 }
-
-// ---------------------------------------------------------------------------
-// Server stub — full type lives in Seevalocal.Server
-// Reproduced here minimally so Config has no project reference to Server.
-// The real ServerConfig is in Seevalocal.Server.Models; this mirrors it.
-// ---------------------------------------------------------------------------
 
 public enum ModelSourceKind { LocalFile, HuggingFace }
 
@@ -316,32 +239,26 @@ public record ServerConfig
     public bool? Manage { get; init; }
     public string? ExecutablePath { get; init; }
     public ModelSource? Model { get; init; }
-    public string? Host { get; init; }
-    public int? Port { get; init; }
     public string? ApiKey { get; init; }
     public string? BaseUrl { get; init; }
 }
-
-// ---------------------------------------------------------------------------
-// ResolvedConfig (fully-populated, immutable)
-// ---------------------------------------------------------------------------
 
 public record ResolvedConfig
 {
     public RunMeta Run { get; init; } = new();
     public ServerConfig Server { get; init; } = new();
     public LlamaServerSettings LlamaServer { get; init; } = new();
-    public IReadOnlyList<EvalSetConfig> EvalSets { get; init; } = [];
     public JudgeConfig? Judge { get; init; }
     public DataSourceConfig DataSource { get; init; } = new();
+    public Dictionary<string, object?> PipelineOptions { get; init; } = [];
 }
 
-// ---------------------------------------------------------------------------
-// PartialConfig — structurally mirrors ResolvedConfig but every leaf nullable
-// ---------------------------------------------------------------------------
-
+/// <summary>
+/// Resembles ResolvedConfig, but everything is nullable. For layering settings on top of each other (settings files, settings view, wizard).
+/// </summary>
 public record PartialRunMeta
 {
+    public string? PipelineName { get; init; }
     public string? RunName { get; init; }
     public string? OutputDirectoryPath { get; init; }
     public ShellTarget? ExportShellTarget { get; init; }
@@ -349,8 +266,6 @@ public record PartialRunMeta
     public bool? ContinueFromCheckpoint { get; init; }
     public string? CheckpointDatabasePath { get; init; }
     public int? MaxConcurrentEvals { get; init; }
-    public double? TimeoutSeconds { get; init; }
-    public int? RetryCount { get; init; }
 }
 
 public record PartialLlamaServerSettings
@@ -395,10 +310,9 @@ public record PartialLlamaServerSettings
 public record PartialServerConfig
 {
     public bool? Manage { get; init; }
+    //TODO: add managed server retry count: max number of times to restart llama-server if it crashes. The count should reset if a request succeeds.
     public string? ExecutablePath { get; init; }
     public ModelSource? Model { get; init; }
-    public string? Host { get; init; }
-    public int? Port { get; init; }
     public string? ApiKey { get; init; }
     public string? BaseUrl { get; init; }
 }
@@ -407,19 +321,11 @@ public record PartialConfig
 {
     public PartialRunMeta? Run { get; init; }
     public PartialServerConfig? Server { get; init; }
-    public PartialLlamaServerSettings? LlamaServer { get; init; }
-    public List<EvalSetConfig>? EvalSets { get; init; }
+    public PartialLlamaServerSettings? LlamaSettings { get; init; }
     public PartialJudgeConfig? Judge { get; init; }
-    public OutputConfig? Output { get; init; }
+    public OutputConfig? Output { get; init; } //TODO: no partial OutputConfig exists, and ResolvedConfig doesn't have Output, and so none of those values are hooked up to the settings anymore
     public PartialDataSourceConfig? DataSource { get; init; }
     public Dictionary<string, object?>? PipelineOptions { get; init; }
-
-    /// <summary>Alias for LlamaServer (for CLI compatibility).</summary>
-    public PartialLlamaServerSettings? LlamaSettings
-    {
-        get => LlamaServer;
-        init => LlamaServer = value;
-    }
 }
 
 /// <summary>
@@ -431,7 +337,10 @@ public record PartialDataSourceConfig
     public string? FilePath { get; init; }
     public string? PromptDirectory { get; init; }
     public string? ExpectedDirectory { get; init; }
+    public string? DefaultSystemPrompt { get; init; }
+    public string? DefaultSystemPromptFilePath { get; init; }
     public FieldMapping? FieldMapping { get; init; }
+    //TODO: Missing FilePattern and FileExtensionFilter; I probably don't need both, but at least the FilePattern one may be beneficial for SplitDirectories mode.
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +350,6 @@ public record PartialDataSourceConfig
 public record PartialJudgeConfig
 {
     public bool? Enable { get; init; }
-    public bool? Manage { get; init; }
     public PartialServerConfig? ServerConfig { get; init; }
     public PartialLlamaServerSettings? ServerSettings { get; init; }
     public string? JudgePromptTemplate { get; init; }
@@ -450,9 +358,6 @@ public record PartialJudgeConfig
     public double? ScoreMaxValue { get; init; }
     public string? JudgeSystemPrompt { get; init; }
     public int? JudgeMaxTokenCount { get; init; }
-    public double? JudgeSamplingTemperature { get; init; }
-    public string? BaseUrl { get; init; }
-    public double? SamplingTemperature { get; init; }
 }
 
 // ---------------------------------------------------------------------------

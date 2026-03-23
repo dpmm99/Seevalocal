@@ -39,9 +39,9 @@ public sealed class DataSourceFactory(ILoggerFactory loggerFactory)
 
         IDataSource inner = configToUse.Kind switch
         {
-            DataSourceKind.Directory or DataSourceKind.SplitDirectories or DataSourceKind.DirectoryPair
+            DataSourceKind.SplitDirectories or DataSourceKind.SplitDirectories or DataSourceKind.SplitDirectories
                 => new DirectoryDataSource(name, configToUse, logger),
-            DataSourceKind.SingleFile or DataSourceKind.File or DataSourceKind.JsonFile
+            DataSourceKind.SingleFile or DataSourceKind.SingleFile or DataSourceKind.JsonFile
                 => new JsonDataSource(name, configToUse, isJsonl: false, logger),
             DataSourceKind.JsonlFile
                 => new JsonDataSource(name, configToUse, isJsonl: true, logger),

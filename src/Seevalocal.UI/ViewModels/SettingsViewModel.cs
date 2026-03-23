@@ -38,7 +38,6 @@ public sealed class SettingsFieldViewModel : INotifyPropertyChanged
         }
     }
     public string? Watermark { get; init; }
-    public bool IsOptional { get; init; }
     public string Section { get; init; } = "";
 
     /// <summary>
@@ -142,36 +141,25 @@ public sealed class SettingsFieldViewModel : INotifyPropertyChanged
     /// True if this field is an enum field (should use ComboBox with enum values).
     /// </summary>
     public bool IsEnumField => Key.EndsWith("template", StringComparison.OrdinalIgnoreCase) ||
-                               Key.EndsWith("Template", StringComparison.OrdinalIgnoreCase) ||
                                Key.Contains("shellTarget", StringComparison.OrdinalIgnoreCase) ||
-                               Key.Contains("ShellTarget", StringComparison.OrdinalIgnoreCase) ||
                                Key.Contains("splitMode", StringComparison.OrdinalIgnoreCase) ||
-                               Key.Contains("SplitMode", StringComparison.OrdinalIgnoreCase) ||
                                Key.Contains("reasoningFormat", StringComparison.OrdinalIgnoreCase) ||
-                               Key.Contains("ReasoningFormat", StringComparison.OrdinalIgnoreCase) ||
                                Key.Contains("logVerbosity", StringComparison.OrdinalIgnoreCase) ||
-                               Key.Contains("LogVerbosity", StringComparison.OrdinalIgnoreCase) ||
                                Key.Contains("dataSource.kind", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// True if this field is a file path (should show Browse button).
     /// </summary>
     public bool IsFilePathField => Key.Contains("executablePath", StringComparison.OrdinalIgnoreCase) ||
-                                   Key.Contains("ExecutablePath", StringComparison.OrdinalIgnoreCase) ||
                                    Key.Contains("modelFile", StringComparison.OrdinalIgnoreCase) ||
-                                   Key.Contains("ModelFile", StringComparison.OrdinalIgnoreCase) ||
-                                   Key.Contains("filePath", StringComparison.OrdinalIgnoreCase) ||
-                                   Key.Contains("FilePath", StringComparison.OrdinalIgnoreCase);
+                                   Key.Contains("filePath", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// True if this field is a folder path (should show Browse button).
     /// </summary>
     public bool IsFolderPathField => Key.Contains("outputDirectoryPath", StringComparison.OrdinalIgnoreCase) ||
-                                     Key.Contains("OutputDirectoryPath", StringComparison.OrdinalIgnoreCase) ||
                                      Key.Contains("promptDirectory", StringComparison.OrdinalIgnoreCase) ||
-                                     Key.Contains("PromptDirectory", StringComparison.OrdinalIgnoreCase) ||
-                                     Key.Contains("expectedDirectory", StringComparison.OrdinalIgnoreCase) ||
-                                     Key.Contains("ExpectedDirectory", StringComparison.OrdinalIgnoreCase);
+                                     Key.Contains("expectedDirectory", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// True if this field is the data source kind enum field.
@@ -184,11 +172,11 @@ public sealed class SettingsFieldViewModel : INotifyPropertyChanged
     public string[]? EnumOptions => Key switch
     {
         "judge.template" or "judgeTemplate" => GetJudgeTemplateOptions(),
-        "run.exportShellTarget" or "ShellTarget" => ["Unspecified", "bash", "powershell"],
+        "run.exportShellTarget" or "ShellTarget" => ["Unspecified", .. Enum.GetNames<ShellTarget>()],
         "llama.splitMode" or "SplitMode" => ["Unspecified", "none", "layer", "row"],
         "llama.reasoningFormat" or "ReasoningFormat" => ["Unspecified", "deepseek", "r1", "none"],
         "llama.logVerbosity" or "LogVerbosity" => ["Unspecified", "0", "1", "2", "3"],
-        "dataSource.kind" => ["Unspecified", "SingleFile", "JsonlFile", "SplitDirectories", "Directory"],
+        "dataSource.kind" => ["Unspecified", .. Enum.GetNames<DataSourceKind>()],
         _ => null
     };
 
@@ -281,7 +269,7 @@ public sealed class SettingsSectionGroup : INotifyPropertyChanged
     public SettingsSectionGroup(string sectionName, IEnumerable<SettingsFieldViewModel> fields)
     {
         SectionName = sectionName;
-        _fields = [..fields];
+        _fields = [.. fields];
 
         // Subscribe to property changes in child fields; only notify when visibility changes
         foreach (var field in _fields)
@@ -553,12 +541,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             {
                 Manage = Fb("server.manage"),
                 ExecutablePath = F("server.executablePath"),
-                Host = F("server.host"),
-                Port = Fi("server.port"),
                 ApiKey = F("server.apiKey"),
                 BaseUrl = F("server.baseUrl"),
             },
-            LlamaServer = llamaServerSettings,
+            LlamaSettings = llamaServerSettings,
             Judge = new PartialJudgeConfig
             {
                 Enable = Fb("judge.enable"),
@@ -566,8 +552,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 {
                     Manage = Fb("judge.manage"),
                     ExecutablePath = F("judge.executablePath"),
-                    Host = F("judge.host"),
-                    Port = Fi("judge.port"),
                     ApiKey = F("judge.apiKey"),
                     BaseUrl = F("judge.baseUrl"),
                     Model = new ModelSource
@@ -583,7 +567,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             {
                 RunName = F("run.name"),
                 OutputDirectoryPath = F("run.outputDirectoryPath"),
-                ExportShellTarget = F("run.exportShellTarget") is var st && st != "Unspecified" ? ParseShellTarget(st) : null,
+                ExportShellTarget = F("run.exportShellTarget") is var st && !string.IsNullOrEmpty(st) && st != "Unspecified" ? Enum.Parse<ShellTarget>(st, true) : null,
                 ContinueOnEvalFailure = Fb("run.continueOnEvalFailure"),
                 MaxConcurrentEvals = Fi("run.maxConcurrentEvals"),
             },
@@ -598,7 +582,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             DataSource = new PartialDataSourceConfig
             {
                 Kind = F("dataSource.kind") is var kind && !string.IsNullOrEmpty(kind) && kind != "Unspecified"
-                    ? ParseDataSourceKind(kind) : null,
+                    ? Enum.Parse<DataSourceKind>(kind, true) : null,
                 FilePath = F("dataSource.filePath"),
                 PromptDirectory = F("dataSource.promptDirectory"),
                 ExpectedDirectory = F("dataSource.expectedDirectory"),
@@ -610,31 +594,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                     SystemPromptField = F("dataSource.fieldMapping.systemPromptField"),
                 },
             },
-            EvalSets = [],
             PipelineOptions = BuildPipelineOptionsFromFields(F, Fi, Fd, Fb),
-        };
-
-        static ShellTarget? ParseShellTarget(string? value) => value?.ToLowerInvariant() switch
-        {
-            "bash" => ShellTarget.Bash,
-            "powershell" => ShellTarget.PowerShell,
-            _ => null
-        };
-
-        static DataSourceKind? ParseDataSourceKind(string? value) => value?.ToLowerInvariant() switch
-        {
-            "singlefile" => DataSourceKind.SingleFile,
-            "jsonlfile" => DataSourceKind.JsonlFile,
-            "splitdirectories" or "directorypair" => DataSourceKind.SplitDirectories,
-            "directory" => DataSourceKind.Directory,
-            _ => null
         };
 
         static Dictionary<string, object?>? BuildPipelineOptionsFromFields(
             Func<string, string?> F, Func<string, int?> Fi, Func<string, double?> Fd, Func<string, bool?> Fb)
         {
             var options = new Dictionary<string, object?>();
-            
+
             // Translation pipeline options
             var sourceLang = F("pipelineOptions.sourceLanguage");
             var targetLang = F("pipelineOptions.targetLanguage");
@@ -642,13 +609,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             if (!string.IsNullOrEmpty(sourceLang)) options["sourceLanguage"] = sourceLang;
             if (!string.IsNullOrEmpty(targetLang)) options["targetLanguage"] = targetLang;
             if (!string.IsNullOrEmpty(sysPrompt)) options["systemPrompt"] = sysPrompt;
-            
+
             // C# coding pipeline options
             var buildScript = F("pipelineOptions.buildScriptPath");
             var testFile = F("pipelineOptions.testFilePath");
             if (!string.IsNullOrEmpty(buildScript)) options["buildScriptPath"] = buildScript;
             if (!string.IsNullOrEmpty(testFile)) options["testFilePath"] = testFile;
-            
+
             return options.Count > 0 ? options : null;
         }
     }
@@ -738,7 +705,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         return parts[0] switch
         {
             "server" => GetServerValue(config.Server, parts[1]),
-            "llama" => GetLlamaValue(config.LlamaServer, parts[1]),
+            "llama" => GetLlamaValue(config.LlamaSettings, parts[1]),
             "judge" => GetJudgeValue(config.Judge, parts[1]),
             "output" => GetOutputValue(config.Output, parts[1]),
             "run" => GetRunValue(config.Run, parts[1]),
@@ -760,8 +727,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         "manage" => server?.Manage?.ToString().ToLowerInvariant(),
         "executablePath" => server?.ExecutablePath,
-        "host" => server?.Host,
-        "port" => server?.Port?.ToString(),
         "apiKey" => server?.ApiKey,
         "baseUrl" => server?.BaseUrl,
         _ => null
@@ -809,9 +774,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         "enable" => judge?.Enable?.ToString().ToLowerInvariant(),
         "manage" => judge?.ServerConfig?.Manage?.ToString().ToLowerInvariant(),
-        "host" => judge?.ServerConfig?.Host,
-        "port" => judge?.ServerConfig?.Port?.ToString(),
-        "baseUrl" => judge?.BaseUrl,
+        "baseUrl" => judge?.ServerConfig?.BaseUrl,
         "modelFile" => judge?.ServerConfig?.Model?.FilePath,
         "hfRepo" => judge?.ServerConfig?.Model?.HfRepo,
         "apiKey" => judge?.ServerConfig?.ApiKey,
@@ -844,152 +807,149 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private void InitializeSettingsFields()
     {
         // Server Configuration
-        AddField("server.manage", "Manage Server", "Server Configuration", "", "Whether to manage llama-server locally", true);
-        AddField("server.executablePath", "Server Executable Path", "Server Configuration", "", "Path to llama-server executable (optional)", true);
-        AddField("server.host", "Host", "Server Configuration", "", "Server host address", true);
-        AddField("server.port", "Port", "Server Configuration", "", "Server port number", true);
-        AddField("server.apiKey", "API Key", "Server Configuration", "", "Optional API key for authentication", true);
-        AddField("server.baseUrl", "Base URL", "Server Configuration", "", "Base URL for external server", true);
+        AddField("server.manage", "Manage Server", "Server Configuration", "", "Whether to manage llama-server locally");
+        AddField("server.executablePath", "Server Executable Path", "Server Configuration", "", "Path to llama-server executable (optional)");
+        AddField("server.apiKey", "API Key", "Server Configuration", "", "Optional API key for authentication");
+        AddField("server.baseUrl", "Base URL", "Server Configuration", "", "Base URL for external server");
 
         // Llama Server Settings - Context/Batching (all default to null/empty for llama.cpp defaults)
-        AddField("llama.contextWindowTokens", "Context Window", "Llama Server Settings", "", "Context window size in tokens", true);
-        AddField("llama.batchSizeTokens", "Batch Size", "Llama Server Settings", "", "Batch size in tokens", true);
-        AddField("llama.ubatchSizeTokens", "Micro-Batch Size", "Llama Server Settings", "", "Micro-batch size in tokens", true);
-        AddField("llama.parallelSlotCount", "Parallel Slots", "Llama Server Settings", "", "Concurrent request slots (from /props)", true);
-        AddField("llama.enableContinuousBatching", "Enable Continuous Batching", "Llama Server Settings", "", "Enable continuous batching", true);
-        AddField("llama.enableCachePrompt", "Cache Prompt", "Llama Server Settings", "", "Cache prompt processing", true);
-        AddField("llama.enableContextShift", "Enable Context Shift", "Llama Server Settings", "", "Enable context shifting", true);
+        AddField("llama.contextWindowTokens", "Context Window", "Llama Server Settings", "", "Context window size in tokens");
+        AddField("llama.batchSizeTokens", "Batch Size", "Llama Server Settings", "", "Batch size in tokens");
+        AddField("llama.ubatchSizeTokens", "Micro-Batch Size", "Llama Server Settings", "", "Micro-batch size in tokens");
+        AddField("llama.parallelSlotCount", "Parallel Slots", "Llama Server Settings", "", "Concurrent request slots (from /props)");
+        AddField("llama.enableContinuousBatching", "Enable Continuous Batching", "Llama Server Settings", "", "Enable continuous batching");
+        AddField("llama.enableCachePrompt", "Cache Prompt", "Llama Server Settings", "", "Cache prompt processing");
+        AddField("llama.enableContextShift", "Enable Context Shift", "Llama Server Settings", "", "Enable context shifting");
 
         // Llama Server Settings - GPU
-        AddField("llama.gpuLayerCount", "GPU Layers", "Llama Server Settings", "", "Number of layers to offload to GPU", true);
-        AddField("llama.splitMode", "Split Mode", "Llama Server Settings", "", "GPU split mode: none, layer, row", true);
-        AddField("llama.kvCacheTypeK", "KV Cache Type K", "Llama Server Settings", "", "KV cache type for K (f16, q8_0, etc.)", true);
-        AddField("llama.kvCacheTypeV", "KV Cache Type V", "Llama Server Settings", "", "KV cache type for V (f16, q8_0, etc.)", true);
-        AddField("llama.enableKvOffload", "Enable KV Offload", "Llama Server Settings", "", "Offload KV cache to GPU", true);
-        AddField("llama.enableFlashAttention", "Enable Flash Attention", "Llama Server Settings", "", "Enable flash attention", true);
+        AddField("llama.gpuLayerCount", "GPU Layers", "Llama Server Settings", "", "Number of layers to offload to GPU");
+        AddField("llama.splitMode", "Split Mode", "Llama Server Settings", "", "GPU split mode: none, layer, row");
+        AddField("llama.kvCacheTypeK", "KV Cache Type K", "Llama Server Settings", "", "KV cache type for K (f16, q8_0, etc.)");
+        AddField("llama.kvCacheTypeV", "KV Cache Type V", "Llama Server Settings", "", "KV cache type for V (f16, q8_0, etc.)");
+        AddField("llama.enableKvOffload", "Enable KV Offload", "Llama Server Settings", "", "Offload KV cache to GPU");
+        AddField("llama.enableFlashAttention", "Enable Flash Attention", "Llama Server Settings", "", "Enable flash attention");
 
         // Llama Server Settings - Sampling (all default to null for llama.cpp defaults)
-        AddField("llama.samplingTemperature", "Temperature", "Llama Server Settings", "", "Sampling temperature", true);
-        AddField("llama.topP", "Top P", "Llama Server Settings", "", "Top-p (nucleus) sampling", true);
-        AddField("llama.topK", "Top K", "Llama Server Settings", "", "Top-k sampling", true);
-        AddField("llama.minP", "Min P", "Llama Server Settings", "", "Min-p sampling", true);
-        AddField("llama.repeatPenalty", "Repeat Penalty", "Llama Server Settings", "", "Penalty for repeated tokens", true);
-        AddField("llama.repeatLastNTokens", "Repeat Last N", "Llama Server Settings", "", "Number of tokens to consider for repeat penalty", true);
-        AddField("llama.presencePenalty", "Presence Penalty", "Llama Server Settings", "", "Presence penalty for token generation", true);
-        AddField("llama.frequencyPenalty", "Frequency Penalty", "Llama Server Settings", "", "Frequency penalty for token generation", true);
-        AddField("llama.seed", "Seed", "Llama Server Settings", "", "Random seed (-1 for random)", true);
+        AddField("llama.samplingTemperature", "Temperature", "Llama Server Settings", "", "Sampling temperature");
+        AddField("llama.topP", "Top P", "Llama Server Settings", "", "Top-p (nucleus) sampling");
+        AddField("llama.topK", "Top K", "Llama Server Settings", "", "Top-k sampling");
+        AddField("llama.minP", "Min P", "Llama Server Settings", "", "Min-p sampling");
+        AddField("llama.repeatPenalty", "Repeat Penalty", "Llama Server Settings", "", "Penalty for repeated tokens");
+        AddField("llama.repeatLastNTokens", "Repeat Last N", "Llama Server Settings", "", "Number of tokens to consider for repeat penalty");
+        AddField("llama.presencePenalty", "Presence Penalty", "Llama Server Settings", "", "Presence penalty for token generation");
+        AddField("llama.frequencyPenalty", "Frequency Penalty", "Llama Server Settings", "", "Frequency penalty for token generation");
+        AddField("llama.seed", "Seed", "Llama Server Settings", "", "Random seed (-1 for random)");
 
         // Llama Server Settings - Threading
-        AddField("llama.threadCount", "Threads", "Llama Server Settings", "", "CPU threads for inference", true);
-        AddField("llama.httpThreadCount", "HTTP Threads", "Llama Server Settings", "", "HTTP server threads", true);
+        AddField("llama.threadCount", "Threads", "Llama Server Settings", "", "CPU threads for inference");
+        AddField("llama.httpThreadCount", "HTTP Threads", "Llama Server Settings", "", "HTTP server threads");
 
         // Llama Server Settings - Model Behavior
-        AddField("llama.chatTemplate", "Chat Template", "Llama Server Settings", "", "Chat template name", true);
-        AddField("llama.enableJinja", "Enable Jinja", "Llama Server Settings", "", "Enable Jinja template processing", true);
-        AddField("llama.reasoningFormat", "Reasoning Format", "Llama Server Settings", "", "Reasoning format (e.g., chain-of-thought)", true);
-        AddField("llama.reasoningBudget", "Reasoning Budget", "Llama Server Settings", "", "Reasoning budget in tokens", true);
-        AddField("llama.reasoningBudgetMessage", "Reasoning Budget Message", "Llama Server Settings", "", "Message to control reasoning behavior", true);
-        AddField("llama.modelAlias", "Model Alias", "Llama Server Settings", "", "Model alias for identification", true);
+        AddField("llama.chatTemplate", "Chat Template", "Llama Server Settings", "", "Chat template name");
+        AddField("llama.enableJinja", "Enable Jinja", "Llama Server Settings", "", "Enable Jinja template processing");
+        AddField("llama.reasoningFormat", "Reasoning Format", "Llama Server Settings", "", "Reasoning format (e.g., chain-of-thought)");
+        AddField("llama.reasoningBudget", "Reasoning Budget", "Llama Server Settings", "", "Reasoning budget in tokens");
+        AddField("llama.reasoningBudgetMessage", "Reasoning Budget Message", "Llama Server Settings", "", "Message to control reasoning behavior");
+        AddField("llama.modelAlias", "Model Alias", "Llama Server Settings", "", "Model alias for identification");
 
         // Llama Server Settings - Logging
-        AddField("llama.logVerbosity", "Log Verbosity", "Llama Server Settings", "", "Log verbosity level (0-3)", true);
+        AddField("llama.logVerbosity", "Log Verbosity", "Llama Server Settings", "", "Log verbosity level (0-3)");
 
         // Llama Server Settings - Memory
-        AddField("llama.enableMlock", "Enable Mlock", "Llama Server Settings", "", "Lock model in memory", true);
-        AddField("llama.enableMmap", "Enable Mmap", "Llama Server Settings", "", "Memory-map model file", true);
+        AddField("llama.enableMlock", "Enable Mlock", "Llama Server Settings", "", "Lock model in memory");
+        AddField("llama.enableMmap", "Enable Mmap", "Llama Server Settings", "", "Memory-map model file");
 
         // Llama Server Settings - Timeouts
-        AddField("llama.serverTimeoutSeconds", "Server Timeout", "Llama Server Settings", "", "Server timeout in seconds", true);
+        AddField("llama.serverTimeoutSeconds", "Server Timeout", "Llama Server Settings", "", "Server timeout in seconds");
 
         // Llama Server Settings - Extra Args
-        AddField("llama.extraArgs", "Extra Args", "Llama Server Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)", true);
+        AddField("llama.extraArgs", "Extra Args", "Llama Server Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)");
 
         // Output Settings (all default to null/unspecified)
-        AddField("output.writePerEvalJson", "Write per-eval JSON", "Output Settings", "", "Write individual JSON for each eval", true);
-        AddField("output.writeSummaryJson", "Write summary JSON", "Output Settings", "", "Write summary JSON file", true);
-        AddField("output.writeSummaryCsv", "Write summary CSV", "Output Settings", "", "Write summary CSV file", true);
-        AddField("output.writeParquet", "Write Parquet", "Output Settings", "", "Write Parquet output file", true);
-        AddField("output.includeRawResponse", "Include raw LLM responses", "Output Settings", "", "Include raw LLM responses in output", true);
+        //TODO: no partial OutputConfig exists, and ResolvedConfig doesn't have Output, and so none of those values are hooked up to the settings anymore
+        //AddField("output.writePerEvalJson", "Write per-eval JSON", "Output Settings", "", "Write individual JSON for each eval", true);
+        //AddField("output.writeSummaryJson", "Write summary JSON", "Output Settings", "", "Write summary JSON file", true);
+        //AddField("output.writeSummaryCsv", "Write summary CSV", "Output Settings", "", "Write summary CSV file", true);
+        //AddField("output.writeParquet", "Write Parquet", "Output Settings", "", "Write Parquet output file", true);
+        //AddField("output.includeRawResponse", "Include raw LLM responses", "Output Settings", "", "Include raw LLM responses in output", true);
 
         // Judge Settings - Basic
-        AddField("judge.enable", "Enable LLM-as-Judge", "Judge Settings", "", "Whether to enable LLM-as-judge scoring", true);
-        AddField("judge.manage", "Manage Judge Server", "Judge Settings", "", "Whether to manage judge llama-server locally", true);
-        AddField("judge.executablePath", "Judge Executable Path", "Judge Settings", "", "Path to judge llama-server executable (optional)", true);
-        AddField("judge.host", "Judge Host", "Judge Settings", "127.0.0.1", "Judge server host address", true);
-        AddField("judge.port", "Judge Port", "Judge Settings", "8081", "Judge server port number", true);
-        AddField("judge.baseUrl", "Judge Server URL", "Judge Settings", "", "Judge LLM server URL (for external server)", true);
-        AddField("judge.modelFile", "Judge Model File", "Judge Settings", "", "Judge model file path", true);
-        AddField("judge.hfRepo", "Judge HuggingFace Repo", "Judge Settings", "", "Judge HuggingFace repo", true);
-        AddField("judge.apiKey", "Judge API Key", "Judge Settings", "", "Judge API key", true);
-        AddField("judge.template", "Judge Template", "Judge Settings", "standard", "Judge prompt template");
+        AddField("judge.enable", "Enable LLM-as-Judge", "Judge Settings", "", "Whether to enable LLM-as-judge scoring");
+        AddField("judge.manage", "Manage Judge Server", "Judge Settings", "", "Whether to manage judge llama-server locally");
+        AddField("judge.executablePath", "Judge Executable Path", "Judge Settings", "", "Path to judge llama-server executable (optional)");
+        AddField("judge.baseUrl", "Judge Server URL", "Judge Settings", "", "Judge LLM server URL (for external server)");
+        AddField("judge.modelFile", "Judge Model File", "Judge Settings", "", "Judge model file path");
+        AddField("judge.hfRepo", "Judge HuggingFace Repo", "Judge Settings", "", "Judge HuggingFace repo");
+        AddField("judge.apiKey", "Judge API Key", "Judge Settings", "", "Judge API key");
+        AddField("judge.template", "Judge Template", "Judge Settings", "Unspecified", "Judge prompt template");
 
         // Judge Settings - Llama Server (same options as main server)
-        AddField("judge.contextWindowTokens", "Judge Context Window", "Judge Settings", "", "Context window size in tokens", true);
-        AddField("judge.batchSizeTokens", "Judge Batch Size", "Judge Settings", "", "Batch size in tokens", true);
-        AddField("judge.ubatchSizeTokens", "Judge Micro-Batch Size", "Judge Settings", "", "Micro-batch size in tokens", true);
-        AddField("judge.parallelSlotCount", "Judge Parallel Slots", "Judge Settings", "", "Concurrent request slots", true);
-        AddField("judge.enableContinuousBatching", "Judge Enable Continuous Batching", "Judge Settings", "", "Enable continuous batching", true);
-        AddField("judge.enableCachePrompt", "Judge Cache Prompt", "Judge Settings", "", "Cache prompt processing", true);
-        AddField("judge.enableContextShift", "Judge Enable Context Shift", "Judge Settings", "", "Enable context shifting", true);
-        AddField("judge.gpuLayerCount", "Judge GPU Layers", "Judge Settings", "", "Number of layers to offload to GPU", true);
-        AddField("judge.splitMode", "Judge Split Mode", "Judge Settings", "", "GPU split mode: none, layer, row", true);
-        AddField("judge.kvCacheTypeK", "Judge KV Cache Type K", "Judge Settings", "", "KV cache type for K (f16, q8_0, etc.)", true);
-        AddField("judge.kvCacheTypeV", "Judge KV Cache Type V", "Judge Settings", "", "KV cache type for V (f16, q8_0, etc.)", true);
-        AddField("judge.enableKvOffload", "Judge Enable KV Offload", "Judge Settings", "", "Offload KV cache to GPU", true);
-        AddField("judge.enableFlashAttention", "Judge Enable Flash Attention", "Judge Settings", "", "Enable flash attention", true);
-        AddField("judge.samplingTemperature", "Judge Temperature", "Judge Settings", "", "Sampling temperature", true);
-        AddField("judge.topP", "Judge Top P", "Judge Settings", "", "Top-p (nucleus) sampling", true);
-        AddField("judge.topK", "Judge Top K", "Judge Settings", "", "Top-k sampling", true);
-        AddField("judge.minP", "Judge Min P", "Judge Settings", "", "Min-p sampling", true);
-        AddField("judge.repeatPenalty", "Judge Repeat Penalty", "Judge Settings", "", "Penalty for repeated tokens", true);
-        AddField("judge.repeatLastNTokens", "Judge Repeat Last N", "Judge Settings", "", "Number of tokens to consider for repeat penalty", true);
-        AddField("judge.presencePenalty", "Judge Presence Penalty", "Judge Settings", "", "Presence penalty for token generation", true);
-        AddField("judge.frequencyPenalty", "Judge Frequency Penalty", "Judge Settings", "", "Frequency penalty for token generation", true);
-        AddField("judge.seed", "Judge Seed", "Judge Settings", "", "Random seed (-1 for random)", true);
-        AddField("judge.threadCount", "Judge Threads", "Judge Settings", "", "CPU threads for inference", true);
-        AddField("judge.httpThreadCount", "Judge HTTP Threads", "Judge Settings", "", "HTTP server threads", true);
-        AddField("judge.chatTemplate", "Judge Chat Template", "Judge Settings", "", "Chat template name", true);
-        AddField("judge.enableJinja", "Judge Enable Jinja", "Judge Settings", "", "Enable Jinja template processing", true);
-        AddField("judge.reasoningFormat", "Judge Reasoning Format", "Judge Settings", "", "Reasoning format (e.g., chain-of-thought)", true);
-        AddField("judge.reasoningBudget", "Judge Reasoning Budget", "Judge Settings", "", "Reasoning budget in tokens", true);
-        AddField("judge.reasoningBudgetMessage", "Judge Reasoning Budget Message", "Judge Settings", "", "Message to control reasoning behavior", true);
-        AddField("judge.modelAlias", "Judge Model Alias", "Judge Settings", "", "Model alias for identification", true);
-        AddField("judge.logVerbosity", "Judge Log Verbosity", "Judge Settings", "", "Log verbosity level (0-3)", true);
-        AddField("judge.enableMlock", "Judge Enable Mlock", "Judge Settings", "", "Lock model in memory", true);
-        AddField("judge.enableMmap", "Judge Enable Mmap", "Judge Settings", "", "Memory-map model file", true);
-        AddField("judge.serverTimeoutSeconds", "Judge Server Timeout", "Judge Settings", "", "Server timeout in seconds", true);
-        AddField("judge.extraArgs", "Judge Extra Args", "Judge Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)", true);
+        AddField("judge.contextWindowTokens", "Judge Context Window", "Judge Settings", "", "Context window size in tokens");
+        AddField("judge.batchSizeTokens", "Judge Batch Size", "Judge Settings", "", "Batch size in tokens");
+        AddField("judge.ubatchSizeTokens", "Judge Micro-Batch Size", "Judge Settings", "", "Micro-batch size in tokens");
+        AddField("judge.parallelSlotCount", "Judge Parallel Slots", "Judge Settings", "", "Concurrent request slots");
+        AddField("judge.enableContinuousBatching", "Judge Enable Continuous Batching", "Judge Settings", "", "Enable continuous batching");
+        AddField("judge.enableCachePrompt", "Judge Cache Prompt", "Judge Settings", "", "Cache prompt processing");
+        AddField("judge.enableContextShift", "Judge Enable Context Shift", "Judge Settings", "", "Enable context shifting");
+        AddField("judge.gpuLayerCount", "Judge GPU Layers", "Judge Settings", "", "Number of layers to offload to GPU");
+        AddField("judge.splitMode", "Judge Split Mode", "Judge Settings", "", "GPU split mode: none, layer, row");
+        AddField("judge.kvCacheTypeK", "Judge KV Cache Type K", "Judge Settings", "", "KV cache type for K (f16, q8_0, etc.)");
+        AddField("judge.kvCacheTypeV", "Judge KV Cache Type V", "Judge Settings", "", "KV cache type for V (f16, q8_0, etc.)");
+        AddField("judge.enableKvOffload", "Judge Enable KV Offload", "Judge Settings", "", "Offload KV cache to GPU");
+        AddField("judge.enableFlashAttention", "Judge Enable Flash Attention", "Judge Settings", "", "Enable flash attention");
+        AddField("judge.samplingTemperature", "Judge Temperature", "Judge Settings", "", "Sampling temperature");
+        AddField("judge.topP", "Judge Top P", "Judge Settings", "", "Top-p (nucleus) sampling");
+        AddField("judge.topK", "Judge Top K", "Judge Settings", "", "Top-k sampling");
+        AddField("judge.minP", "Judge Min P", "Judge Settings", "", "Min-p sampling");
+        AddField("judge.repeatPenalty", "Judge Repeat Penalty", "Judge Settings", "", "Penalty for repeated tokens");
+        AddField("judge.repeatLastNTokens", "Judge Repeat Last N", "Judge Settings", "", "Number of tokens to consider for repeat penalty");
+        AddField("judge.presencePenalty", "Judge Presence Penalty", "Judge Settings", "", "Presence penalty for token generation");
+        AddField("judge.frequencyPenalty", "Judge Frequency Penalty", "Judge Settings", "", "Frequency penalty for token generation");
+        AddField("judge.seed", "Judge Seed", "Judge Settings", "", "Random seed (-1 for random)");
+        AddField("judge.threadCount", "Judge Threads", "Judge Settings", "", "CPU threads for inference");
+        AddField("judge.httpThreadCount", "Judge HTTP Threads", "Judge Settings", "", "HTTP server threads");
+        AddField("judge.chatTemplate", "Judge Chat Template", "Judge Settings", "", "Chat template name");
+        AddField("judge.enableJinja", "Judge Enable Jinja", "Judge Settings", "", "Enable Jinja template processing");
+        AddField("judge.reasoningFormat", "Judge Reasoning Format", "Judge Settings", "", "Reasoning format (e.g., chain-of-thought)");
+        AddField("judge.reasoningBudget", "Judge Reasoning Budget", "Judge Settings", "", "Reasoning budget in tokens");
+        AddField("judge.reasoningBudgetMessage", "Judge Reasoning Budget Message", "Judge Settings", "", "Message to control reasoning behavior");
+        AddField("judge.modelAlias", "Judge Model Alias", "Judge Settings", "", "Model alias for identification");
+        AddField("judge.logVerbosity", "Judge Log Verbosity", "Judge Settings", "", "Log verbosity level (0-3)");
+        AddField("judge.enableMlock", "Judge Enable Mlock", "Judge Settings", "", "Lock model in memory");
+        AddField("judge.enableMmap", "Judge Enable Mmap", "Judge Settings", "", "Memory-map model file");
+        AddField("judge.serverTimeoutSeconds", "Judge Server Timeout", "Judge Settings", "", "Server timeout in seconds");
+        AddField("judge.extraArgs", "Judge Extra Args", "Judge Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)");
 
         // Run Meta Settings
-        AddField("run.name", "Run Name", "Run Meta", "", "Human-readable name for this run", true);
-        AddField("run.outputDirectoryPath", "Output Directory", "Run Meta", "./results", "Results output directory");
-        AddField("run.exportShellTarget", "Shell Dialect", "Run Meta", "bash", "Shell dialect for export: bash, powershell");
-        AddField("run.continueOnEvalFailure", "Continue on Failure", "Run Meta", "true", "Continue running on eval failure");
-        AddField("run.maxConcurrentEvals", "Max Concurrent Evals", "Run Meta", "", "Maximum concurrent evaluations", true);
+        AddField("run.name", "Run Name", "Run Meta", "", "Human-readable name for this run");
+        AddField("run.outputDirectoryPath", "Output Directory", "Run Meta", "", "Results output directory");
+        AddField("run.exportShellTarget", "Shell Dialect", "Run Meta", "Unspecified", "Shell dialect for export: bash, powershell");
+        AddField("run.continueOnEvalFailure", "Continue on Failure", "Run Meta", "Unspecified", "Continue running on eval failure");
+        AddField("run.maxConcurrentEvals", "Max Concurrent Evals", "Run Meta", "", "Maximum concurrent evaluations");
 
         // Data Source Settings
         AddField("dataSource.kind", "Data Source Mode", "Data Source", "Unspecified", "Data source mode: SingleFile or SplitDirectories");
-        AddField("dataSource.filePath", "Data File Path", "Data Source", "", "Path to single data file (JSON, YAML, CSV, etc.)", true);
-        AddField("dataSource.promptDirectory", "Prompt Directory", "Data Source", "", "Path to prompt files directory", true);
-        AddField("dataSource.expectedDirectory", "Expected Output Directory", "Data Source", "", "Path to expected output files directory", true);
-        
+        AddField("dataSource.filePath", "Data File Path", "Data Source", "", "Path to single data file (JSON, YAML, CSV, etc.)");
+        AddField("dataSource.promptDirectory", "Prompt Directory", "Data Source", "", "Path to prompt files directory");
+        AddField("dataSource.expectedDirectory", "Expected Output Directory", "Data Source", "", "Path to expected output files directory");
+
         // Field Mapping Settings
-        AddField("dataSource.fieldMapping.idField", "ID Field", "Data Source", "", "Field name for item ID", true);
-        AddField("dataSource.fieldMapping.userPromptField", "User Prompt Field", "Data Source", "", "Field name for user prompt", true);
-        AddField("dataSource.fieldMapping.expectedOutputField", "Expected Output Field", "Data Source", "", "Field name for expected output", true);
-        AddField("dataSource.fieldMapping.systemPromptField", "System Prompt Field", "Data Source", "", "Field name for system prompt", true);
-        
+        AddField("dataSource.fieldMapping.idField", "ID Field", "Data Source", "", "Field name for item ID");
+        AddField("dataSource.fieldMapping.userPromptField", "User Prompt Field", "Data Source", "", "Field name for user prompt");
+        AddField("dataSource.fieldMapping.expectedOutputField", "Expected Output Field", "Data Source", "", "Field name for expected output");
+        AddField("dataSource.fieldMapping.systemPromptField", "System Prompt Field", "Data Source", "", "Field name for system prompt");
+
         // Pipeline Options - Translation
-        AddField("pipelineOptions.sourceLanguage", "Source Language", "Pipeline Options", "English", "Source language for translation", true);
-        AddField("pipelineOptions.targetLanguage", "Target Language", "Pipeline Options", "French", "Target language for translation", true);
-        AddField("pipelineOptions.systemPrompt", "Translation System Prompt", "Pipeline Options", "", "Custom system prompt for translation", true);
-        
+        AddField("pipelineOptions.sourceLanguage", "Source Language", "Pipeline Options", "", "Source language for translation");
+        AddField("pipelineOptions.targetLanguage", "Target Language", "Pipeline Options", "", "Target language for translation");
+        AddField("pipelineOptions.systemPrompt", "Translation System Prompt", "Pipeline Options", "", "Custom system prompt for translation");
+
         // Pipeline Options - C# Coding
-        AddField("pipelineOptions.buildScriptPath", "Build Script Path", "Pipeline Options", "", "Path to custom build script", true);
-        AddField("pipelineOptions.testFilePath", "Test File Path", "Pipeline Options", "", "Path to test file", true);
+        AddField("pipelineOptions.buildScriptPath", "Build Script Path", "Pipeline Options", "", "Path to custom build script");
+        AddField("pipelineOptions.testFilePath", "Test File Path", "Pipeline Options", "", "Path to test file");
     }
 
-    private void AddField(string key, string displayName, string section, string defaultValue, string? description = null, bool isOptional = false)
+    private void AddField(string key, string displayName, string section, string defaultValue, string? description = null)
     {
         SettingsFields.Add(new SettingsFieldViewModel
         {
@@ -998,7 +958,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             Section = section,
             Value = defaultValue,
             Description = description,
-            IsOptional = isOptional,
             SearchText = _searchText
         });
     }

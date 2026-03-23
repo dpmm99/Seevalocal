@@ -1,23 +1,24 @@
 using Avalonia.Controls;
-using Avalonia.Platform.Storage;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 
 namespace Seevalocal.UI.Services;
 
 /// <summary>
 /// Avalonia implementation of file picker service.
 /// </summary>
-public sealed class DefaultFilePickerService(TopLevel? topLevel = null) : IFilePickerService
+public sealed class DefaultFilePickerService(TopLevel? topLevel = null, IDialogDirectoryService? directoryService = null) : IFilePickerService
 {
     private readonly TopLevel? _topLevel = topLevel;
+    private readonly IDialogDirectoryService? _directoryService = directoryService;
 
-    public async Task<string?> ShowOpenFileDialogAsync(string title, string? filters = null, string? initialDirectory = null)
+    public async Task<string?> ShowOpenFileDialogAsync(string title, string? filters = null, string? initialDirectory = null, string? dialogIdentifier = null)
     {
         var topLevel = _topLevel ?? TopLevel.GetTopLevel(App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null);
         if (topLevel == null) return null;
 
         var filePicker = topLevel.StorageProvider;
-        
+
         var options = new FilePickerOpenOptions
         {
             Title = title,
@@ -29,34 +30,62 @@ public sealed class DefaultFilePickerService(TopLevel? topLevel = null) : IFileP
             options.FileTypeFilter = ParseFilters(filters);
         }
 
+        // Load last-used directory for this dialog identifier
+        var startLocation = await GetStartLocationAsync(filePicker, initialDirectory, dialogIdentifier);
+        if (startLocation != null)
+        {
+            options.SuggestedStartLocation = startLocation;
+        }
+
         var files = await filePicker.OpenFilePickerAsync(options);
-        return files.Count > 0 ? files[0].Path.LocalPath : null;
+        var result = files.Count > 0 ? files[0].Path.LocalPath : null;
+
+        // Save the directory for this dialog identifier
+        if (!string.IsNullOrEmpty(result))
+        {
+            var directory = Path.GetDirectoryName(result);
+            _directoryService?.SaveLastDirectory(dialogIdentifier, directory);
+        }
+
+        return result;
     }
 
-    public async Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null)
+    public async Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null, string? dialogIdentifier = null)
     {
         var topLevel = _topLevel ?? TopLevel.GetTopLevel(App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null);
         if (topLevel == null) return null;
 
         var folderPicker = topLevel.StorageProvider;
-        
+
         var options = new FolderPickerOpenOptions
         {
             Title = title,
             AllowMultiple = false
         };
 
+        // Load last-used directory for this dialog identifier
+        var startLocation = await GetStartLocationAsync(folderPicker, initialDirectory, dialogIdentifier);
+        if (startLocation != null)
+        {
+            options.SuggestedStartLocation = startLocation;
+        }
+
         var folders = await folderPicker.OpenFolderPickerAsync(options);
-        return folders.Count > 0 ? folders[0].Path.LocalPath : null;
+        var result = folders.Count > 0 ? folders[0].Path.LocalPath : null;
+
+        // Save the directory for this dialog identifier
+        _directoryService?.SaveLastDirectory(dialogIdentifier, result);
+
+        return result;
     }
 
-    public async Task<string?> ShowSaveFileDialogAsync(string title, string? filters = null, string? initialFileName = null)
+    public async Task<string?> ShowSaveFileDialogAsync(string title, string? filters = null, string? initialFileName = null, string? dialogIdentifier = null)
     {
         var topLevel = _topLevel ?? TopLevel.GetTopLevel(App.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop ? desktop.MainWindow : null);
         if (topLevel == null) return null;
 
         var filePicker = topLevel.StorageProvider;
-        
+
         var options = new FilePickerSaveOptions
         {
             Title = title
@@ -72,15 +101,48 @@ public sealed class DefaultFilePickerService(TopLevel? topLevel = null) : IFileP
             options.FileTypeChoices = ParseFilters(filters);
         }
 
+        // Load last-used directory for this dialog identifier
+        var startLocation = await GetStartLocationAsync(filePicker, null, dialogIdentifier);
+        if (startLocation != null)
+        {
+            options.SuggestedStartLocation = startLocation;
+        }
+
         var file = await filePicker.SaveFilePickerAsync(options);
-        return file?.Path.LocalPath;
+        var result = file?.Path.LocalPath;
+
+        // Save the directory for this dialog identifier
+        if (!string.IsNullOrEmpty(result))
+        {
+            var directory = Path.GetDirectoryName(result);
+            _directoryService?.SaveLastDirectory(dialogIdentifier, directory);
+        }
+
+        return result;
+    }
+
+    private async Task<IStorageFolder?> GetStartLocationAsync(IStorageProvider storageProvider, string? initialDirectory, string? dialogIdentifier)
+    {
+        // Priority: 1. Explicit initialDirectory, 2. Saved directory for identifier, 3. null (use default)
+        if (!string.IsNullOrEmpty(initialDirectory))
+        {
+            return await storageProvider.TryGetFolderFromPathAsync(initialDirectory);
+        }
+
+        var savedDirectory = _directoryService?.GetLastDirectory(dialogIdentifier);
+        if (!string.IsNullOrEmpty(savedDirectory))
+        {
+            return await storageProvider.TryGetFolderFromPathAsync(savedDirectory);
+        }
+
+        return null;
     }
 
     private static List<FilePickerFileType> ParseFilters(string filters)
     {
         var result = new List<FilePickerFileType>();
         var parts = filters.Split('|');
-        
+
         for (int i = 0; i < parts.Length; i += 2)
         {
             if (i + 1 < parts.Length)
@@ -93,12 +155,12 @@ public sealed class DefaultFilePickerService(TopLevel? topLevel = null) : IFileP
                 });
             }
         }
-        
+
         if (result.Count == 0)
         {
             result.Add(FilePickerFileTypes.All);
         }
-        
+
         return result;
     }
 }

@@ -14,7 +14,6 @@ public static class DataSourceValidator
 
         switch (config.Kind)
         {
-            case DataSourceKind.Directory:
             case DataSourceKind.SplitDirectories:
                 if (string.IsNullOrWhiteSpace(config.PromptDirectory))
                 {

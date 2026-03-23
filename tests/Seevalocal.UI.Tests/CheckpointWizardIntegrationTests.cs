@@ -38,7 +38,7 @@ public class CheckpointWizardIntegrationTests(ITestOutputHelper output) : IAsync
             output.WriteLine($"  Server.Manage: {checkpointConfig.Server.Manage}");
             output.WriteLine($"  Server.Model: {checkpointConfig.Server.Model?.Kind}");
             output.WriteLine($"  Judge.Enable: {checkpointConfig.Judge?.Enable}");
-            output.WriteLine($"  Judge.Manage: {checkpointConfig.Judge?.Manage}");
+            output.WriteLine($"  Judge.Manage: {checkpointConfig.Judge?.ServerConfig?.Manage}");
             output.WriteLine($"  Judge.Model: {checkpointConfig.Judge?.ServerConfig?.Model?.Kind}");
         }
 
@@ -127,35 +127,32 @@ public class CheckpointWizardIntegrationTests(ITestOutputHelper output) : IAsync
             output.WriteLine($"  {id}");
         }
 
-        // Act - get completed item IDs for each eval set
-        foreach (var evalSetId in allEvalSetIds)
+        // Act - get completed item IDs for each phase
+        var primaryCompletedIds = await collector.GetCompletedItemIdsAsync("primary", default);
+        var judgeCompletedIds = await collector.GetCompletedItemIdsAsync("judge", default);
+
+        // Assert
+        output.WriteLine($"\n=== Checkpoint Database Contents ===");
+        output.WriteLine($"Primary phase completed items: {primaryCompletedIds.Count}");
+        output.WriteLine($"Judge phase completed items: {judgeCompletedIds.Count}");
+
+        foreach (var id in primaryCompletedIds.Take(5))
         {
-            var primaryCompletedIds = await collector.GetCompletedItemIdsAsync(evalSetId, "primary", default);
-            var judgeCompletedIds = await collector.GetCompletedItemIdsAsync(evalSetId, "judge", default);
-
-            // Assert
-            output.WriteLine($"\n=== Checkpoint Database Contents for '{evalSetId}' ===");
-            output.WriteLine($"Primary phase completed items: {primaryCompletedIds.Count}");
-            output.WriteLine($"Judge phase completed items: {judgeCompletedIds.Count}");
-
-            foreach (var id in primaryCompletedIds.Take(5))
-            {
-                output.WriteLine($"  Primary completed: {id}");
-            }
-            if (primaryCompletedIds.Count > 5)
-            {
-                output.WriteLine($"  ... and {primaryCompletedIds.Count - 5} more");
-            }
-
-            // At least one eval set should have completed items
-            if (primaryCompletedIds.Count > 0)
-            {
-                return; // Test passes
-            }
+            output.WriteLine($"  Primary completed: {id}");
+        }
+        if (primaryCompletedIds.Count > 5)
+        {
+            output.WriteLine($"  ... and {primaryCompletedIds.Count - 5} more");
         }
 
-        // If we get here, no eval sets had completed items
-        throw new Xunit.Sdk.XunitException("No eval sets in checkpoint database have completed items");
+        // At least one phase should have completed items
+        if (primaryCompletedIds.Count > 0 || judgeCompletedIds.Count > 0)
+        {
+            return; // Test passes
+        }
+
+        // If we get here, no items were completed
+        throw new Xunit.Sdk.XunitException("No completed items found in checkpoint database");
     }
 
     private async Task<List<string>> GetAllEvalSetIdsAsync(PersistentResultCollector collector)
@@ -181,14 +178,23 @@ public class CheckpointWizardIntegrationTests(ITestOutputHelper output) : IAsync
 /// </summary>
 public class TestFilePickerService : IFilePickerService
 {
-    public Task<string?> ShowOpenFileDialogAsync(string title, string? filters = null, string? initialDirectory = null)
+    public Task<string?> ShowOpenFileDialogAsync(string title, string? filters = null, string? initialDirectory = null, string? dialogIdentifier = null)
         => Task.FromResult<string?>(null);
 
-    public Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null)
+    public Task<string?> ShowOpenFolderDialogAsync(string title, string? initialDirectory = null, string? dialogIdentifier = null)
         => Task.FromResult<string?>(null);
 
-    public Task<string?> ShowSaveFileDialogAsync(string title, string? filters = null, string? initialFileName = null)
+    public Task<string?> ShowSaveFileDialogAsync(string title, string? filters = null, string? initialFileName = null, string? dialogIdentifier = null)
         => Task.FromResult<string?>(null);
+}
+
+/// <summary>
+/// Test implementation of IDialogDirectoryService.
+/// </summary>
+public class TestDialogDirectoryService : IDialogDirectoryService
+{
+    public string? GetLastDirectory(string? dialogIdentifier) => null;
+    public void SaveLastDirectory(string? dialogIdentifier, string? directoryPath) { }
 }
 
 /// <summary>

@@ -28,8 +28,7 @@ public sealed class IsEqualConverter : IValueConverter
                 var options = Enum.GetValues(targetType);
                 if (options.Length == 2)
                 {
-                    if (options.GetValue(0) == enumVal) return options.GetValue(1);
-                    else return options.GetValue(0);
+                    return options.GetValue(0) == enumVal ? options.GetValue(1) : options.GetValue(0);
                 }
             }
         }

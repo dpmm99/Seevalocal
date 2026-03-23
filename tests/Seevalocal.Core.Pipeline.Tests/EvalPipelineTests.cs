@@ -24,7 +24,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", s1, s2);
         var ctx = TestHelpers.MakeContext();
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.True(result.Succeeded);
         Assert.Null(result.FailureReason);
@@ -43,7 +43,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", s1, s2);
         var ctx = TestHelpers.MakeContext();
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.False(result.Succeeded);
         Assert.NotNull(result.FailureReason);
@@ -60,7 +60,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", s1, s2);
         var ctx = TestHelpers.MakeContext();
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: true);
 
         Assert.False(result.Succeeded);
         Assert.Equal(1, s1.CallCount);
@@ -80,7 +80,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", s1, s2);
         var ctx = TestHelpers.MakeContext();
 
-        _ = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        _ = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.Equal("hello", seenValue);
     }
@@ -99,7 +99,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", s1, s2);
         var ctx = TestHelpers.MakeContext();
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.Contains(result.Metrics, static m => m.Name == "latencySeconds");
         Assert.Contains(result.Metrics, static m => m.Name == "tokenCount");
@@ -116,7 +116,7 @@ public class EvalPipelineTests
         var pipeline = MakePipeline("Test", stage);
         var ctx = TestHelpers.MakeContext();
 
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.Equal("The answer is 42", result.RawLlmResponse);
     }
@@ -130,7 +130,7 @@ public class EvalPipelineTests
         var ctx = TestHelpers.MakeContext();
 
         // Should never throw; exception is captured into the result
-        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1");
+        var result = await pipeline.RunItemAsync(ctx, continueOnStageFailure: false);
 
         Assert.False(result.Succeeded);
         Assert.Contains("Unhandled exception", result.FailureReason);
@@ -149,7 +149,7 @@ public class EvalPipelineTests
         var ctx = TestHelpers.MakeContext(cancellationToken: cts.Token);
 
         _ = await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            pipeline.RunItemAsync(ctx, continueOnStageFailure: false, evalSetId: "set1"));
+            pipeline.RunItemAsync(ctx, continueOnStageFailure: false));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
