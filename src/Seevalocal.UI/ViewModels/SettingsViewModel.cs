@@ -791,9 +791,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         // Llama Server Settings - Context/Batching (all default to null/empty for llama.cpp defaults)
         AddField("llama.contextWindowTokens", "Context Window", "Llama Server Settings", "", "Context window size in tokens");
+        AddField("llama.parallelSlotCount", "Parallel Slots", "Llama Server Settings", "", "Concurrent request slots (from /props)");
         AddField("llama.batchSizeTokens", "Batch Size", "Llama Server Settings", "", "Batch size in tokens");
         AddField("llama.ubatchSizeTokens", "Micro-Batch Size", "Llama Server Settings", "", "Micro-batch size in tokens");
-        AddField("llama.parallelSlotCount", "Parallel Slots", "Llama Server Settings", "", "Concurrent request slots (from /props)");
         AddField("llama.enableContinuousBatching", "Enable Continuous Batching", "Llama Server Settings", "", "Enable continuous batching");
         AddField("llama.enableCachePrompt", "Cache Prompt", "Llama Server Settings", "", "Cache prompt processing");
         AddField("llama.enableContextShift", "Enable Context Shift", "Llama Server Settings", "", "Enable context shifting");
@@ -861,9 +861,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         // Judge Settings - Llama Server (same options as main server)
         AddField("judge.contextWindowTokens", "Judge Context Window", "Judge Settings", "", "Context window size in tokens");
+        AddField("judge.parallelSlotCount", "Judge Parallel Slots", "Judge Settings", "", "Concurrent request slots");
         AddField("judge.batchSizeTokens", "Judge Batch Size", "Judge Settings", "", "Batch size in tokens");
         AddField("judge.ubatchSizeTokens", "Judge Micro-Batch Size", "Judge Settings", "", "Micro-batch size in tokens");
-        AddField("judge.parallelSlotCount", "Judge Parallel Slots", "Judge Settings", "", "Concurrent request slots");
         AddField("judge.enableContinuousBatching", "Judge Enable Continuous Batching", "Judge Settings", "", "Enable continuous batching");
         AddField("judge.enableCachePrompt", "Judge Cache Prompt", "Judge Settings", "", "Cache prompt processing");
         AddField("judge.enableContextShift", "Judge Enable Context Shift", "Judge Settings", "", "Enable context shifting");

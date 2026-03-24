@@ -6,6 +6,10 @@
 
   <Application.Styles>
     <FluentTheme />
+    <!--Quit violating fundamental UI design principles like external consistency, noobs-->
+    <Style Selector="ScrollViewer">
+        <Setter Property="AllowAutoHide" Value="False" />
+    </Style>
   </Application.Styles>
 
   <Application.Resources>

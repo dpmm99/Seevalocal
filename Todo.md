@@ -36,4 +36,3 @@ For the translation pipeline, the languages are only used by the judge--it curre
 The wizard doesn't use the TranslationSystemPrompt for any case, but it should use that instead of the default if specified.
 
 When continuing an eval from a checkpoint, the Run Dashboard and Results Viewer both need to include the data (StageOutputs and Metrics) from the checkpoint DB that were generated in past runs. It seems like it includes none from the current stage but does include the previous stage, last time I checked.
-See if you can make "Early Completions" "dock" in (stretch to fill the available space of) the window, and move the "Load 10 More" to the bottom of the window (below the whole "Early Completions" section). I want the status area to not have to scroll vertically while still making use of the max available space for "Early Completions."
