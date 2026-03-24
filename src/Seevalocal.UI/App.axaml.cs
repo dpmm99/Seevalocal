@@ -82,14 +82,14 @@ public partial class App : Application
 
                 if (desktop.MainWindow?.DataContext is not MainWindowViewModel vm) return;
 
-                var shellTarget = vm.WizardState.ShellTarget ?? Core.Models.ShellTarget.Bash;
+                var shellTarget = vm.WizardState.ShellTarget ?? ShellTarget.Bash;
                 var script = vm.ExportScript(shellTarget);
 
                 var filePicker = _serviceProvider.GetRequiredService<IFilePickerService>();
                 var toastService = _serviceProvider.GetRequiredService<IToastService>();
 
                 // Choose sensible default file name & filters based on shell target
-                var isPowerShell = shellTarget == Core.Models.ShellTarget.PowerShell;
+                var isPowerShell = shellTarget == ShellTarget.PowerShell;
 
                 var runName = vm.WizardState.RunName;
                 if (string.IsNullOrWhiteSpace(runName)) runName = "seevalocal";

@@ -177,7 +177,8 @@ public sealed class EvalPipeline(ILogger<EvalPipeline> logger)
             AllStageOutputs = allOutputs,
             StartedAt = startedAt,
             DurationSeconds = sw.Elapsed.TotalSeconds,
-            RawLlmResponse = rawResponse as string
+            RawLlmResponse = rawResponse as string,
+            FirstShown = DateTimeOffset.Now
         };
 
         _logger.LogDebug("Pipeline {PipelineName} completed for item {EvalItemId} in {DurationSeconds:F2}s — Succeeded={Succeeded}",

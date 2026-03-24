@@ -118,6 +118,12 @@ public record EvalResult
     /// Null if PromptStage did not run or failed.
     /// </summary>
     public string? RawLlmResponse { get; init; }
+
+    /// <summary>
+    /// The time when this item first completed any stage of any pipeline.
+    /// Used for sorting in the UI (Early Completions). Not persisted to database.
+    /// </summary>
+    public DateTimeOffset FirstShown { get; init; }
 }
 
 // ── EvalProgress ──────────────────────────────────────────────────────────────

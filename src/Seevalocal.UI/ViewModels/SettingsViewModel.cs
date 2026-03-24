@@ -4,6 +4,7 @@ using Seevalocal.Core.Models;
 using Seevalocal.UI.Commands;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
@@ -187,7 +188,7 @@ public sealed class SettingsFieldViewModel : INotifyPropertyChanged
     {
         // Get all public static string constants from DefaultTemplates
         var templateType = typeof(Core.DefaultTemplates);
-        var constants = templateType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+        var constants = templateType.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic)
             .Where(f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
             .Select(f => f.Name)
             .Order()
@@ -484,7 +485,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             FrequencyPenalty = Fd("llama.frequencyPenalty"),
             Seed = Fi("llama.seed"),
             ThreadCount = Fi("llama.threadCount"),
-            HttpThreadCount = Fi("llama.httpThreadCount"),
             ChatTemplate = F("llama.chatTemplate"),
             EnableJinja = Fb("llama.enableJinja"),
             ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
@@ -522,7 +522,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             FrequencyPenalty = Fd("judge.frequencyPenalty"),
             Seed = Fi("judge.seed"),
             ThreadCount = Fi("judge.threadCount"),
-            HttpThreadCount = Fi("judge.httpThreadCount"),
             ChatTemplate = F("judge.chatTemplate"),
             EnableJinja = Fb("judge.enableJinja"),
             ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
@@ -732,43 +731,20 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _ => null
     };
 
-    private static string? GetLlamaValue(PartialLlamaServerSettings? llama, string field) => field switch
+    private static string? GetLlamaValue(PartialLlamaServerSettings? llama, string field)
     {
-        "contextWindowTokens" => llama?.ContextWindowTokens?.ToString(),
-        "batchSizeTokens" => llama?.BatchSizeTokens?.ToString(),
-        "ubatchSizeTokens" => llama?.UbatchSizeTokens?.ToString(),
-        "parallelSlotCount" => llama?.ParallelSlotCount?.ToString(),
-        "enableContinuousBatching" => llama?.EnableContinuousBatching?.ToString().ToLowerInvariant(),
-        "enableCachePrompt" => llama?.EnableCachePrompt?.ToString().ToLowerInvariant(),
-        "enableContextShift" => llama?.EnableContextShift?.ToString().ToLowerInvariant(),
-        "gpuLayerCount" => llama?.GpuLayerCount?.ToString(),
-        "splitMode" => llama?.SplitMode,
-        "kvCacheTypeK" => llama?.KvCacheTypeK,
-        "kvCacheTypeV" => llama?.KvCacheTypeV,
-        "enableKvOffload" => llama?.EnableKvOffload?.ToString().ToLowerInvariant(),
-        "enableFlashAttention" => llama?.EnableFlashAttention?.ToString().ToLowerInvariant(),
-        "samplingTemperature" => llama?.SamplingTemperature?.ToString(),
-        "topP" => llama?.TopP?.ToString(),
-        "topK" => llama?.TopK?.ToString(),
-        "minP" => llama?.MinP?.ToString(),
-        "repeatPenalty" => llama?.RepeatPenalty?.ToString(),
-        "repeatLastNTokens" => llama?.RepeatLastNTokens?.ToString(),
-        "presencePenalty" => llama?.PresencePenalty?.ToString(),
-        "frequencyPenalty" => llama?.FrequencyPenalty?.ToString(),
-        "seed" => llama?.Seed?.ToString(),
-        "threadCount" => llama?.ThreadCount?.ToString(),
-        "httpThreadCount" => llama?.HttpThreadCount?.ToString(),
-        "chatTemplate" => llama?.ChatTemplate,
-        "enableJinja" => llama?.EnableJinja?.ToString().ToLowerInvariant(),
-        "reasoningFormat" => llama?.ReasoningFormat,
-        "modelAlias" => llama?.ModelAlias,
-        "logVerbosity" => llama?.LogVerbosity?.ToString(),
-        "enableMlock" => llama?.EnableMlock?.ToString().ToLowerInvariant(),
-        "enableMmap" => llama?.EnableMmap?.ToString().ToLowerInvariant(),
-        "serverTimeoutSeconds" => llama?.ServerTimeoutSeconds?.ToString(),
-        "extraArgs" => llama?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
-        _ => null
-    };
+        if (llama == null) return null;
+        var prop = typeof(PartialLlamaServerSettings).GetProperty(field, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (prop == null) return null;
+        var value = prop.GetValue(llama);
+        return value switch
+        {
+            null => null,
+            bool b => b.ToString().ToLowerInvariant(),
+            IReadOnlyList<string> list => list.Count > 0 ? string.Join(" ", list) : null,
+            _ => value.ToString()
+        };
+    }
 
     private static string? GetJudgeValue(PartialJudgeConfig? judge, string field) => field switch
     {
@@ -781,7 +757,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "template" => judge?.JudgePromptTemplate,
         "executablePath" => judge?.ServerConfig?.ExecutablePath,
         "extraArgs" => judge?.ServerSettings?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
-        _ => null
+        // For judge llama-server settings, delegate to GetLlamaValue with the ServerSettings
+        _ => GetLlamaValue(judge?.ServerSettings, field)
     };
 
     private static string? GetOutputValue(OutputConfig? output, string field) => output is null ? null : field switch
@@ -842,7 +819,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         // Llama Server Settings - Threading
         AddField("llama.threadCount", "Threads", "Llama Server Settings", "", "CPU threads for inference");
-        AddField("llama.httpThreadCount", "HTTP Threads", "Llama Server Settings", "", "HTTP server threads");
 
         // Llama Server Settings - Model Behavior
         AddField("llama.chatTemplate", "Chat Template", "Llama Server Settings", "", "Chat template name");
@@ -907,7 +883,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("judge.frequencyPenalty", "Judge Frequency Penalty", "Judge Settings", "", "Frequency penalty for token generation");
         AddField("judge.seed", "Judge Seed", "Judge Settings", "", "Random seed (-1 for random)");
         AddField("judge.threadCount", "Judge Threads", "Judge Settings", "", "CPU threads for inference");
-        AddField("judge.httpThreadCount", "Judge HTTP Threads", "Judge Settings", "", "HTTP server threads");
         AddField("judge.chatTemplate", "Judge Chat Template", "Judge Settings", "", "Chat template name");
         AddField("judge.enableJinja", "Judge Enable Jinja", "Judge Settings", "", "Enable Jinja template processing");
         AddField("judge.reasoningFormat", "Judge Reasoning Format", "Judge Settings", "", "Reasoning format (e.g., chain-of-thought)");

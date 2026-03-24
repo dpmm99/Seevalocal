@@ -711,7 +711,7 @@ public sealed class EvalRunViewModel : IEvalRunViewModel, IAsyncDisposable
 /// <summary>
 /// A flat view of a single <see cref="EvalResult"/> for list display.
 /// </summary>
-public sealed class EvalResultViewModel(EvalResult result, bool isJudgePhaseRunning = false)
+public sealed class EvalResultViewModel(EvalResult result, bool isRunning = false)
 {
     public string Id => result.EvalItemId;
     public bool Succeeded => result.Succeeded;
@@ -719,19 +719,16 @@ public sealed class EvalResultViewModel(EvalResult result, bool isJudgePhaseRunn
 
     /// <summary>
     /// Pipeline execution status: "Pending", "Running", "Succeeded", or "Failed".
-    /// Shows "Running" when a phase is in progress and the item has started but not completed that phase.
-    /// Shows "Pending" until the entire pipeline (including judge phase if applicable) completes.
+    /// Shows "Running" when the item is actively being processed (in-flight).
+    /// Shows "Pending" until processing starts.
+    /// Shows "Succeeded" or "Failed" when complete.
     /// </summary>
     public string PipelineStatus
     {
         get
         {
-            // Check if judge stage output exists (indicates judge phase completed for this item)
-            var hasJudgeOutput = result.AllStageOutputs.ContainsKey("JudgeStage.rationale") ||
-                                 result.AllStageOutputs.ContainsKey("JudgeStage.score");
-
-            // If judge phase is running and item completed primary but not judge, show "Running"
-            if (isJudgePhaseRunning && result.StartedAt != default && !hasJudgeOutput)
+            // Item is actively being processed right now
+            if (isRunning)
                 return "Running";
 
             // Item fully completed

@@ -15,239 +15,242 @@
   <Grid RowDefinitions="Auto,*,Auto">
     <TextBlock Text="Run Dashboard" Classes="pageTitle" Grid.Row="0"/>
 
-    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16,16,8,16" Margin="0,16">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <Grid>
-          <!-- No active run or loaded results -->
-          <StackPanel Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center"
-                      IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}}">
-            <TextBlock Text="No active run" FontSize="24" Foreground="#7F849C" HorizontalAlignment="Center"/>
-            <TextBlock Text="Start a new evaluation from the Setup Wizard" FontSize="14" Foreground="#6C7086" HorizontalAlignment="Center"/>
-            <Button Content="Open Setup Wizard" Classes="primary" Padding="24,10" HorizontalAlignment="Center" Margin="0,16"
-                    Command="{Binding NavigateToWizardCommand}"/>
+    <Border Grid.Row="1" Background="#1E1E2E" CornerRadius="8" Padding="16,16,8,16" Margin="0,16" VerticalAlignment="Stretch">
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" VerticalAlignment="Stretch">
+
+        <!-- No active run or loaded results -->
+        <StackPanel Grid.Row="0" Grid.RowSpan="5" Spacing="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}}">
+          <TextBlock Text="No active run" FontSize="24" Foreground="#7F849C" HorizontalAlignment="Center"/>
+          <TextBlock Text="Start a new evaluation from the Setup Wizard" FontSize="14" Foreground="#6C7086" HorizontalAlignment="Center"/>
+          <Button Content="Open Setup Wizard" Classes="primary" Padding="24,10" HorizontalAlignment="Center" Margin="0,16"
+                  Command="{Binding NavigateToWizardCommand}"/>
+        </StackPanel>
+
+        <!-- Status Area (Row 0) -->
+        <StackPanel Grid.Row="0" Spacing="16"
+                    IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
+
+          <!-- Status Header -->
+          <TextBlock Text="{Binding CurrentResultsRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center">
+            <TextBlock.ContextMenu>
+              <ContextMenu>
+                <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding CurrentResultsRun.StatusLine}"/>
+              </ContextMenu>
+            </TextBlock.ContextMenu>
+          </TextBlock>
+
+          <!-- Progress Bar -->
+          <ProgressBar Value="{Binding CurrentResultsRun.ProgressPercent}" Maximum="100" Height="32" Margin="0,8">
+            <ProgressBar.Styles>
+              <Style Selector="ProgressBar">
+                <Setter Property="Padding" Value="4,0"/>
+              </Style>
+            </ProgressBar.Styles>
+          </ProgressBar>
+
+          <!-- Stats Grid -->
+          <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto" Margin="0,8">
+            <StackPanel Grid.Column="0" Spacing="4">
+              <TextBlock Text="Completed" Foreground="#7F849C" FontSize="12"/>
+              <TextBlock FontSize="18">
+                <Run Text="{Binding CurrentResultsRun.CompletedCount}"/>
+                <Run Text=" / "/>
+                <Run Text="{Binding CurrentResultsRun.TotalCount}"/>
+              </TextBlock>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="4">
+              <TextBlock Text="Tokens/sec" Foreground="#7F849C" FontSize="12"/>
+              <TextBlock Text="{Binding CurrentResultsRun.AverageTokensPerSecond, StringFormat={}{0:F1}}" FontSize="18"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Spacing="4">
+              <TextBlock Text="ETA" Foreground="#7F849C" FontSize="12"/>
+              <TextBlock FontSize="18">
+                <Run Text="{Binding CurrentResultsRun.EstimatedRemainingSeconds, StringFormat={}{0:F0}}"/>
+                <Run Text="s"/>
+              </TextBlock>
+            </StackPanel>
+
+            <StackPanel Grid.Column="3" Spacing="4">
+              <TextBlock Text="Recent Activity" Foreground="#7F849C" FontSize="12"/>
+              <TextBlock Text="{Binding CurrentResultsRun.RecentActivitySummary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+          </Grid>
+        </StackPanel>
+
+        <!-- Early Completions Header (Row 1) -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,8,0,4"
+              IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
+          <!-- Left: label + count -->
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Early Completions" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <TextBlock Text="(" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding CurrentResultsRun.EarlyCompletionsLimit}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+            <TextBlock Text=" of " FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding CurrentResultsRun.Results.Count}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
+            <TextBlock Text=")" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
           </StackPanel>
 
-          <!-- Active Run or Loaded Results Display -->
-          <StackPanel Spacing="16"
-                      IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
+          <!-- Right: Load 10 More button — always visible, never scrolls away -->
+          <Button Grid.Column="1"
+                  Content="Load 10 More"
+                  Padding="12,6"
+                  Classes="secondary"
+                  VerticalAlignment="Center"
+                  IsVisible="{Binding CurrentResultsRun.HasMoreEarlyCompletions}"
+                  Command="{Binding CurrentResultsRun.LoadMoreEarlyCompletionsCommand}"/>
+        </Grid>
 
-            <!-- Status Header -->
-            <TextBlock Text="{Binding CurrentResultsRun.StatusLine}" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center">
-              <TextBlock.ContextMenu>
-                <ContextMenu>
-                  <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding CurrentResultsRun.StatusLine}"/>
-                </ContextMenu>
-              </TextBlock.ContextMenu>
-            </TextBlock>
+        <!-- Early Completions List (Row 2 - * row, fills all remaining space) -->
+        <Border Grid.Row="2" Grid.RowSpan="3" Background="#181825" CornerRadius="4" Padding="12" Margin="0,4"
+                IsVisible="{Binding CurrentResultsRun, Converter={x:Static converters:IsNullConverter.Instance}, ConverterParameter=Invert}">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding CurrentResultsRun.EarlyCompletions}" HorizontalAlignment="Stretch">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Vertical"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Background="#1E1E2E" CornerRadius="4" Padding="12" Margin="0,2">
+                    <StackPanel Spacing="8">
+                      <!-- Header Row -->
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <!-- Status Badge (pipeline execution status: Pending/Succeeded/Failed) -->
+                        <Border Grid.Column="0"
+                                Background="{Binding Succeeded, Converter={x:Static converters:StatusToBackgroundConverter.Instance}}"
+                                CornerRadius="3" Padding="8,4" Margin="0,0,8,0">
+                          <TextBlock Text="{Binding PipelineStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                        </Border>
 
-            <!-- Progress Bar -->
-            <ProgressBar Value="{Binding CurrentResultsRun.ProgressPercent}" Maximum="100" Height="24" Margin="0,8"/>
+                        <!-- ID -->
+                        <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="#A6ADC8" TextTrimming="CharacterEllipsis">
+                          <TextBlock.ContextMenu>
+                            <ContextMenu>
+                              <MenuItem Header="Copy ID" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding Id}"/>
+                            </ContextMenu>
+                          </TextBlock.ContextMenu>
+                        </TextBlock>
 
-            <!-- Stats Grid -->
-            <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto" Margin="0,8">
-              <StackPanel Grid.Column="0" Spacing="4">
-                <TextBlock Text="Completed" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock FontSize="18">
-                  <Run Text="{Binding CurrentResultsRun.CompletedCount}"/>
-                  <Run Text=" / "/>
-                  <Run Text="{Binding CurrentResultsRun.TotalCount}"/>
-                </TextBlock>
-              </StackPanel>
+                        <!-- Duration -->
+                        <TextBlock Grid.Column="2" Text="{Binding DurationSeconds, StringFormat={}{0:F2}s}"
+                                   Foreground="#7F849C" FontSize="12" VerticalAlignment="Center"/>
+                      </Grid>
 
-              <StackPanel Grid.Column="1" Spacing="4">
-                <TextBlock Text="Tokens/sec" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock Text="{Binding CurrentResultsRun.AverageTokensPerSecond, StringFormat={}{0:F1}}" FontSize="18"/>
-              </StackPanel>
+                      <!-- Prompt Section -->
+                      <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Prompt:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding UserPrompt}" TextWrapping="Wrap" FontSize="12"
+                                     Foreground="#CDD6F4">
+                            <TextBlock.ContextMenu>
+                              <ContextMenu>
+                                <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding UserPrompt}"/>
+                              </ContextMenu>
+                            </TextBlock.ContextMenu>
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
 
-              <StackPanel Grid.Column="2" Spacing="4">
-                <TextBlock Text="ETA" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock FontSize="18">
-                  <Run Text="{Binding CurrentResultsRun.EstimatedRemainingSeconds, StringFormat={}{0:F0}}"/>
-                  <Run Text="s"/>
-                </TextBlock>
-              </StackPanel>
+                      <!-- Response Section -->
+                      <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Response:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding RawResponse}" TextWrapping="Wrap" FontSize="12"
+                                     Foreground="#A6E3A1">
+                            <TextBlock.ContextMenu>
+                              <ContextMenu>
+                                <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding RawResponse}"/>
+                              </ContextMenu>
+                            </TextBlock.ContextMenu>
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
 
-              <StackPanel Grid.Column="3" Spacing="4">
-                <TextBlock Text="Recent Activity" Foreground="#7F849C" FontSize="12"/>
-                <TextBlock Text="{Binding CurrentResultsRun.RecentActivitySummary}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-              </StackPanel>
-            </Grid>
+                      <!-- Expected Output (if available) -->
+                      <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
+                              IsVisible="{Binding ExpectedOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Expected:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding ExpectedOutput}" TextWrapping="Wrap" FontSize="12"
+                                     Foreground="#F9E2AF">
+                            <TextBlock.ContextMenu>
+                              <ContextMenu>
+                                <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding ExpectedOutput}"/>
+                              </ContextMenu>
+                            </TextBlock.ContextMenu>
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
 
-            <!-- Early Completions (First N with full details) -->
-            <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8">
-              <Grid RowDefinitions="Auto,Auto,*" MinHeight="300">
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                  <TextBlock Text="Early Completions" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                  <TextBlock Text="(" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding CurrentResultsRun.EarlyCompletionsLimit}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text=" of " FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text="{Binding CurrentResultsRun.Results.Count}" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                  <TextBlock Text=")" FontSize="14" Foreground="#7F849C" VerticalAlignment="Center"/>
-                </StackPanel>
+                      <!-- Judge Score (if available) -->
+                      <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
+                              IsVisible="{Binding JudgeScore, Converter={x:Static converters:IsNotNullConverter.Instance}}">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Judge Score:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
+                          <TextBlock FontSize="14" FontWeight="SemiBold">
+                            <Run Text="{Binding JudgeScore, StringFormat={}{0:F1}}"/>
+                            <Run Text="/10" Foreground="#7F849C"/>
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
 
-                <Button Grid.Row="0" Content="Load 10 More"
-                        HorizontalAlignment="Right"
-                        Padding="12,6"
-                        Classes="secondary"
-                        IsVisible="{Binding CurrentResultsRun.HasMoreEarlyCompletions}"
-                        Command="{Binding CurrentResultsRun.LoadMoreEarlyCompletionsCommand}"/>
+                      <!-- Judge Rationale (if available) -->
+                      <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
+                              IsVisible="{Binding JudgeRationale, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="4">
+                          <TextBlock Text="Judge Rationale:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding JudgeRationale}" TextWrapping="Wrap" FontSize="12"
+                                     Foreground="#F5C2E7">
+                            <TextBlock.ContextMenu>
+                              <ContextMenu>
+                                <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding JudgeRationale}"/>
+                              </ContextMenu>
+                            </TextBlock.ContextMenu>
+                          </TextBlock>
+                        </StackPanel>
+                      </Border>
 
-                <ScrollViewer Grid.Row="2" MinHeight="250" HorizontalScrollBarVisibility="Disabled">
-                  <ItemsControl ItemsSource="{Binding CurrentResultsRun.EarlyCompletions}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical" Spacing="8"/>
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                          <Border Background="#1E1E2E" CornerRadius="4" Padding="12" Margin="0,2">
-                            <StackPanel Spacing="8">
-                              <!-- Header Row -->
-                              <Grid ColumnDefinitions="Auto,*,Auto">
-                                <!-- Status Badge (pipeline execution status: Pending/Succeeded/Failed) -->
-                                <Border Grid.Column="0"
-                                        Background="{Binding Succeeded, Converter={x:Static converters:StatusToBackgroundConverter.Instance}}"
-                                        CornerRadius="3" Padding="8,4" Margin="0,0,8,0">
-                                  <TextBlock Text="{Binding PipelineStatus}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
-                                </Border>
-                                
-                                <!-- ID -->
-                                <TextBlock Grid.Column="1" Text="{Binding Id}" FontSize="12" VerticalAlignment="Center"
-                                           Foreground="#A6ADC8" TextTrimming="CharacterEllipsis">
+                      <!-- Metrics Tags -->
+                      <WrapPanel>
+                        <ItemsControl ItemsSource="{Binding MetricDisplay}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                              <Border Background="#2A2A3E" CornerRadius="3" Padding="6,3" Margin="0,0,4,0">
+                                <TextBlock FontSize="10" Foreground="#9399B2">
                                   <TextBlock.ContextMenu>
                                     <ContextMenu>
-                                      <MenuItem Header="Copy ID" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding Id}"/>
+                                      <MenuItem Header="Copy Metric" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}"
+                                                CommandParameter="{Binding Value}"/>
                                     </ContextMenu>
                                   </TextBlock.ContextMenu>
+                                  <Run Text="{Binding Name}" Foreground="#7F849C"/>
+                                  <Run Text=": "/>
+                                  <Run Text="{Binding Value}" Foreground="#CDD6F4"/>
                                 </TextBlock>
-                                
-                                <!-- Duration -->
-                                <TextBlock Grid.Column="2" Text="{Binding DurationSeconds, StringFormat={}{0:F2}s}"
-                                           Foreground="#7F849C" FontSize="12" VerticalAlignment="Center"/>
-                              </Grid>
-
-                              <!-- Prompt Section -->
-                              <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="Prompt:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding UserPrompt}" TextWrapping="Wrap" FontSize="12"
-                                             Foreground="#CDD6F4">
-                                    <TextBlock.ContextMenu>
-                                      <ContextMenu>
-                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding UserPrompt}"/>
-                                      </ContextMenu>
-                                    </TextBlock.ContextMenu>
-                                  </TextBlock>
-                                </StackPanel>
                               </Border>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </WrapPanel>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
 
-                              <!-- Response Section -->
-                              <Border Background="#1A1A2E" CornerRadius="4" Padding="10">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="Response:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding RawResponse}" TextWrapping="Wrap" FontSize="12"
-                                             Foreground="#A6E3A1">
-                                    <TextBlock.ContextMenu>
-                                      <ContextMenu>
-                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding RawResponse}"/>
-                                      </ContextMenu>
-                                    </TextBlock.ContextMenu>
-                                  </TextBlock>
-                                </StackPanel>
-                              </Border>
-
-                              <!-- Expected Output (if available) -->
-                              <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
-                                      IsVisible="{Binding ExpectedOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="Expected:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding ExpectedOutput}" TextWrapping="Wrap" FontSize="12"
-                                             Foreground="#F9E2AF">
-                                    <TextBlock.ContextMenu>
-                                      <ContextMenu>
-                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding ExpectedOutput}"/>
-                                      </ContextMenu>
-                                    </TextBlock.ContextMenu>
-                                  </TextBlock>
-                                </StackPanel>
-                              </Border>
-
-                              <!-- Judge Score (if available) -->
-                              <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
-                                      IsVisible="{Binding JudgeScore, Converter={x:Static converters:IsNotNullConverter.Instance}}">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="Judge Score:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock FontSize="14" FontWeight="SemiBold">
-                                    <Run Text="{Binding JudgeScore, StringFormat={}{0:F1}}"/>
-                                    <Run Text="/10" Foreground="#7F849C"/>
-                                  </TextBlock>
-                                </StackPanel>
-                              </Border>
-
-                              <!-- Judge Rationale (if available) -->
-                              <Border Background="#1A1A2E" CornerRadius="4" Padding="10"
-                                      IsVisible="{Binding JudgeRationale, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                <StackPanel Spacing="4">
-                                  <TextBlock Text="Judge Rationale:" FontSize="11" Foreground="#7F849C" FontWeight="SemiBold"/>
-                                  <TextBlock Text="{Binding JudgeRationale}" TextWrapping="Wrap" FontSize="12"
-                                             Foreground="#F5C2E7">
-                                    <TextBlock.ContextMenu>
-                                      <ContextMenu>
-                                        <MenuItem Header="Copy" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" CommandParameter="{Binding JudgeRationale}"/>
-                                      </ContextMenu>
-                                    </TextBlock.ContextMenu>
-                                  </TextBlock>
-                                </StackPanel>
-                              </Border>
-
-                              <!-- Metrics Tags -->
-                              <WrapPanel>
-                                <ItemsControl ItemsSource="{Binding MetricDisplay}">
-                                  <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                      <WrapPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                  </ItemsControl.ItemsPanel>
-                                  <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                      <Border Background="#2A2A3E" CornerRadius="3" Padding="6,3" Margin="0,0,4,0">
-                                        <TextBlock FontSize="10" Foreground="#9399B2">
-                                          <TextBlock.ContextMenu>
-                                            <ContextMenu>
-                                              <MenuItem Header="Copy Metric" Command="{Binding $parent[UserControl].DataContext.CopyTextCommand}" 
-                                                        CommandParameter="{Binding Value}"/>
-                                            </ContextMenu>
-                                          </TextBlock.ContextMenu>
-                                          <Run Text="{Binding Name}" Foreground="#7F849C"/>
-                                          <Run Text=": "/>
-                                          <Run Text="{Binding Value}" Foreground="#CDD6F4"/>
-                                        </TextBlock>
-                                      </Border>
-                                    </DataTemplate>
-                                  </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                              </WrapPanel>
-                            </StackPanel>
-                          </Border>
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-              </Grid>
-            </Border>
-
-            <!-- All Results Summary (compact) -->
-            <Border Background="#13131F" CornerRadius="6" Padding="12" Margin="0,8"
-                    IsVisible="{Binding CurrentResultsRun.HasMoreEarlyCompletions}">
-              <Grid RowDefinitions="Auto">
-                <TextBlock Grid.Row="0" Text="All Results (showing first N above, see Results tab for all)"
-                           FontSize="12" Foreground="#7F849C" FontStyle="Italic"/>
-              </Grid>
-            </Border>
-          </StackPanel>
-        </Grid>
-      </ScrollViewer>
+      </Grid>
     </Border>
 
     <!-- Control Buttons -->

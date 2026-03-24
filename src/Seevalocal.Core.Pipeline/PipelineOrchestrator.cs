@@ -279,7 +279,8 @@ public sealed class PipelineOrchestrator(
                         Metrics = [],
                         AllStageOutputs = new Dictionary<string, object?>(),
                         StartedAt = DateTimeOffset.UtcNow,
-                        DurationSeconds = 0
+                        DurationSeconds = 0,
+                        FirstShown = DateTimeOffset.Now
                     };
 
                     await _resultCollector.CollectAsync(failedResult, ct);
@@ -564,7 +565,8 @@ public sealed class PipelineOrchestrator(
                     Metrics = [],
                     AllStageOutputs = new Dictionary<string, object?>(),
                     StartedAt = DateTimeOffset.UtcNow,
-                    DurationSeconds = 0
+                    DurationSeconds = 0,
+                    FirstShown = DateTimeOffset.Now
                 };
             }
 
@@ -635,7 +637,8 @@ public sealed class PipelineOrchestrator(
                     Metrics = [],
                     AllStageOutputs = new Dictionary<string, object?>(),
                     StartedAt = DateTimeOffset.UtcNow,
-                    DurationSeconds = 0
+                    DurationSeconds = 0,
+                    FirstShown = DateTimeOffset.Now
                 };
             }
             catch (Exception ex) when (IsTransientException(ex))
@@ -663,7 +666,8 @@ public sealed class PipelineOrchestrator(
                     Metrics = [],
                     AllStageOutputs = new Dictionary<string, object?>(),
                     StartedAt = DateTimeOffset.UtcNow,
-                    DurationSeconds = 0
+                    DurationSeconds = 0,
+                    FirstShown = DateTimeOffset.Now
                 };
             }
             catch (Exception ex)
@@ -678,7 +682,8 @@ public sealed class PipelineOrchestrator(
                     Metrics = [],
                     AllStageOutputs = new Dictionary<string, object?>(),
                     StartedAt = DateTimeOffset.UtcNow,
-                    DurationSeconds = 0
+                    DurationSeconds = 0,
+                    FirstShown = DateTimeOffset.Now
                 };
             }
 

@@ -330,7 +330,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
     // Threading
     public int? ThreadCount { get => _state.ThreadCount; set => SetState(ref _state.ThreadCount, value); }
-    public int? HttpThreadCount { get => _state.HttpThreadCount; set => SetState(ref _state.HttpThreadCount, value); }
 
     // Model behavior
     public string? ChatTemplate { get => _state.ChatTemplate; set => SetState(ref _state.ChatTemplate, value); }
@@ -461,7 +460,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
     // Judge threading & memory
     public int? JudgeThreadCount { get => _state.JudgeThreadCount; set => SetState(ref _state.JudgeThreadCount, value); }
-    public int? JudgeHttpThreadCount { get => _state.JudgeHttpThreadCount; set => SetState(ref _state.JudgeHttpThreadCount, value); }
     public bool? JudgeEnableMlock { get => _state.JudgeEnableMlock; set => SetState(ref _state.JudgeEnableMlock, value); }
     public bool? JudgeEnableMmap { get => _state.JudgeEnableMmap; set => SetState(ref _state.JudgeEnableMmap, value); }
 
@@ -606,8 +604,9 @@ public sealed partial class WizardViewModel : IWizardViewModel
 
         var llamaSettings = BuildLlamaServerSettings();
 
-        // Judge
-        var hasJudgeField = Edited(nameof(JudgeLocalModelPath)) || Edited(nameof(JudgeHfRepo))
+        // Judge - check if any judge-related field was edited OR if judge is enabled
+        var hasJudgeField = Edited(nameof(EnableJudge)) 
+            || Edited(nameof(JudgeLocalModelPath)) || Edited(nameof(JudgeHfRepo))
             || Edited(nameof(JudgeServerUrl)) || Edited(nameof(JudgeApiKey))
             || Edited(nameof(JudgeManageServer))
             || Edited(nameof(SelectedJudgeTemplateIndex));
@@ -629,8 +628,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 UserPromptField = s.FieldMappingUserPrompt,
                 ExpectedOutputField = s.FieldMappingExpectedOutput,
                 SystemPromptField = s.FieldMappingSystemPrompt,
-                SourceLanguageField = string.IsNullOrEmpty(s.FieldMappingSourceLanguage) ? null : s.FieldMappingSourceLanguage,
-                TargetLanguageField = string.IsNullOrEmpty(s.FieldMappingTargetLanguage) ? null : s.FieldMappingTargetLanguage,
+                SourceLanguageField = s.FieldMappingSourceLanguage,
+                TargetLanguageField = s.FieldMappingTargetLanguage,
             };
 
             string? defaultSystemPrompt = s.PipelineName == "Translation" && string.IsNullOrEmpty(s.FieldMappingSystemPrompt)
@@ -762,7 +761,6 @@ public sealed partial class WizardViewModel : IWizardViewModel
             FrequencyPenalty = Get<double>(nameof(FrequencyPenalty)),
             Seed = Get<int>(nameof(Seed)),
             ThreadCount = Get<int>(nameof(ThreadCount)),
-            HttpThreadCount = Get<int>(nameof(HttpThreadCount)),
             ChatTemplate = GetStr(nameof(ChatTemplate)),
             EnableJinja = Get<bool>(nameof(EnableJinja)),
             ReasoningFormat = GetStr(nameof(ReasoningFormat)),
@@ -773,7 +771,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
             EnableMlock = Get<bool>(nameof(EnableMlock)),
             EnableMmap = Get<bool>(nameof(EnableMmap)),
             ServerTimeoutSeconds = Get<double>(nameof(ServerTimeoutSeconds)),
-            ExtraArgs = !string.IsNullOrEmpty(extraArgs)
+            ExtraArgs = editedFields.Contains(fieldPrefix + nameof(ExtraLlamaArgs)) && !string.IsNullOrEmpty(extraArgs)
                 ? extraArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList()
                 : null
         };
@@ -787,23 +785,17 @@ public sealed partial class WizardViewModel : IWizardViewModel
         switch (s.PipelineName)
         {
             case "Translation":
-                // Per-item language fields are mutually exclusive with pipeline-level settings
-                if (!string.IsNullOrEmpty(s.FieldMappingSourceLanguage) || !string.IsNullOrEmpty(s.FieldMappingTargetLanguage))
-                {
-                    if (!string.IsNullOrEmpty(s.FieldMappingSourceLanguage)) options["sourceLanguageField"] = s.FieldMappingSourceLanguage;
-                    if (!string.IsNullOrEmpty(s.FieldMappingTargetLanguage)) options["targetLanguageField"] = s.FieldMappingTargetLanguage;
-                }
-                else
-                {
-                    if (!string.IsNullOrEmpty(s.TranslationSourceLanguage)) options["sourceLanguage"] = s.TranslationSourceLanguage;
-                    if (!string.IsNullOrEmpty(s.TranslationTargetLanguage)) options["targetLanguage"] = s.TranslationTargetLanguage;
-                }
-                if (!string.IsNullOrEmpty(s.TranslationSystemPrompt)) options["systemPrompt"] = s.TranslationSystemPrompt;
+                // Per-item language fields are mutually exclusive with pipeline-level settings--but not *here*.
+                if (!string.IsNullOrEmpty(s.FieldMappingSourceLanguage)) options["sourceLanguageField"] = s.FieldMappingSourceLanguage;
+                if (!string.IsNullOrEmpty(s.FieldMappingTargetLanguage)) options["targetLanguageField"] = s.FieldMappingTargetLanguage;
+                if (_editedFields.Contains(nameof(TranslationSourceLanguage)) && !string.IsNullOrEmpty(s.TranslationSourceLanguage)) options["sourceLanguage"] = s.TranslationSourceLanguage;
+                if (_editedFields.Contains(nameof(TranslationTargetLanguage)) && !string.IsNullOrEmpty(s.TranslationTargetLanguage)) options["targetLanguage"] = s.TranslationTargetLanguage;
+                if (_editedFields.Contains(nameof(TranslationSystemPrompt)) && !string.IsNullOrEmpty(s.TranslationSystemPrompt)) options["systemPrompt"] = s.TranslationSystemPrompt;
                 break;
 
             case "CSharpCoding":
-                if (!string.IsNullOrEmpty(s.CodeBuildScriptPath)) options["buildScriptPath"] = s.CodeBuildScriptPath;
-                if (!string.IsNullOrEmpty(s.FieldMappingTestFile)) options["testFilePath"] = s.FieldMappingTestFile;
+                if (_editedFields.Contains(nameof(CodeBuildScriptPath)) && !string.IsNullOrEmpty(s.CodeBuildScriptPath)) options["buildScriptPath"] = s.CodeBuildScriptPath;
+                if (_editedFields.Contains(nameof(FieldMappingTestFile)) && !string.IsNullOrEmpty(s.FieldMappingTestFile)) options["testFilePath"] = s.FieldMappingTestFile;
                 break;
         }
 
@@ -841,7 +833,8 @@ public sealed partial class WizardViewModel : IWizardViewModel
                 BaseUrl = Edited(nameof(JudgeServerUrl)) ? s.JudgeServerUrl : null
             },
             ServerSettings = BuildJudgeLlamaServerSettings(),
-            JudgePromptTemplate = Edited(nameof(JudgeTemplate)) ? s.JudgeTemplate : null
+            // Always include JudgePromptTemplate when judge is enabled (it has a default value of "standard")
+            JudgePromptTemplate = s.JudgeTemplate
         };
     }
 

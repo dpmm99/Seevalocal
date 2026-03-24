@@ -72,7 +72,6 @@ public sealed class LlamaServerArgBuilder
         AppendInt(args, settings.ParallelSlotCount, "-np");
         AppendInt(args, settings.GpuLayerCount, "-ngl");
         AppendInt(args, settings.ThreadCount, "-t");
-        AppendInt(args, settings.HttpThreadCount, "-ht");
 
         // ── Boolean feature flags ────────────────────────────────────────────
         AppendBool(args, settings.EnableFlashAttention, "-fa");

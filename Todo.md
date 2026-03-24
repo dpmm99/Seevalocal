@@ -19,6 +19,8 @@ Verify that each setting is actually hooked up and meaningful (I notice judge lo
 Make the ETA more meaningful (won't put in a ton of effort, but could consider remaining prompt tokens, average prompt processing speed, average completion token count relative to prompt token count and whether it seems linear, and tokens/sec times the parallel inference count)
 Be more specific about the expected generated prompt format in my translation eval generation flow.
 Consider adding tool call support (would need separate "use tools" checkboxes for eval, judge, and eval-gen, a global tools list in the settings with extra settings files merging into the list, lists of tools in each location, tool listing format, expected tool usage format, maybe even a "only list tool names and provide a tool to list a tool's descriptions" setting, etc...)
+Tell the user "this is meant for batch processing, so I'm not giving you any of llama-server's speculative decoding options."
+Remove some of the uncommon llama-server options and add any additional more common options. Also make sure the "Extra Args" *doesn't* just split across spaces, but allows separate quoted arguments, and ensure it explains how the quoting works. (Probably `"` to start/end the argument and `\"` to escape `"` and `\\` to escape `\`)
 
 To-fix list:
 There's probably a lot of code simplification that can be done thanks to leftover artifacts from the agent grasping at straws while trying to fix bugs.
@@ -29,10 +31,9 @@ TranslationPipelineFactory.EnsurePrerequisites should check that the data source
 In fact, I don't think the PipelineRegistry is used at all...
 Translation judge prompt needs the language(s) listed in it, so the judge stage needs a way to pass them in.
 
-
 To-test list:
 For the translation pipeline, the languages are only used by the judge--it currently expects the items to contain the full prompt and/or the system prompt. So when exporting a generated eval, which uses the split-directories mode, the FULL prompt has to be in the one folder. Maybe the right fix is to pull the languages from the problem statements or fleshed-out problem responses separately and output a JSONL file instead of split directories. Could also generate tags separately or something...
 The wizard doesn't use the TranslationSystemPrompt for any case, but it should use that instead of the default if specified.
 
 When continuing an eval from a checkpoint, the Run Dashboard and Results Viewer both need to include the data (StageOutputs and Metrics) from the checkpoint DB that were generated in past runs. It seems like it includes none from the current stage but does include the previous stage, last time I checked.
-It looks like the running average tokens per second in the eval gen view (like "Tokens/sec" at the top of the Run Dashboard view) doesn't get updated; it stayed at 0.0 after the category generation step (17.4 tokens/second).
+See if you can make "Early Completions" "dock" in (stretch to fill the available space of) the window, and move the "Load 10 More" to the bottom of the window (below the whole "Early Completions" section). I want the status area to not have to scroll vertically while still making use of the max available space for "Early Completions."

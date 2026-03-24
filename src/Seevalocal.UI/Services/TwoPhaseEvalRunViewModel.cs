@@ -7,6 +7,7 @@ using Seevalocal.Server;
 using Seevalocal.Server.Models;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.ViewModels;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 
@@ -44,6 +45,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     // Pause state tracking
     private int _inFlightItemCount;  // Atomic counter for items currently being processed
     private bool _isPausing;  // True when waiting for in-flight items to complete
+    private readonly ConcurrentDictionary<string, byte> _inFlightItemIds = new();  // Track which items are actively running
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
@@ -216,6 +218,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     public void OnItemStarted(string itemId)
     {
         Interlocked.Increment(ref _inFlightItemCount);
+        _inFlightItemIds.TryAdd(itemId, 1);
     }
 
     /// <summary>
@@ -225,6 +228,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
     public void OnItemCompleted(string itemId)
     {
         var remaining = Interlocked.Decrement(ref _inFlightItemCount);
+        _inFlightItemIds.TryRemove(itemId, out _);
 
         // If we were pausing and all in-flight items have completed, update status
         if (_isPausing && remaining == 0)
@@ -269,14 +273,14 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         OnPropertyChanged(nameof(StatusLine));
 
         // Initialize CompletedCount from checkpoint if resuming
-        CompletedCount = Config.Run.ContinueFromCheckpoint && _collector != null
+        CompletedCount = Config.Run.ContinueFromCheckpoint
             ? await GetCheckpointCompletedCountAsync()
             : 0;
         OnPropertyChanged(nameof(CompletedCount));
 
         // Load existing results from checkpoint database BEFORE clearing
         // This ensures EarlyCompletions shows checkpoint data immediately
-        if (Config.Run.ContinueFromCheckpoint && _collector != null)
+        if (Config.Run.ContinueFromCheckpoint)
         {
             await LoadResultsFromCheckpointAsync();
         }
@@ -686,8 +690,7 @@ public sealed class TwoPhaseEvalRunViewModel : IEvalRunViewModel, IAsyncDisposab
         Results.Clear();
         foreach (var result in results)
         {
-            // Pass the judge phase running state so items can show "Running" during judge phase
-            Results.Add(new EvalResultViewModel(result, _isJudgePhaseRunning));
+            Results.Add(new EvalResultViewModel(result, _inFlightItemIds.ContainsKey(result.EvalItemId)));
         }
 
         UpdateEarlyCompletions();

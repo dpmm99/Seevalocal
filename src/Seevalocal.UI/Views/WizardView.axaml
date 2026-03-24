@@ -8,6 +8,9 @@
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="Seevalocal.UI.Views.WizardView"
              x:DataType="vm:MainWindowViewModel">
+  <UserControl.Resources>
+    <convert:NullableValueConverter x:Key="NullableValue"/>
+  </UserControl.Resources>
 
   <Grid RowDefinitions="Auto,*,Auto" DataContext="{Binding WizardState}">
     <!-- Step Indicator - Only visible when this view is visible -->
@@ -212,19 +215,19 @@
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                   <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Context Window (tokens)" Classes="label"/>
-                    <TextBox Text="{Binding ContextWindowTokens}" Watermark="e.g., 4096"/>
+                    <TextBox Text="{Binding ContextWindowTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 4096"/>
                   </StackPanel>
                   <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Parallel Slots" Classes="label"/>
-                    <TextBox Text="{Binding ParallelSlotCount}" Watermark="e.g., 4"/>
+                    <TextBox Text="{Binding ParallelSlotCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 4"/>
                   </StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Batch Size (tokens)" Classes="label"/>
-                    <TextBox Text="{Binding BatchSizeTokens}" Watermark="e.g., 512"/>
+                    <TextBox Text="{Binding BatchSizeTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 512"/>
                   </StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Micro-Batch Size (tokens)" Classes="label"/>
-                    <TextBox Text="{Binding UbatchSizeTokens}" Watermark="e.g., 64"/>
+                    <TextBox Text="{Binding UbatchSizeTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 64"/>
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <CheckBox Content="Enable Continuous Batching" IsChecked="{Binding EnableContinuousBatching}"/>
@@ -242,7 +245,7 @@
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                   <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                     <TextBlock Text="GPU Layers" Classes="label"/>
-                    <TextBox Text="{Binding GpuLayerCount}" Watermark="e.g., 32"/>
+                    <TextBox Text="{Binding GpuLayerCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 32"/>
                   </StackPanel>
                   <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Split Mode" Classes="label"/>
@@ -275,39 +278,39 @@
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,0,0,12">
                   <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Temperature" Classes="label"/>
-                    <TextBox Text="{Binding SamplingTemperature}" Watermark="e.g., 0.7"/>
+                    <TextBox Text="{Binding SamplingTemperature, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.7"/>
                   </StackPanel>
                   <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Top P" Classes="label"/>
-                    <TextBox Text="{Binding TopP}" Watermark="e.g., 0.9"/>
+                    <TextBox Text="{Binding TopP, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.9"/>
                   </StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Top K" Classes="label"/>
-                    <TextBox Text="{Binding TopK}" Watermark="e.g., 40"/>
+                    <TextBox Text="{Binding TopK, Converter={StaticResource NullableValue}}" Watermark="e.g., 40"/>
                   </StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Min P" Classes="label"/>
-                    <TextBox Text="{Binding MinP}" Watermark="e.g., 0.05"/>
+                    <TextBox Text="{Binding MinP, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.05"/>
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Repeat Penalty" Classes="label"/>
-                    <TextBox Text="{Binding RepeatPenalty}" Watermark="e.g., 1.1"/>
+                    <TextBox Text="{Binding RepeatPenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 1.1"/>
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Repeat Last N" Classes="label"/>
-                    <TextBox Text="{Binding RepeatLastNTokens}" Watermark="e.g., 64"/>
+                    <TextBox Text="{Binding RepeatLastNTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 64"/>
                   </StackPanel>
                   <StackPanel Grid.Row="3" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Presence Penalty" Classes="label"/>
-                    <TextBox Text="{Binding PresencePenalty}" Watermark="e.g., 0.0"/>
+                    <TextBox Text="{Binding PresencePenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.0"/>
                   </StackPanel>
                   <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Frequency Penalty" Classes="label"/>
-                    <TextBox Text="{Binding FrequencyPenalty}" Watermark="e.g., 0.0"/>
+                    <TextBox Text="{Binding FrequencyPenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.0"/>
                   </StackPanel>
                   <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <TextBlock Text="Random Seed (-1 for random)" Classes="label"/>
-                    <TextBox Text="{Binding Seed}" Watermark="e.g., -1"/>
+                    <TextBox Text="{Binding Seed, Converter={StaticResource NullableValue}}" Watermark="e.g., -1"/>
                   </StackPanel>
                 </Grid>
               </StackPanel>
@@ -320,11 +323,7 @@
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" Margin="0,0,0,12">
                   <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                     <TextBlock Text="CPU Threads" Classes="label"/>
-                    <TextBox Text="{Binding ThreadCount}" Watermark="e.g., 8"/>
-                  </StackPanel>
-                  <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                    <TextBlock Text="HTTP Threads" Classes="label"/>
-                    <TextBox Text="{Binding HttpThreadCount}" Watermark="e.g., 4"/>
+                    <TextBox Text="{Binding ThreadCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 8"/>
                   </StackPanel>
                   <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <CheckBox Content="Lock Model in Memory (Mlock)" IsChecked="{Binding EnableMlock}"/>
@@ -357,7 +356,7 @@
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
                     <TextBlock Text="Reasoning Budget (tokens)" Classes="label"/>
-                    <TextBox Text="{Binding ReasoningBudget}" Watermark="e.g., 1024"/>
+                    <TextBox Text="{Binding ReasoningBudget, Converter={StaticResource NullableValue}}" Watermark="e.g., 1024"/>
                   </StackPanel>
                   <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
                     <TextBlock Text="Reasoning Budget Message" Classes="label"/>
@@ -366,7 +365,7 @@
                   <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                     <CheckBox Content="Enable Jinja Template Processing" IsChecked="{Binding EnableJinja}"/>
                     <TextBlock Text="Server Timeout (seconds)" Classes="label" Margin="0,8,0,0"/>
-                    <TextBox Text="{Binding ServerTimeoutSeconds}" Watermark="e.g., 300"/>
+                    <TextBox Text="{Binding ServerTimeoutSeconds, Converter={StaticResource NullableValue}}" Watermark="e.g., 300"/>
                     <TextBlock Text="Extra Llama-Server Args" Classes="label" Margin="0,8,0,0"/>
                     <TextBox Text="{Binding ExtraLlamaArgs}" Watermark="e.g., -ts 14,38" AcceptsReturn="False"/>
                   </StackPanel>
@@ -587,19 +586,19 @@
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Context Window (tokens)" Classes="label"/>
-                            <TextBox Text="{Binding JudgeContextWindowTokens}" Watermark="e.g., 4096"/>
+                            <TextBox Text="{Binding JudgeContextWindowTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 4096"/>
                           </StackPanel>
                           <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Parallel Slots" Classes="label"/>
-                            <TextBox Text="{Binding JudgeParallelSlotCount}" Watermark="e.g., 2"/>
+                            <TextBox Text="{Binding JudgeParallelSlotCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 2"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Batch Size (tokens)" Classes="label"/>
-                            <TextBox Text="{Binding JudgeBatchSizeTokens}" Watermark="e.g., 512"/>
+                            <TextBox Text="{Binding JudgeBatchSizeTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 512"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Micro-Batch Size (tokens)" Classes="label"/>
-                            <TextBox Text="{Binding JudgeUbatchSizeTokens}" Watermark="e.g., 64"/>
+                            <TextBox Text="{Binding JudgeUbatchSizeTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 64"/>
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <CheckBox Content="Enable Continuous Batching" IsChecked="{Binding JudgeEnableContinuousBatching}"/>
@@ -617,7 +616,7 @@
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="GPU Layers" Classes="label"/>
-                            <TextBox Text="{Binding JudgeGpuLayerCount}" Watermark="e.g., 32"/>
+                            <TextBox Text="{Binding JudgeGpuLayerCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 32"/>
                           </StackPanel>
                           <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Split Mode" Classes="label"/>
@@ -650,39 +649,39 @@
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Temperature" Classes="label"/>
-                            <TextBox Text="{Binding JudgeSamplingTemperature}" Watermark="e.g., 0.7"/>
+                            <TextBox Text="{Binding JudgeSamplingTemperature, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.7"/>
                           </StackPanel>
                           <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Top P" Classes="label"/>
-                            <TextBox Text="{Binding JudgeTopP}" Watermark="e.g., 0.9"/>
+                            <TextBox Text="{Binding JudgeTopP, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.9"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Top K" Classes="label"/>
-                            <TextBox Text="{Binding JudgeTopK}" Watermark="e.g., 40"/>
+                            <TextBox Text="{Binding JudgeTopK, Converter={StaticResource NullableValue}}" Watermark="e.g., 40"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Min P" Classes="label"/>
-                            <TextBox Text="{Binding JudgeMinP}" Watermark="e.g., 0.05"/>
+                            <TextBox Text="{Binding JudgeMinP, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.05"/>
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Repeat Penalty" Classes="label"/>
-                            <TextBox Text="{Binding JudgeRepeatPenalty}" Watermark="e.g., 1.1"/>
+                            <TextBox Text="{Binding JudgeRepeatPenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 1.1"/>
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Repeat Last N" Classes="label"/>
-                            <TextBox Text="{Binding JudgeRepeatLastNTokens}" Watermark="e.g., 64"/>
+                            <TextBox Text="{Binding JudgeRepeatLastNTokens, Converter={StaticResource NullableValue}}" Watermark="e.g., 64"/>
                           </StackPanel>
                           <StackPanel Grid.Row="3" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Presence Penalty" Classes="label"/>
-                            <TextBox Text="{Binding JudgePresencePenalty}" Watermark="e.g., 0.0"/>
+                            <TextBox Text="{Binding JudgePresencePenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.0"/>
                           </StackPanel>
                           <StackPanel Grid.Row="3" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Frequency Penalty" Classes="label"/>
-                            <TextBox Text="{Binding JudgeFrequencyPenalty}" Watermark="e.g., 0.0"/>
+                            <TextBox Text="{Binding JudgeFrequencyPenalty, Converter={StaticResource NullableValue}}" Watermark="e.g., 0.0"/>
                           </StackPanel>
                           <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <TextBlock Text="Random Seed (-1 for random)" Classes="label"/>
-                            <TextBox Text="{Binding JudgeSeed}" Watermark="e.g., -1"/>
+                            <TextBox Text="{Binding JudgeSeed, Converter={StaticResource NullableValue}}" Watermark="e.g., -1"/>
                           </StackPanel>
                         </Grid>
                       </StackPanel>
@@ -695,11 +694,7 @@
                         <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
                           <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
                             <TextBlock Text="CPU Threads" Classes="label"/>
-                            <TextBox Text="{Binding JudgeThreadCount}" Watermark="e.g., 8"/>
-                          </StackPanel>
-                          <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="HTTP Threads" Classes="label"/>
-                            <TextBox Text="{Binding JudgeHttpThreadCount}" Watermark="e.g., 4"/>
+                            <TextBox Text="{Binding JudgeThreadCount, Converter={StaticResource NullableValue}}" Watermark="e.g., 8"/>
                           </StackPanel>
                           <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <CheckBox Content="Lock Model in Memory (Mlock)" IsChecked="{Binding JudgeEnableMlock}"/>
@@ -732,7 +727,7 @@
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="0" Spacing="4">
                             <TextBlock Text="Reasoning Budget (tokens)" Classes="label"/>
-                            <TextBox Text="{Binding JudgeReasoningBudget}" Watermark="e.g., 1024"/>
+                            <TextBox Text="{Binding JudgeReasoningBudget, Converter={StaticResource NullableValue}}" Watermark="e.g., 1024"/>
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="1" Spacing="4">
                             <TextBlock Text="Reasoning Budget Message" Classes="label"/>
@@ -741,7 +736,7 @@
                           <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Spacing="4">
                             <CheckBox Content="Enable Jinja Template Processing" IsChecked="{Binding JudgeEnableJinja}"/>
                             <TextBlock Text="Server Timeout (seconds)" Classes="label" Margin="0,8,0,0"/>
-                            <TextBox Text="{Binding JudgeServerTimeoutSeconds}" Watermark="e.g., 300"/>
+                            <TextBox Text="{Binding JudgeServerTimeoutSeconds, Converter={StaticResource NullableValue}}" Watermark="e.g., 300"/>
                             <TextBlock Text="Extra Judge Llama-Server Args" Classes="label" Margin="0,8,0,0"/>
                             <TextBox Text="{Binding JudgeExtraLlamaArgs}" Watermark="e.g., -ts 14,38" AcceptsReturn="False"/>
                           </StackPanel>

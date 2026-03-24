@@ -49,7 +49,6 @@ public record LlamaServerSettings
 
     // Threading
     public int? ThreadCount { get; init; }
-    public int? HttpThreadCount { get; init; }
 
     // Model behaviour
     public string? ChatTemplate { get; init; }
@@ -293,7 +292,6 @@ public record PartialLlamaServerSettings
     public double? FrequencyPenalty { get; init; }
     public int? Seed { get; init; }
     public int? ThreadCount { get; init; }
-    public int? HttpThreadCount { get; init; }
     public string? ChatTemplate { get; init; }
     public bool? EnableJinja { get; init; }
     public string? ReasoningFormat { get; init; }

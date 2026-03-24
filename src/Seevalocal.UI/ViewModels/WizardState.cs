@@ -53,7 +53,6 @@ public class WizardState
     public double? FrequencyPenalty;
     public int? Seed;
     public int? ThreadCount;
-    public int? HttpThreadCount;
     public string? ChatTemplate;
     public bool? EnableJinja;
     public string? ReasoningFormat;
@@ -124,7 +123,6 @@ public class WizardState
     public double? JudgeFrequencyPenalty;
     public int? JudgeSeed;
     public int? JudgeThreadCount;
-    public int? JudgeHttpThreadCount;
     public string? JudgeChatTemplate;
     public bool? JudgeEnableJinja;
     public string? JudgeReasoningFormat;
@@ -163,7 +161,7 @@ public class WizardState
         nameof(EnableFlashAttention), nameof(SamplingTemperature), nameof(TopP),
         nameof(TopK), nameof(MinP), nameof(RepeatPenalty), nameof(RepeatLastNTokens),
         nameof(PresencePenalty), nameof(FrequencyPenalty), nameof(Seed),
-        nameof(ThreadCount), nameof(HttpThreadCount), nameof(ChatTemplate),
+        nameof(ThreadCount), nameof(ChatTemplate),
         nameof(EnableJinja), nameof(ReasoningFormat), nameof(ModelAlias),
         nameof(ReasoningBudget), nameof(ReasoningBudgetMessage),
         nameof(LogVerbosity), nameof(EnableMlock), nameof(EnableMmap),
@@ -261,7 +259,15 @@ public class WizardState
         if (config.Judge is { } judge)
         {
             SetVal(nameof(state.EnableJudge), (bool?)judge.Enable);
-            // Skip judge prompt template because its *default* is based on the pipeline you selected. //TODO: I'm actually skipping it because it's "standard" by default in the input object here and I can't tell if the user did that himself/herself.
+            // Load judge prompt template from config
+            if (!onlyUnedited || !editedFields.Contains(nameof(state.JudgeTemplate)))
+            {
+                if (!string.IsNullOrEmpty(judge.JudgePromptTemplate))
+                {
+                    state.JudgeTemplate = judge.JudgePromptTemplate;
+                    if (!onlyUnedited) editedFields.Add(nameof(state.JudgeTemplate));
+                }
+            }
 
             if (judge.ServerConfig is { } jsc)
             {

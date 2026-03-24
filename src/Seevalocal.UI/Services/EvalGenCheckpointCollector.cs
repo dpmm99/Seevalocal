@@ -457,7 +457,7 @@ public sealed class EvalGenCheckpointCollector : IAsyncDisposable
             }
 
             // Clear the SQLite connection pool to ensure all connections are released
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            SqliteConnection.ClearAllPools();
         }
     }
 }

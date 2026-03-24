@@ -116,7 +116,6 @@ public sealed partial class EvalGenService(
                 FrequencyPenalty = overlayConfig.ServerSettings?.FrequencyPenalty ?? baseConfig.ServerSettings?.FrequencyPenalty,
                 Seed = overlayConfig.ServerSettings?.Seed ?? baseConfig.ServerSettings?.Seed,
                 ThreadCount = overlayConfig.ServerSettings?.ThreadCount ?? baseConfig.ServerSettings?.ThreadCount,
-                HttpThreadCount = overlayConfig.ServerSettings?.HttpThreadCount ?? baseConfig.ServerSettings?.HttpThreadCount,
                 ChatTemplate = overlayConfig.ServerSettings?.ChatTemplate ?? baseConfig.ServerSettings?.ChatTemplate,
                 EnableJinja = overlayConfig.ServerSettings?.EnableJinja ?? baseConfig.ServerSettings?.EnableJinja,
                 ReasoningFormat = overlayConfig.ServerSettings?.ReasoningFormat ?? baseConfig.ServerSettings?.ReasoningFormat,
