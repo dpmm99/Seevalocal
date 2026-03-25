@@ -323,7 +323,7 @@ public class WizardState
     /// using the provided prefix to find the matching state field (e.g. "Judge" prefix for judge fields).
     /// Driven entirely by <see cref="LlamaSettingNames"/> — no manual per-field code.
     /// </summary>
-    private static void ApplyLlamaSettings(
+    internal static void ApplyLlamaSettings(
         LlamaServerSettings settings,
         WizardState state,
         HashSet<string> editedFields,

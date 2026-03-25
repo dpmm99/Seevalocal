@@ -168,6 +168,54 @@ public class EvalGenCheckpointCollectorTests : IAsyncLifetime
         await DisposeCollectorAsync(collector);
     }
 
+    [Fact]
+    public async Task SaveStartupParametersAsync_PreservesJudgeReasoningBudgetFields()
+    {
+        // Arrange
+        var collector = new EvalGenCheckpointCollector(_dbPath);
+        var config = new EvalGenConfig
+        {
+            Id = "test-id-123",
+            RunName = "Test Run",
+            OutputDirectoryPath = "./test_output",
+            TargetCategoryCount = 15,
+            TargetProblemsPerCategory = 8,
+            DomainPrompt = "Test domain prompt",
+            ContextPrompt = "Test context",
+            SystemPrompt = "Test system"
+        };
+        var judgeConfig = new JudgeConfig
+        {
+            ServerConfig = new ServerConfig
+            {
+                BaseUrl = "http://localhost:8081",
+                Manage = false
+            },
+            ServerSettings = new LlamaServerSettings
+            {
+                ReasoningBudget = 2048,
+                ReasoningBudgetMessage = "Think step by step and explain your reasoning",
+                ReasoningFormat = "hidden"
+            },
+            JudgePromptTemplate = "custom_judge_template"
+        };
+
+        // Act
+        await collector.SaveStartupParametersAsync(config, judgeConfig, CancellationToken.None);
+
+        // Assert
+        var loaded = await collector.LoadStartupParametersAsync(CancellationToken.None);
+        loaded.Should().NotBeNull();
+        loaded!.Value.JudgeConfig.Should().NotBeNull();
+        loaded.Value.JudgeConfig.ServerSettings.Should().NotBeNull();
+        loaded.Value.JudgeConfig.ServerSettings.ReasoningBudget.Should().Be(2048);
+        loaded.Value.JudgeConfig.ServerSettings.ReasoningBudgetMessage.Should().Be("Think step by step and explain your reasoning");
+        loaded.Value.JudgeConfig.ServerSettings.ReasoningFormat.Should().Be("hidden");
+        loaded.Value.JudgeConfig.JudgePromptTemplate.Should().Be("custom_judge_template");
+
+        await DisposeCollectorAsync(collector);
+    }
+
     #endregion
 
     #region Category Tests

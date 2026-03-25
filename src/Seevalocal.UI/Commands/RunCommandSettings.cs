@@ -51,11 +51,11 @@ public class RunCommandSettings : CommandSettings
 
     [CommandOption("--batch")]
     [Description("Batch size in tokens")]
-    public int? BatchTokens { get; set; }
+    public int? BatchSizeTokens { get; set; }
 
     [CommandOption("--ubatch")]
     [Description("Micro-batch size in tokens")]
-    public int? UBatchTokens { get; set; }
+    public int? UbatchSizeTokens { get; set; }
 
     [CommandOption("--parallel")]
     [Description("Number of parallel slots (concurrent requests)")]
@@ -79,11 +79,11 @@ public class RunCommandSettings : CommandSettings
 
     [CommandOption("--kv-type-k")]
     [Description("KV cache type for K, e.g., f16, q8_0")]
-    public string? KvTypeK { get; set; }
+    public string? KvCacheTypeK { get; set; }
 
     [CommandOption("--kv-type-v")]
     [Description("KV cache type for V")]
-    public string? KvTypeV { get; set; }
+    public string? KvCacheTypeV { get; set; }
 
     [CommandOption("--threads")]
     [Description("Number of CPU threads")]

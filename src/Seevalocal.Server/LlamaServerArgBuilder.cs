@@ -1,4 +1,5 @@
 using Seevalocal.Core.Models;
+using System.Globalization;
 
 namespace Seevalocal.Server;
 
@@ -6,6 +7,7 @@ namespace Seevalocal.Server;
 /// Converts <see cref="LlamaServerSettings"/> and <see cref="ServerConfig"/> into a
 /// <c>string[]</c> suitable for <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/>.
 /// Only non-null settings are emitted. Null means "use llama-server default."
+/// Driven entirely by <see cref="LlamaSettingAttribute"/> metadata via reflection.
 /// </summary>
 public sealed class LlamaServerArgBuilder
 {
@@ -65,50 +67,18 @@ public sealed class LlamaServerArgBuilder
             args.Add(apiKey);
         }
 
-        // ── Context / batching ───────────────────────────────────────────────
-        AppendInt(args, settings.ContextWindowTokens, "-c");
-        AppendInt(args, settings.BatchSizeTokens, "-b");
-        AppendInt(args, settings.UbatchSizeTokens, "-ub");
-        AppendInt(args, settings.ParallelSlotCount, "-np");
-        AppendInt(args, settings.GpuLayerCount, "-ngl");
-        AppendInt(args, settings.ThreadCount, "-t");
+        // ── Llama-server settings (driven by attributes) ─────────────────────
+        var metadata = LlamaSettingsMetadata.LlamaServerSettings;
+        foreach (var m in metadata)
+        {
+            var value = LlamaSettingsMetadata.GetPropertyValue(m, settings);
+            if (value is null) continue;
 
-        // ── Boolean feature flags ────────────────────────────────────────────
-        AppendBool(args, settings.EnableFlashAttention, "-fa");
-        AppendBoolLong(args, settings.EnableContinuousBatching, "--cont-batching", "--no-cont-batching");
-        AppendBoolLong(args, settings.EnableCachePrompt, "--cache-prompt", "--no-cache-prompt");
-        AppendBoolLong(args, settings.EnableContextShift, "--context-shift", "--no-context-shift");
-        AppendBoolLong(args, settings.EnableJinja, "--jinja", "--no-jinja");
-        AppendBoolLong(args, settings.EnableKvOffload, "--kv-offload", "--no-kv-offload");
-        AppendBoolLong(args, settings.EnableMlock, "--mlock", "--no-mlock");
-        AppendBoolLong(args, settings.EnableMmap, "--mmap", "--no-mmap");
+            // Skip ExtraArgs here - handled separately below
+            if (m.SettingsKey == "extraArgs") continue;
 
-        // ── Sampling ─────────────────────────────────────────────────────────
-        AppendDouble(args, settings.SamplingTemperature, "--temp");
-        AppendDouble(args, settings.TopP, "--top-p");
-        AppendInt(args, settings.TopK, "--top-k");
-        AppendDouble(args, settings.MinP, "--min-p");
-        AppendDouble(args, settings.RepeatPenalty, "--repeat-penalty");
-        AppendInt(args, settings.RepeatLastNTokens, "--repeat-last-n");
-        AppendDouble(args, settings.PresencePenalty, "--presence-penalty");
-        AppendDouble(args, settings.FrequencyPenalty, "--frequency-penalty");
-        AppendInt(args, settings.Seed, "--seed");
-
-        // ── KV cache ─────────────────────────────────────────────────────────
-        AppendString(args, settings.KvCacheTypeK, "-ctk");
-        AppendString(args, settings.KvCacheTypeV, "-ctv");
-
-        // ── GPU / Model ──────────────────────────────────────────────────────
-        AppendString(args, settings.SplitMode, "--split-mode");
-        AppendString(args, settings.ModelAlias, "--model-alias");
-
-        // ── Misc ─────────────────────────────────────────────────────────────
-        AppendInt(args, settings.LogVerbosity, "-lv");
-        AppendString(args, settings.ChatTemplate, "--chat-template");
-        AppendString(args, settings.ReasoningFormat, "--reasoning-format");
-        AppendInt(args, settings.ReasoningBudget, "--reasoning-budget");
-        AppendString(args, settings.ReasoningBudgetMessage, "--reasoning-budget-message");
-        AppendDouble(args, settings.ServerTimeoutSeconds, "--timeout");
+            AppendSetting(args, m, value);
+        }
 
         // ── Extra args (verbatim) ─────────────────────────────────────────────
         if (settings.ExtraArgs.Count > 0)
@@ -117,46 +87,51 @@ public sealed class LlamaServerArgBuilder
         return [.. args];
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static void AppendInt(List<string> args, int? value, string flag)
-    {
-        if (value is null) return;
-        args.Add(flag);
-        args.Add(value.Value.ToString());
-    }
-
-    private static void AppendDouble(List<string> args, double? value, string flag)
-    {
-        if (value is null) return;
-        args.Add(flag);
-        // Use invariant culture so we never emit a comma as decimal separator.
-        args.Add(value.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    }
-
-    private static void AppendString(List<string> args, string? value, string flag)
-    {
-        if (string.IsNullOrEmpty(value)) return;
-        args.Add(flag);
-        args.Add(value);
-    }
-
     /// <summary>
-    /// Emits e.g. <c>-fa on</c> / <c>-fa off</c>.
+    /// Appends CLI arguments for a single setting based on its metadata.
     /// </summary>
-    private static void AppendBool(List<string> args, bool? value, string flag)
+    private static void AppendSetting(List<string> args, LlamaSettingMetadata metadata, object value)
     {
-        if (value is null) return;
-        args.Add(flag);
-        args.Add(value.Value ? "on" : "off");
-    }
+        switch (metadata.SettingType)
+        {
+            case LlamaSettingType.Int:
+                if (value is int i && metadata.CliFlag is not null)
+                {
+                    args.Add(metadata.CliFlag);
+                    args.Add(i.ToString());
+                }
+                break;
 
-    /// <summary>
-    /// Emits e.g. <c>--cont-batching</c> or <c>--no-cont-batching</c>.
-    /// </summary>
-    private static void AppendBoolLong(List<string> args, bool? value, string enableFlag, string disableFlag)
-    {
-        if (value is null) return;
-        args.Add(value.Value ? enableFlag : disableFlag);
+            case LlamaSettingType.Double:
+                if (value is double d && metadata.CliFlag is not null)
+                {
+                    args.Add(metadata.CliFlag);
+                    args.Add(d.ToString(CultureInfo.InvariantCulture));
+                }
+                break;
+
+            case LlamaSettingType.String:
+                if (value is string s && !string.IsNullOrEmpty(s) && metadata.CliFlag is not null)
+                {
+                    args.Add(metadata.CliFlag);
+                    args.Add(s);
+                }
+                break;
+
+            case LlamaSettingType.Bool:
+                if (value is bool b && metadata.CliFlag is not null)
+                {
+                    args.Add(metadata.CliFlag);
+                    args.Add(b ? "on" : "off");
+                }
+                break;
+
+            case LlamaSettingType.BoolLong:
+                if (value is bool bl && metadata.EnableFlag is not null && metadata.DisableFlag is not null)
+                {
+                    args.Add(bl ? metadata.EnableFlag : metadata.DisableFlag);
+                }
+                break;
+        }
     }
 }

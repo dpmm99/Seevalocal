@@ -20,55 +20,89 @@ public enum GpuKind { Cuda, Vulkan, Metal, CpuOnly }
 public record LlamaServerSettings
 {
     // Context / batching
+    [LlamaSetting(LlamaSettingType.Int, "contextWindowTokens", "Context Window", "-c", "Context window size in tokens")]
     public int? ContextWindowTokens { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "batchSizeTokens", "Batch Size", "-b", "Batch size in tokens")]
     public int? BatchSizeTokens { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "ubatchSizeTokens", "Micro-Batch Size", "-ub", "Micro-batch size in tokens")]
     public int? UbatchSizeTokens { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "parallelSlotCount", "Parallel Slots", "-np", "Concurrent request slots")]
     public int? ParallelSlotCount { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableContinuousBatching", "Enable Continuous Batching", "--cont-batching", "--no-cont-batching", "Enable continuous batching")]
     public bool? EnableContinuousBatching { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableCachePrompt", "Enable Cache Prompt", "--cache-prompt", "--no-cache-prompt", "Cache prompt processing")]
     public bool? EnableCachePrompt { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableContextShift", "Enable Context Shift", "--context-shift", "--no-context-shift", "Enable context shifting")]
     public bool? EnableContextShift { get; init; }
 
     // GPU
+    [LlamaSetting(LlamaSettingType.Int, "gpuLayerCount", "GPU Layers", "-ngl", "Number of layers to offload to GPU")]
     public int? GpuLayerCount { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "splitMode", "Split Mode", "--split-mode", "GPU split mode: none, layer, row")]
     public string? SplitMode { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "kvCacheTypeK", "KV Cache Type K", "-ctk", "KV cache type for K (f16, q8_0, etc.)")]
     public string? KvCacheTypeK { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "kvCacheTypeV", "KV Cache Type V", "-ctv", "KV cache type for V (f16, q8_0, etc.)")]
     public string? KvCacheTypeV { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableKvOffload", "Enable KV Offload", "--kv-offload", "--no-kv-offload", "Offload KV cache to GPU")]
     public bool? EnableKvOffload { get; init; }
+    [LlamaSetting(LlamaSettingType.Bool, "enableFlashAttention", "Flash Attention", "-fa", "Enable flash attention")]
     public bool? EnableFlashAttention { get; init; }
 
     // Sampling
+    [LlamaSetting(LlamaSettingType.Double, "samplingTemperature", "Temperature", "--temp", "Sampling temperature")]
     public double? SamplingTemperature { get; init; }
+    [LlamaSetting(LlamaSettingType.Double, "topP", "Top P", "--top-p", "Top-p (nucleus) sampling")]
     public double? TopP { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "topK", "Top K", "--top-k", "Top-k sampling")]
     public int? TopK { get; init; }
+    [LlamaSetting(LlamaSettingType.Double, "minP", "Min P", "--min-p", "Min-p sampling")]
     public double? MinP { get; init; }
+    [LlamaSetting(LlamaSettingType.Double, "repeatPenalty", "Repeat Penalty", "--repeat-penalty", "Penalty for repeated tokens")]
     public double? RepeatPenalty { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "repeatLastNTokens", "Repeat Last N", "--repeat-last-n", "Number of tokens to consider for repeat penalty")]
     public int? RepeatLastNTokens { get; init; }
+    [LlamaSetting(LlamaSettingType.Double, "presencePenalty", "Presence Penalty", "--presence-penalty", "Presence penalty for token generation")]
     public double? PresencePenalty { get; init; }
+    [LlamaSetting(LlamaSettingType.Double, "frequencyPenalty", "Frequency Penalty", "--frequency-penalty", "Frequency penalty for token generation")]
     public double? FrequencyPenalty { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "seed", "Seed", "--seed", "Random seed (-1 for random)")]
     public int? Seed { get; init; }
 
     // Threading
+    [LlamaSetting(LlamaSettingType.Int, "threadCount", "Threads", "-t", "CPU threads for inference")]
     public int? ThreadCount { get; init; }
 
     // Model behaviour
+    [LlamaSetting(LlamaSettingType.String, "chatTemplate", "Chat Template", "--chat-template", "Chat template name")]
     public string? ChatTemplate { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableJinja", "Enable Jinja", "--jinja", "--no-jinja", "Enable Jinja template processing")]
     public bool? EnableJinja { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "reasoningFormat", "Reasoning Format", "--reasoning-format", "Reasoning format (e.g., chain-of-thought)")]
     public string? ReasoningFormat { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "modelAlias", "Model Alias", "--model-alias", "Model alias for identification")]
     public string? ModelAlias { get; init; }
+    [LlamaSetting(LlamaSettingType.Int, "reasoningBudget", "Reasoning Budget", "--reasoning-budget", "Reasoning budget in tokens")]
     public int? ReasoningBudget { get; init; }
+    [LlamaSetting(LlamaSettingType.String, "reasoningBudgetMessage", "Reasoning Budget Message", "--reasoning-budget-message", "Message to control reasoning behavior")]
     public string? ReasoningBudgetMessage { get; init; }
 
     // Logging
+    [LlamaSetting(LlamaSettingType.Int, "logVerbosity", "Log Verbosity", "-lv", "Log verbosity level (0-3)")]
     public int? LogVerbosity { get; init; }
 
     // Memory
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableMlock", "Enable Mlock", "--mlock", "--no-mlock", "Lock model in memory")]
     public bool? EnableMlock { get; init; }
+    [LlamaSetting(LlamaSettingType.BoolLong, "enableMmap", "Enable Mmap", "--mmap", "--no-mmap", "Memory-map model file")]
     public bool? EnableMmap { get; init; }
 
     // Timeouts
+    [LlamaSetting(LlamaSettingType.Double, "serverTimeoutSeconds", "Server Timeout", "--timeout", "Server timeout in seconds")]
     public double? ServerTimeoutSeconds { get; init; }
 
-    // Pass-through (advanced)
+    // Pass-through (advanced) - no CLI flag, just passes through
+    [LlamaSetting(LlamaSettingType.String, "extraArgs", "Extra Args", "Space-separated extra llama-server arguments")]
     public IReadOnlyList<string> ExtraArgs { get; init; } = [];
 }
 
@@ -270,9 +304,9 @@ public record PartialRunMeta
 public record PartialLlamaServerSettings
 {
     public int? ContextWindowTokens { get; init; }
+    public int? ParallelSlotCount { get; init; }
     public int? BatchSizeTokens { get; init; }
     public int? UbatchSizeTokens { get; init; }
-    public int? ParallelSlotCount { get; init; }
     public bool? EnableContinuousBatching { get; init; }
     public bool? EnableCachePrompt { get; init; }
     public bool? EnableContextShift { get; init; }

@@ -460,79 +460,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         int? Fi(string key) => int.TryParse(F(key), out var v) ? v : null;
         double? Fd(string key) => double.TryParse(F(key), out var v) ? v : null;
 
-        var llamaServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("llama.contextWindowTokens"),
-            BatchSizeTokens = Fi("llama.batchSizeTokens"),
-            UbatchSizeTokens = Fi("llama.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("llama.parallelSlotCount"),
-            EnableContinuousBatching = Fb("llama.enableContinuousBatching"),
-            EnableCachePrompt = Fb("llama.enableCachePrompt"),
-            EnableContextShift = Fb("llama.enableContextShift"),
-            GpuLayerCount = Fi("llama.gpuLayerCount"),
-            SplitMode = F("llama.splitMode") is var sm && sm != "Unspecified" ? sm : null,
-            KvCacheTypeK = F("llama.kvCacheTypeK"),
-            KvCacheTypeV = F("llama.kvCacheTypeV"),
-            EnableKvOffload = Fb("llama.enableKvOffload"),
-            EnableFlashAttention = Fb("llama.enableFlashAttention"),
-            SamplingTemperature = Fd("llama.samplingTemperature"),
-            TopP = Fd("llama.topP"),
-            TopK = Fi("llama.topK"),
-            MinP = Fd("llama.minP"),
-            RepeatPenalty = Fd("llama.repeatPenalty"),
-            RepeatLastNTokens = Fi("llama.repeatLastNTokens"),
-            PresencePenalty = Fd("llama.presencePenalty"),
-            FrequencyPenalty = Fd("llama.frequencyPenalty"),
-            Seed = Fi("llama.seed"),
-            ThreadCount = Fi("llama.threadCount"),
-            ChatTemplate = F("llama.chatTemplate"),
-            EnableJinja = Fb("llama.enableJinja"),
-            ReasoningFormat = F("llama.reasoningFormat") is var rf && rf != "Unspecified" ? rf : null,
-            ModelAlias = F("llama.modelAlias"),
-            LogVerbosity = Fi("llama.logVerbosity"),
-            EnableMlock = Fb("llama.enableMlock"),
-            EnableMmap = Fb("llama.enableMmap"),
-            ServerTimeoutSeconds = Fd("llama.serverTimeoutSeconds"),
-            ExtraArgs = F("llama.extraArgs") is { } ea && !string.IsNullOrWhiteSpace(ea)
-                ? ea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : [],
-        };
-
-        var judgeServerSettings = new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Fi("judge.contextWindowTokens"),
-            BatchSizeTokens = Fi("judge.batchSizeTokens"),
-            UbatchSizeTokens = Fi("judge.ubatchSizeTokens"),
-            ParallelSlotCount = Fi("judge.parallelSlotCount"),
-            EnableContinuousBatching = Fb("judge.enableContinuousBatching"),
-            EnableCachePrompt = Fb("judge.enableCachePrompt"),
-            EnableContextShift = Fb("judge.enableContextShift"),
-            GpuLayerCount = Fi("judge.gpuLayerCount"),
-            SplitMode = F("judge.splitMode") is var jsm && jsm != "Unspecified" ? jsm : null,
-            KvCacheTypeK = F("judge.kvCacheTypeK"),
-            KvCacheTypeV = F("judge.kvCacheTypeV"),
-            EnableKvOffload = Fb("judge.enableKvOffload"),
-            EnableFlashAttention = Fb("judge.enableFlashAttention"),
-            SamplingTemperature = Fd("judge.samplingTemperature"),
-            TopP = Fd("judge.topP"),
-            TopK = Fi("judge.topK"),
-            MinP = Fd("judge.minP"),
-            RepeatPenalty = Fd("judge.repeatPenalty"),
-            RepeatLastNTokens = Fi("judge.repeatLastNTokens"),
-            PresencePenalty = Fd("judge.presencePenalty"),
-            FrequencyPenalty = Fd("judge.frequencyPenalty"),
-            Seed = Fi("judge.seed"),
-            ThreadCount = Fi("judge.threadCount"),
-            ChatTemplate = F("judge.chatTemplate"),
-            EnableJinja = Fb("judge.enableJinja"),
-            ReasoningFormat = F("judge.reasoningFormat") is var jrf && jrf != "Unspecified" ? jrf : null,
-            ModelAlias = F("judge.modelAlias"),
-            LogVerbosity = Fi("judge.logVerbosity"),
-            EnableMlock = Fb("judge.enableMlock"),
-            EnableMmap = Fb("judge.enableMmap"),
-            ServerTimeoutSeconds = Fd("judge.serverTimeoutSeconds"),
-            ExtraArgs = F("judge.extraArgs") is { } jea && !string.IsNullOrWhiteSpace(jea)
-                ? jea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList() : [],
-        };
+        // Build llama server settings using reflection driven by LlamaSettingAttribute metadata
+        var llamaServerSettings = BuildLlamaSettingsFromFields(F, Fb, Fi, Fd, "llama");
+        var judgeServerSettings = BuildLlamaSettingsFromFields(F, Fb, Fi, Fd, "judge");
 
         return new PartialConfig
         {
@@ -544,23 +474,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 BaseUrl = F("server.baseUrl"),
             },
             LlamaSettings = llamaServerSettings,
-            Judge = new PartialJudgeConfig
+            Judge = LlamaSettingsMetadata.BuildPartialJudgeConfig(F, "judge") with
             {
-                Enable = Fb("judge.enable"),
-                ServerConfig = new PartialServerConfig
-                {
-                    Manage = Fb("judge.manage"),
-                    ExecutablePath = F("judge.executablePath"),
-                    ApiKey = F("judge.apiKey"),
-                    BaseUrl = F("judge.baseUrl"),
-                    Model = new ModelSource
-                    {
-                        FilePath = F("judge.modelFile"),
-                        HfRepo = F("judge.hfRepo")
-                    }
-                },
                 ServerSettings = judgeServerSettings,
-                JudgePromptTemplate = F("judge.template"),
             },
             Run = new PartialRunMeta
             {
@@ -616,6 +532,47 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             if (!string.IsNullOrEmpty(testFile)) options["testFilePath"] = testFile;
 
             return options.Count > 0 ? options : null;
+        }
+
+        /// <summary>
+        /// Builds PartialLlamaServerSettings from field values using reflection.
+        /// Driven by LlamaSettingAttribute metadata - no manual per-field code.
+        /// </summary>
+        static PartialLlamaServerSettings BuildLlamaSettingsFromFields(
+            Func<string, string?> F, Func<string, bool?> Fb, Func<string, int?> Fi, Func<string, double?> Fd, string prefix)
+        {
+            var settings = new PartialLlamaServerSettings();
+            var settingsType = typeof(PartialLlamaServerSettings);
+
+            foreach (var metadata in LlamaSettingsMetadata.PartialLlamaServerSettings)
+            {
+                var key = $"{prefix}.{metadata.SettingsKey}";
+                var prop = settingsType.GetProperty(metadata.Property.Name);
+                if (prop == null) continue;
+
+                object? value = metadata.SettingType switch
+                {
+                    LlamaSettingType.Int => Fi(key),
+                    LlamaSettingType.Double => Fd(key),
+                    LlamaSettingType.Bool => Fb(key),
+                    LlamaSettingType.String => F(key) is var s && s != "Unspecified" ? s : null,
+                    LlamaSettingType.BoolLong => Fb(key),
+                    _ => null
+                };
+
+                if (value != null)
+                {
+                    // Handle ExtraArgs specially - split space-separated string into list
+                    if (metadata.SettingsKey == "extraArgs" && value is string ea && !string.IsNullOrWhiteSpace(ea))
+                    {
+                        value = ea.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+                    }
+
+                    prop.SetValue(settings, value);
+                }
+            }
+
+            return settings;
         }
     }
 
@@ -734,6 +691,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private static string? GetLlamaValue(PartialLlamaServerSettings? llama, string field)
     {
         if (llama == null) return null;
+
+        // Use reflection to get property value - driven by LlamaSettingAttribute metadata
         var prop = typeof(PartialLlamaServerSettings).GetProperty(field, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
         if (prop == null) return null;
         var value = prop.GetValue(llama);
@@ -758,6 +717,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         "executablePath" => judge?.ServerConfig?.ExecutablePath,
         "extraArgs" => judge?.ServerSettings?.ExtraArgs is { Count: > 0 } args ? string.Join(" ", args) : null,
         // For judge llama-server settings, delegate to GetLlamaValue with the ServerSettings
+        // Use reflection to get any llama-server setting from ServerSettings
         _ => GetLlamaValue(judge?.ServerSettings, field)
     };
 
@@ -789,57 +749,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("server.apiKey", "API Key", "Server Configuration", "", "Optional API key for authentication");
         AddField("server.baseUrl", "Base URL", "Server Configuration", "", "Base URL for external server");
 
-        // Llama Server Settings - Context/Batching (all default to null/empty for llama.cpp defaults)
-        AddField("llama.contextWindowTokens", "Context Window", "Llama Server Settings", "", "Context window size in tokens");
-        AddField("llama.parallelSlotCount", "Parallel Slots", "Llama Server Settings", "", "Concurrent request slots (from /props)");
-        AddField("llama.batchSizeTokens", "Batch Size", "Llama Server Settings", "", "Batch size in tokens");
-        AddField("llama.ubatchSizeTokens", "Micro-Batch Size", "Llama Server Settings", "", "Micro-batch size in tokens");
-        AddField("llama.enableContinuousBatching", "Enable Continuous Batching", "Llama Server Settings", "", "Enable continuous batching");
-        AddField("llama.enableCachePrompt", "Cache Prompt", "Llama Server Settings", "", "Cache prompt processing");
-        AddField("llama.enableContextShift", "Enable Context Shift", "Llama Server Settings", "", "Enable context shifting");
-
-        // Llama Server Settings - GPU
-        AddField("llama.gpuLayerCount", "GPU Layers", "Llama Server Settings", "", "Number of layers to offload to GPU");
-        AddField("llama.splitMode", "Split Mode", "Llama Server Settings", "", "GPU split mode: none, layer, row");
-        AddField("llama.kvCacheTypeK", "KV Cache Type K", "Llama Server Settings", "", "KV cache type for K (f16, q8_0, etc.)");
-        AddField("llama.kvCacheTypeV", "KV Cache Type V", "Llama Server Settings", "", "KV cache type for V (f16, q8_0, etc.)");
-        AddField("llama.enableKvOffload", "Enable KV Offload", "Llama Server Settings", "", "Offload KV cache to GPU");
-        AddField("llama.enableFlashAttention", "Enable Flash Attention", "Llama Server Settings", "", "Enable flash attention");
-
-        // Llama Server Settings - Sampling (all default to null for llama.cpp defaults)
-        AddField("llama.samplingTemperature", "Temperature", "Llama Server Settings", "", "Sampling temperature");
-        AddField("llama.topP", "Top P", "Llama Server Settings", "", "Top-p (nucleus) sampling");
-        AddField("llama.topK", "Top K", "Llama Server Settings", "", "Top-k sampling");
-        AddField("llama.minP", "Min P", "Llama Server Settings", "", "Min-p sampling");
-        AddField("llama.repeatPenalty", "Repeat Penalty", "Llama Server Settings", "", "Penalty for repeated tokens");
-        AddField("llama.repeatLastNTokens", "Repeat Last N", "Llama Server Settings", "", "Number of tokens to consider for repeat penalty");
-        AddField("llama.presencePenalty", "Presence Penalty", "Llama Server Settings", "", "Presence penalty for token generation");
-        AddField("llama.frequencyPenalty", "Frequency Penalty", "Llama Server Settings", "", "Frequency penalty for token generation");
-        AddField("llama.seed", "Seed", "Llama Server Settings", "", "Random seed (-1 for random)");
-
-        // Llama Server Settings - Threading
-        AddField("llama.threadCount", "Threads", "Llama Server Settings", "", "CPU threads for inference");
-
-        // Llama Server Settings - Model Behavior
-        AddField("llama.chatTemplate", "Chat Template", "Llama Server Settings", "", "Chat template name");
-        AddField("llama.enableJinja", "Enable Jinja", "Llama Server Settings", "", "Enable Jinja template processing");
-        AddField("llama.reasoningFormat", "Reasoning Format", "Llama Server Settings", "", "Reasoning format (e.g., chain-of-thought)");
-        AddField("llama.reasoningBudget", "Reasoning Budget", "Llama Server Settings", "", "Reasoning budget in tokens");
-        AddField("llama.reasoningBudgetMessage", "Reasoning Budget Message", "Llama Server Settings", "", "Message to control reasoning behavior");
-        AddField("llama.modelAlias", "Model Alias", "Llama Server Settings", "", "Model alias for identification");
-
-        // Llama Server Settings - Logging
-        AddField("llama.logVerbosity", "Log Verbosity", "Llama Server Settings", "", "Log verbosity level (0-3)");
-
-        // Llama Server Settings - Memory
-        AddField("llama.enableMlock", "Enable Mlock", "Llama Server Settings", "", "Lock model in memory");
-        AddField("llama.enableMmap", "Enable Mmap", "Llama Server Settings", "", "Memory-map model file");
-
-        // Llama Server Settings - Timeouts
-        AddField("llama.serverTimeoutSeconds", "Server Timeout", "Llama Server Settings", "", "Server timeout in seconds");
-
-        // Llama Server Settings - Extra Args
-        AddField("llama.extraArgs", "Extra Args", "Llama Server Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)");
+        // Llama Server Settings - auto-generated from LlamaSettingAttribute metadata
+        // This eliminates the need to manually register each llama-server setting
+        foreach (var metadata in LlamaSettingsMetadata.LlamaServerSettings)
+        {
+            var key = $"llama.{metadata.SettingsKey}";
+            AddField(key, metadata.DisplayName, "Llama Server Settings", metadata.CliFlag is null ? "" : "", metadata.Description);
+        }
 
         // Output Settings (all default to null/unspecified)
         //TODO: no partial OutputConfig exists, and ResolvedConfig doesn't have Output, and so none of those values are hooked up to the settings anymore
@@ -859,41 +775,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AddField("judge.apiKey", "Judge API Key", "Judge Settings", "", "Judge API key");
         AddField("judge.template", "Judge Template", "Judge Settings", "Unspecified", "Judge prompt template");
 
-        // Judge Settings - Llama Server (same options as main server)
-        AddField("judge.contextWindowTokens", "Judge Context Window", "Judge Settings", "", "Context window size in tokens");
-        AddField("judge.parallelSlotCount", "Judge Parallel Slots", "Judge Settings", "", "Concurrent request slots");
-        AddField("judge.batchSizeTokens", "Judge Batch Size", "Judge Settings", "", "Batch size in tokens");
-        AddField("judge.ubatchSizeTokens", "Judge Micro-Batch Size", "Judge Settings", "", "Micro-batch size in tokens");
-        AddField("judge.enableContinuousBatching", "Judge Enable Continuous Batching", "Judge Settings", "", "Enable continuous batching");
-        AddField("judge.enableCachePrompt", "Judge Cache Prompt", "Judge Settings", "", "Cache prompt processing");
-        AddField("judge.enableContextShift", "Judge Enable Context Shift", "Judge Settings", "", "Enable context shifting");
-        AddField("judge.gpuLayerCount", "Judge GPU Layers", "Judge Settings", "", "Number of layers to offload to GPU");
-        AddField("judge.splitMode", "Judge Split Mode", "Judge Settings", "", "GPU split mode: none, layer, row");
-        AddField("judge.kvCacheTypeK", "Judge KV Cache Type K", "Judge Settings", "", "KV cache type for K (f16, q8_0, etc.)");
-        AddField("judge.kvCacheTypeV", "Judge KV Cache Type V", "Judge Settings", "", "KV cache type for V (f16, q8_0, etc.)");
-        AddField("judge.enableKvOffload", "Judge Enable KV Offload", "Judge Settings", "", "Offload KV cache to GPU");
-        AddField("judge.enableFlashAttention", "Judge Enable Flash Attention", "Judge Settings", "", "Enable flash attention");
-        AddField("judge.samplingTemperature", "Judge Temperature", "Judge Settings", "", "Sampling temperature");
-        AddField("judge.topP", "Judge Top P", "Judge Settings", "", "Top-p (nucleus) sampling");
-        AddField("judge.topK", "Judge Top K", "Judge Settings", "", "Top-k sampling");
-        AddField("judge.minP", "Judge Min P", "Judge Settings", "", "Min-p sampling");
-        AddField("judge.repeatPenalty", "Judge Repeat Penalty", "Judge Settings", "", "Penalty for repeated tokens");
-        AddField("judge.repeatLastNTokens", "Judge Repeat Last N", "Judge Settings", "", "Number of tokens to consider for repeat penalty");
-        AddField("judge.presencePenalty", "Judge Presence Penalty", "Judge Settings", "", "Presence penalty for token generation");
-        AddField("judge.frequencyPenalty", "Judge Frequency Penalty", "Judge Settings", "", "Frequency penalty for token generation");
-        AddField("judge.seed", "Judge Seed", "Judge Settings", "", "Random seed (-1 for random)");
-        AddField("judge.threadCount", "Judge Threads", "Judge Settings", "", "CPU threads for inference");
-        AddField("judge.chatTemplate", "Judge Chat Template", "Judge Settings", "", "Chat template name");
-        AddField("judge.enableJinja", "Judge Enable Jinja", "Judge Settings", "", "Enable Jinja template processing");
-        AddField("judge.reasoningFormat", "Judge Reasoning Format", "Judge Settings", "", "Reasoning format (e.g., chain-of-thought)");
-        AddField("judge.reasoningBudget", "Judge Reasoning Budget", "Judge Settings", "", "Reasoning budget in tokens");
-        AddField("judge.reasoningBudgetMessage", "Judge Reasoning Budget Message", "Judge Settings", "", "Message to control reasoning behavior");
-        AddField("judge.modelAlias", "Judge Model Alias", "Judge Settings", "", "Model alias for identification");
-        AddField("judge.logVerbosity", "Judge Log Verbosity", "Judge Settings", "", "Log verbosity level (0-3)");
-        AddField("judge.enableMlock", "Judge Enable Mlock", "Judge Settings", "", "Lock model in memory");
-        AddField("judge.enableMmap", "Judge Enable Mmap", "Judge Settings", "", "Memory-map model file");
-        AddField("judge.serverTimeoutSeconds", "Judge Server Timeout", "Judge Settings", "", "Server timeout in seconds");
-        AddField("judge.extraArgs", "Judge Extra Args", "Judge Settings", "", "Space-separated extra llama-server arguments (e.g., --tensor-split 0.5,0.5 --reasoning-budget 1024)");
+        // Judge Settings - Llama Server (auto-generated from LlamaSettingAttribute metadata)
+        foreach (var metadata in LlamaSettingsMetadata.LlamaServerSettings)
+        {
+            var key = $"judge.{metadata.SettingsKey}";
+            AddField(key, $"Judge {metadata.DisplayName}", "Judge Settings", metadata.CliFlag is null ? "" : "", metadata.Description);
+        }
 
         // Run Meta Settings
         AddField("run.name", "Run Name", "Run Meta", "", "Human-readable name for this run");

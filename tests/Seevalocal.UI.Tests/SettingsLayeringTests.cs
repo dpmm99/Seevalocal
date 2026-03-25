@@ -21,7 +21,7 @@ public class SettingsLayeringTests
         // Skip if file doesn't exist (for CI environments)
         if (!File.Exists(yamlPath))
         {
-            System.Console.WriteLine($"Skipping test - file not found: {yamlPath}");
+            Console.WriteLine($"Skipping test - file not found: {yamlPath}");
             return;
         }
 
@@ -31,25 +31,15 @@ public class SettingsLayeringTests
             Run = new PartialRunMeta
             {
                 PipelineName = "CasualQA",  // Default
-                RunName = null,
             },
             Server = new PartialServerConfig
             {
                 Manage = true,
-                Model = null,
             },
             LlamaSettings = new PartialLlamaServerSettings
             {
                 ContextWindowTokens = 2048,  // Default
                 ParallelSlotCount = 4,       // Default
-                GpuLayerCount = null,        // Default (llama.cpp decides)
-                TopP = null,
-                TopK = null,
-                MinP = null,
-                ReasoningBudget = null,
-                ReasoningBudgetMessage = null,
-                ServerTimeoutSeconds = null,
-                ExtraArgs = null,
             },
             Judge = new PartialJudgeConfig
             {
@@ -63,22 +53,13 @@ public class SettingsLayeringTests
                 {
                     ContextWindowTokens = 2048,  // Default
                     ParallelSlotCount = 4,       // Default
-                    GpuLayerCount = null,
-                    TopP = null,
-                    TopK = null,
-                    MinP = null,
-                    ReasoningBudget = null,
-                    ReasoningBudgetMessage = null,
-                    ServerTimeoutSeconds = null,
-                    ExtraArgs = null,
                 },
             },
             DataSource = new PartialDataSourceConfig
             {
                 Kind = DataSourceKind.SingleFile,  // Default
-                FilePath = null,
             },
-            PipelineOptions = new Dictionary<string, object?>(),
+            PipelineOptions = [],
         };
 
         // ── Step 2: Load YAML file as settings layer ──────────

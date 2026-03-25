@@ -226,7 +226,7 @@ public sealed class CliSettingsAdapterTests
     public void ToPartialConfig_BatchTokens_Sets_Correctly()
     {
         // Arrange
-        var settings = new RunCommandSettings { BatchTokens = 2048 };
+        var settings = new RunCommandSettings { BatchSizeTokens = 2048 };
 
         // Act
         var config = CliSettingsAdapter.ToPartialConfig(settings);
@@ -239,7 +239,7 @@ public sealed class CliSettingsAdapterTests
     public void ToPartialConfig_UBatchTokens_Sets_Correctly()
     {
         // Arrange
-        var settings = new RunCommandSettings { UBatchTokens = 512 };
+        var settings = new RunCommandSettings { UbatchSizeTokens = 512 };
 
         // Act
         var config = CliSettingsAdapter.ToPartialConfig(settings);
@@ -317,7 +317,7 @@ public sealed class CliSettingsAdapterTests
     public void ToPartialConfig_KvTypeK_And_V_Sets_Correctly()
     {
         // Arrange
-        var settings = new RunCommandSettings { KvTypeK = "q8_0", KvTypeV = "f16" };
+        var settings = new RunCommandSettings { KvCacheTypeK = "q8_0", KvCacheTypeV = "f16" };
 
         // Act
         var config = CliSettingsAdapter.ToPartialConfig(settings);

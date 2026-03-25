@@ -66,6 +66,7 @@ public sealed class CSharpCodingPipelineFactory(ILoggerFactory loggerFactory) : 
 
         List<IEvalStage> stages =
         [
+            new ItemLoadStage(_loggerFactory.CreateLogger<ItemLoadStage>()),
             new PromptStage(_loggerFactory.CreateLogger<PromptStage>()),
             new CSharpEvalSetupStage(
                 templatePath,

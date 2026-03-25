@@ -19,9 +19,9 @@ public sealed class CasualQAPipelineTests
         var pipeline = _factory.Create(config);
 
         Assert.Equal("CasualQA", pipeline.PipelineName);
-        Assert.Equal(2, pipeline.Stages.Count);
-        Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
-        Assert.Equal("JudgeStage", pipeline.Stages[1].StageName);
+        Assert.Equal(3, pipeline.Stages.Count);
+        Assert.Equal("PromptStage", pipeline.Stages[1].StageName);
+        Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
     }
 
     [Fact]
@@ -34,10 +34,11 @@ public sealed class CasualQAPipelineTests
 
         var pipeline = _factory.Create(config);
 
-        Assert.Equal(3, pipeline.Stages.Count);
-        Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
-        Assert.Equal("ExactMatchStage", pipeline.Stages[1].StageName);
-        Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
+        Assert.Equal(4, pipeline.Stages.Count);
+        Assert.Equal("ItemLoadStage", pipeline.Stages[0].StageName);
+        Assert.Equal("PromptStage", pipeline.Stages[1].StageName);
+        Assert.Equal("ExactMatchStage", pipeline.Stages[2].StageName);
+        Assert.Equal("JudgeStage", pipeline.Stages[3].StageName);
     }
 
     [Fact]

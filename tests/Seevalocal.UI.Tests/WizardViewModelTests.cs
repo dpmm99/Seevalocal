@@ -854,4 +854,83 @@ public sealed class WizardViewModelTests
     }
 
     #endregion
+
+    #region EvalGen Checkpoint Loading Tests
+
+    [Fact]
+    public void PopulateFromEvalGenCheckpoint_PreservesJudgeReasoningBudgetFields()
+    {
+        // Arrange
+        var filePicker = new TestFilePickerService();
+        var toastService = new TestToastService();
+        var logger = new TestLogger(output: null);
+        var vm = new WizardViewModel(filePicker, toastService, logger);
+
+        var judgeConfig = new JudgeConfig
+        {
+            ServerConfig = new ServerConfig
+            {
+                Manage = true,
+                ExecutablePath = "C:\\test\\llama-server.exe"
+            },
+            ServerSettings = new LlamaServerSettings
+            {
+                ReasoningBudget = 2048,
+                ReasoningBudgetMessage = "Think step by step",
+                ReasoningFormat = "hidden",
+                ContextWindowTokens = 8192,
+                SamplingTemperature = 0.7
+            }
+        };
+        var judgeConfigJson = System.Text.Json.JsonSerializer.Serialize(judgeConfig);
+        var values = new Dictionary<string, string>
+        {
+            ["RunName"] = "Test Run",
+            ["OutputDirectoryPath"] = "./test_output",
+            ["JudgeConfigJson"] = judgeConfigJson
+        };
+
+        // Act
+        var methodInfo = typeof(WizardViewModel).GetMethod("PopulateFromEvalGenCheckpoint",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        methodInfo!.Invoke(vm, [values]);
+
+        // Assert - all judge settings should be preserved including ReasoningBudget fields
+        _ = vm.JudgeManageServer.Should().BeTrue();
+        _ = vm.JudgeExecutablePath.Should().Be("C:\\test\\llama-server.exe");
+        _ = vm.JudgeReasoningBudget.Should().Be(2048);
+        _ = vm.JudgeReasoningBudgetMessage.Should().Be("Think step by step");
+        _ = vm.JudgeReasoningFormat.Should().Be("hidden");
+        _ = vm.JudgeContextWindowTokens.Should().Be(8192);
+        _ = vm.JudgeSamplingTemperature.Should().Be(0.7);
+    }
+
+    [Fact]
+    public void BuildPartialConfig_IncludesJudgeConfig_WhenJudgeReasoningBudgetEdited()
+    {
+        // Arrange
+        var filePicker = new TestFilePickerService();
+        var toastService = new TestToastService();
+        var logger = new TestLogger(output: null);
+        var vm = new WizardViewModel(filePicker, toastService, logger);
+
+        // Set up judge as enabled with some basic config
+        vm.EnableJudge = true;
+        vm.JudgeManageServer = true;
+        vm.JudgeLocalModelPath = "C:\\test\\model.gguf";
+
+        // Edit ONLY the ReasoningBudget field (no other judge fields)
+        vm.JudgeReasoningBudget = 4096;
+
+        // Act
+        var config = vm.BuildPartialConfig();
+
+        // Assert - judge config should NOT be null even though only ReasoningBudget was edited
+        _ = config.Judge.Should().NotBeNull("JudgeReasoningBudget was edited");
+        _ = config.Judge.Enable.Should().BeTrue();
+        _ = config.Judge.ServerSettings.Should().NotBeNull();
+        _ = config.Judge.ServerSettings.ReasoningBudget.Should().Be(4096);
+    }
+
+    #endregion
 }

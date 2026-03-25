@@ -3,6 +3,7 @@ using Seevalocal.Core.Models;
 using Seevalocal.UI.Commands;
 using Seevalocal.UI.Services;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
@@ -605,11 +606,14 @@ public sealed partial class WizardViewModel : IWizardViewModel
         var llamaSettings = BuildLlamaServerSettings();
 
         // Judge - check if any judge-related field was edited OR if judge is enabled
-        var hasJudgeField = Edited(nameof(EnableJudge)) 
+        // Use LlamaSettingNames to automatically include all judge llama-server settings
+        var hasJudgeField = Edited(nameof(EnableJudge))
             || Edited(nameof(JudgeLocalModelPath)) || Edited(nameof(JudgeHfRepo))
             || Edited(nameof(JudgeServerUrl)) || Edited(nameof(JudgeApiKey))
             || Edited(nameof(JudgeManageServer))
-            || Edited(nameof(SelectedJudgeTemplateIndex));
+            || Edited(nameof(SelectedJudgeTemplateIndex))
+            // Include all Judge llama-server settings dynamically from LlamaSettingNames
+            || WizardState.LlamaSettingNames.Any(name => Edited("Judge" + name));
 
         var judge = hasJudgeField
             ? (s.EnableJudge ? BuildJudgeConfig() : new PartialJudgeConfig { Enable = false })
@@ -711,6 +715,7 @@ public sealed partial class WizardViewModel : IWizardViewModel
     /// <summary>
     /// Builds a <see cref="PartialLlamaServerSettings"/> from state fields whose
     /// property names share a common prefix in <see cref="WizardState"/>.
+    /// Uses reflection over PartialLlamaServerSettings to avoid enumerating every field manually.
     /// </summary>
     private static PartialLlamaServerSettings? BuildServerSettingsFromState(
         string fieldPrefix,
@@ -718,63 +723,42 @@ public sealed partial class WizardViewModel : IWizardViewModel
         HashSet<string> editedFields,
         string? extraArgs)
     {
-        // These are the canonical llama-server setting names (without judge prefix).
-        // We check editedFields using the actual VM property name (with prefix where needed).
-        var fields = WizardState.LlamaSettingNames;
-        bool hasAny = fields.Any(f => editedFields.Contains(fieldPrefix + f))
+        var settingsType = typeof(PartialLlamaServerSettings);
+        var props = settingsType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+        // Check if any field has been edited (including ExtraLlamaArgs for ExtraArgs)
+        bool hasAny = props.Any(p => editedFields.Contains(fieldPrefix + p.Name))
+            || editedFields.Contains(fieldPrefix + "ExtraLlamaArgs")
             || (!string.IsNullOrEmpty(extraArgs) && fieldPrefix == "");
 
         if (!hasAny) return null;
 
-        T? Get<T>(string name) where T : struct
+        var result = new PartialLlamaServerSettings();
+
+        foreach (var prop in props)
         {
-            return !editedFields.Contains(fieldPrefix + name) ? (T?)null : (T?)(stateGetter(name) is T v ? v : null);
+            var fieldName = fieldPrefix + prop.Name;
+            if (!editedFields.Contains(fieldName)) continue;
+
+            // Get value from state based on property type
+            var stateValue = stateGetter(prop.Name);
+            if (stateValue is null) continue;
+            prop.SetValue(result, stateValue);
         }
 
-        string? GetStr(string name)
+        // Handle ExtraArgs separately (comes from ExtraLlamaArgs string field in WizardState)
+        var extraArgsFieldName = fieldPrefix + "ExtraLlamaArgs";
+        if (editedFields.Contains(extraArgsFieldName) && !string.IsNullOrEmpty(extraArgs))
         {
-            return !editedFields.Contains(fieldPrefix + name) ? null : stateGetter(name) as string;
+            var list = extraArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (list.Count > 0)
+            {
+                var extraArgsProp = props.First(p => p.Name == "ExtraArgs");
+                extraArgsProp.SetValue(result, list);
+            }
         }
 
-        return new PartialLlamaServerSettings
-        {
-            ContextWindowTokens = Get<int>(nameof(ContextWindowTokens)),
-            BatchSizeTokens = Get<int>(nameof(BatchSizeTokens)),
-            UbatchSizeTokens = Get<int>(nameof(UbatchSizeTokens)),
-            ParallelSlotCount = Get<int>(nameof(ParallelSlotCount)),
-            EnableContinuousBatching = Get<bool>(nameof(EnableContinuousBatching)),
-            EnableCachePrompt = Get<bool>(nameof(EnableCachePrompt)),
-            EnableContextShift = Get<bool>(nameof(EnableContextShift)),
-            GpuLayerCount = Get<int>(nameof(GpuLayerCount)),
-            SplitMode = GetStr(nameof(SplitMode)),
-            KvCacheTypeK = GetStr(nameof(KvCacheTypeK)),
-            KvCacheTypeV = GetStr(nameof(KvCacheTypeV)),
-            EnableKvOffload = Get<bool>(nameof(EnableKvOffload)),
-            EnableFlashAttention = Get<bool>(nameof(EnableFlashAttention)),
-            SamplingTemperature = Get<double>(nameof(SamplingTemperature)),
-            TopP = Get<double>(nameof(TopP)),
-            TopK = Get<int>(nameof(TopK)),
-            MinP = Get<double>(nameof(MinP)),
-            RepeatPenalty = Get<double>(nameof(RepeatPenalty)),
-            RepeatLastNTokens = Get<int>(nameof(RepeatLastNTokens)),
-            PresencePenalty = Get<double>(nameof(PresencePenalty)),
-            FrequencyPenalty = Get<double>(nameof(FrequencyPenalty)),
-            Seed = Get<int>(nameof(Seed)),
-            ThreadCount = Get<int>(nameof(ThreadCount)),
-            ChatTemplate = GetStr(nameof(ChatTemplate)),
-            EnableJinja = Get<bool>(nameof(EnableJinja)),
-            ReasoningFormat = GetStr(nameof(ReasoningFormat)),
-            ModelAlias = GetStr(nameof(ModelAlias)),
-            ReasoningBudget = Get<int>(nameof(ReasoningBudget)),
-            ReasoningBudgetMessage = GetStr(nameof(ReasoningBudgetMessage)),
-            LogVerbosity = Get<int>(nameof(LogVerbosity)),
-            EnableMlock = Get<bool>(nameof(EnableMlock)),
-            EnableMmap = Get<bool>(nameof(EnableMmap)),
-            ServerTimeoutSeconds = Get<double>(nameof(ServerTimeoutSeconds)),
-            ExtraArgs = editedFields.Contains(fieldPrefix + nameof(ExtraLlamaArgs)) && !string.IsNullOrEmpty(extraArgs)
-                ? extraArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList()
-                : null
-        };
+        return result;
     }
 
     private Dictionary<string, object?>? BuildPipelineOptions()
@@ -1089,10 +1073,10 @@ public sealed partial class WizardViewModel : IWizardViewModel
                         _editedFields.Add(nameof(JudgeUseLocalFile));
                         _editedFields.Add(nameof(JudgeLocalModelPath));
                     }
-                    if (judgeConfig.ServerSettings?.ContextWindowTokens.HasValue == true)
+                    // Use reflection-based helper to apply all ServerSettings fields at once
+                    if (judgeConfig.ServerSettings != null)
                     {
-                        _state.JudgeContextWindowTokens = judgeConfig.ServerSettings.ContextWindowTokens;
-                        _editedFields.Add(nameof(JudgeContextWindowTokens));
+                        WizardState.ApplyLlamaSettings(judgeConfig.ServerSettings, _state, _editedFields, onlyUnedited: false, prefix: "Judge");
                     }
                 }
             }

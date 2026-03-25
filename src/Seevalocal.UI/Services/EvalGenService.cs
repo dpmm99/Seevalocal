@@ -71,7 +71,7 @@ public sealed partial class EvalGenService(
 
     /// <summary>
     /// Merges two judge configs, with overlayConfig taking precedence over baseConfig.
-    /// Used to overlay checkpoint judge config on top of current settings.
+    /// Uses reflection-driven merge to avoid repetitive per-property code.
     /// </summary>
     private static JudgeConfig MergeJudgeConfigs(JudgeConfig baseConfig, JudgeConfig overlayConfig)
     {
@@ -89,49 +89,15 @@ public sealed partial class EvalGenService(
                 BaseUrl = overlayConfig.ServerConfig?.BaseUrl ?? baseConfig.ServerConfig?.BaseUrl,
                 Manage = overlayConfig.ServerConfig?.Manage ?? baseConfig.ServerConfig?.Manage
             },
-            ServerSettings = overlayConfig.ServerSettings with
-            {
-                // Merge ServerSettings - overlay takes precedence but fill in missing from base
-                SamplingTemperature = overlayConfig.ServerSettings?.SamplingTemperature ?? baseConfig.ServerSettings?.SamplingTemperature ?? 0.7,
-                ContextWindowTokens = overlayConfig.ServerSettings?.ContextWindowTokens ?? baseConfig.ServerSettings?.ContextWindowTokens ?? 4096,
-                ParallelSlotCount = overlayConfig.ServerSettings?.ParallelSlotCount ?? baseConfig.ServerSettings?.ParallelSlotCount ?? 4,
-                GpuLayerCount = overlayConfig.ServerSettings?.GpuLayerCount ?? baseConfig.ServerSettings?.GpuLayerCount,
-                ModelAlias = overlayConfig.ServerSettings?.ModelAlias ?? baseConfig.ServerSettings?.ModelAlias,
-                BatchSizeTokens = overlayConfig.ServerSettings?.BatchSizeTokens ?? baseConfig.ServerSettings?.BatchSizeTokens,
-                UbatchSizeTokens = overlayConfig.ServerSettings?.UbatchSizeTokens ?? baseConfig.ServerSettings?.UbatchSizeTokens,
-                EnableContinuousBatching = overlayConfig.ServerSettings?.EnableContinuousBatching ?? baseConfig.ServerSettings?.EnableContinuousBatching,
-                EnableCachePrompt = overlayConfig.ServerSettings?.EnableCachePrompt ?? baseConfig.ServerSettings?.EnableCachePrompt,
-                EnableContextShift = overlayConfig.ServerSettings?.EnableContextShift ?? baseConfig.ServerSettings?.EnableContextShift,
-                SplitMode = overlayConfig.ServerSettings?.SplitMode ?? baseConfig.ServerSettings?.SplitMode,
-                KvCacheTypeK = overlayConfig.ServerSettings?.KvCacheTypeK ?? baseConfig.ServerSettings?.KvCacheTypeK,
-                KvCacheTypeV = overlayConfig.ServerSettings?.KvCacheTypeV ?? baseConfig.ServerSettings?.KvCacheTypeV,
-                EnableKvOffload = overlayConfig.ServerSettings?.EnableKvOffload ?? baseConfig.ServerSettings?.EnableKvOffload,
-                EnableFlashAttention = overlayConfig.ServerSettings?.EnableFlashAttention ?? baseConfig.ServerSettings?.EnableFlashAttention,
-                TopP = overlayConfig.ServerSettings?.TopP ?? baseConfig.ServerSettings?.TopP,
-                TopK = overlayConfig.ServerSettings?.TopK ?? baseConfig.ServerSettings?.TopK,
-                MinP = overlayConfig.ServerSettings?.MinP ?? baseConfig.ServerSettings?.MinP,
-                RepeatPenalty = overlayConfig.ServerSettings?.RepeatPenalty ?? baseConfig.ServerSettings?.RepeatPenalty,
-                RepeatLastNTokens = overlayConfig.ServerSettings?.RepeatLastNTokens ?? baseConfig.ServerSettings?.RepeatLastNTokens,
-                PresencePenalty = overlayConfig.ServerSettings?.PresencePenalty ?? baseConfig.ServerSettings?.PresencePenalty,
-                FrequencyPenalty = overlayConfig.ServerSettings?.FrequencyPenalty ?? baseConfig.ServerSettings?.FrequencyPenalty,
-                Seed = overlayConfig.ServerSettings?.Seed ?? baseConfig.ServerSettings?.Seed,
-                ThreadCount = overlayConfig.ServerSettings?.ThreadCount ?? baseConfig.ServerSettings?.ThreadCount,
-                ChatTemplate = overlayConfig.ServerSettings?.ChatTemplate ?? baseConfig.ServerSettings?.ChatTemplate,
-                EnableJinja = overlayConfig.ServerSettings?.EnableJinja ?? baseConfig.ServerSettings?.EnableJinja,
-                ReasoningFormat = overlayConfig.ServerSettings?.ReasoningFormat ?? baseConfig.ServerSettings?.ReasoningFormat,
-                LogVerbosity = overlayConfig.ServerSettings?.LogVerbosity ?? baseConfig.ServerSettings?.LogVerbosity,
-                EnableMlock = overlayConfig.ServerSettings?.EnableMlock ?? baseConfig.ServerSettings?.EnableMlock,
-                EnableMmap = overlayConfig.ServerSettings?.EnableMmap ?? baseConfig.ServerSettings?.EnableMmap,
-                ServerTimeoutSeconds = overlayConfig.ServerSettings?.ServerTimeoutSeconds ?? baseConfig.ServerSettings?.ServerTimeoutSeconds,
-                ExtraArgs = overlayConfig.ServerSettings?.ExtraArgs ?? baseConfig.ServerSettings?.ExtraArgs
-            },
-            // Preserve other overlay fields
-            JudgePromptTemplate = overlayConfig.JudgePromptTemplate,
-            ResponseFormat = overlayConfig.ResponseFormat,
-            ScoreMinValue = overlayConfig.ScoreMinValue,
-            ScoreMaxValue = overlayConfig.ScoreMaxValue,
-            JudgeSystemPrompt = overlayConfig.JudgeSystemPrompt,
-            JudgeMaxTokenCount = overlayConfig.JudgeMaxTokenCount,
+            // Use reflection-driven merge for ServerSettings (all 34 llama-server settings)
+            ServerSettings = LlamaSettingsMetadata.Merge(overlayConfig.ServerSettings, baseConfig.ServerSettings),
+            // Use reflection-driven merge for other judge config fields
+            JudgePromptTemplate = overlayConfig.JudgePromptTemplate ?? baseConfig.JudgePromptTemplate,
+            ResponseFormat = overlayConfig.ResponseFormat != default ? overlayConfig.ResponseFormat : baseConfig.ResponseFormat,
+            ScoreMinValue = overlayConfig.ScoreMinValue != default ? overlayConfig.ScoreMinValue : baseConfig.ScoreMinValue,
+            ScoreMaxValue = overlayConfig.ScoreMaxValue != default ? overlayConfig.ScoreMaxValue : baseConfig.ScoreMaxValue,
+            JudgeSystemPrompt = overlayConfig.JudgeSystemPrompt ?? baseConfig.JudgeSystemPrompt,
+            JudgeMaxTokenCount = overlayConfig.JudgeMaxTokenCount ?? baseConfig.JudgeMaxTokenCount,
         };
     }
 

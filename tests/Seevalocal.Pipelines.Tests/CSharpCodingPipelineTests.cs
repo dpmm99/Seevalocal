@@ -16,9 +16,9 @@ public sealed class CSharpCodingPipelineTests
         var pipeline = _factory.Create(config);
 
         Assert.Equal("CSharpCoding", pipeline.PipelineName);
-        Assert.Equal(2, pipeline.Stages.Count);
-        Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
-        Assert.Equal("CSharpEvalSetupStage", pipeline.Stages[1].StageName);
+        Assert.Equal(3, pipeline.Stages.Count);
+        Assert.Equal("PromptStage", pipeline.Stages[1].StageName);
+        Assert.Equal("CSharpEvalSetupStage", pipeline.Stages[2].StageName);
     }
 
     [Fact]
@@ -31,8 +31,8 @@ public sealed class CSharpCodingPipelineTests
 
         var pipeline = _factory.Create(config);
 
-        Assert.Equal(3, pipeline.Stages.Count);
-        Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
+        Assert.Equal(4, pipeline.Stages.Count);
+        Assert.Equal("JudgeStage", pipeline.Stages[3].StageName);
     }
 
     [Fact]

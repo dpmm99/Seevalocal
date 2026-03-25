@@ -36,7 +36,8 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
             {
                 ["PromptStage.response"] = existingResponseText,
                 ["PromptStage.userPrompt"] = item.UserPrompt,
-                ["PromptStage.systemPrompt"] = item.SystemPrompt
+                ["PromptStage.systemPrompt"] = item.SystemPrompt,
+                ["PromptStage.expectedOutput"] = item.ExpectedOutput
             };
 
             // Try to restore rawResponse if available
@@ -79,7 +80,8 @@ public sealed class PromptStage(ILogger<PromptStage> logger) : IEvalStage
             ["PromptStage.response"] = responseText,
             ["PromptStage.rawResponse"] = response,
             ["PromptStage.userPrompt"] = item.UserPrompt,
-            ["PromptStage.systemPrompt"] = item.SystemPrompt
+            ["PromptStage.systemPrompt"] = item.SystemPrompt,
+            ["PromptStage.expectedOutput"] = item.ExpectedOutput
         };
 
         var metrics = BuildMetrics(response, sw.Elapsed.TotalSeconds);

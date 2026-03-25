@@ -59,6 +59,7 @@ public sealed class CasualQAPipelineFactory(ILoggerFactory loggerFactory) : IBui
 
         List<IEvalStage> stages =
         [
+            new ItemLoadStage(_loggerFactory.CreateLogger<ItemLoadStage>()),
             new PromptStage(_loggerFactory.CreateLogger<PromptStage>()),
         ];
 

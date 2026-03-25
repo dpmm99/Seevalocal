@@ -57,15 +57,15 @@ public static class CliSettingsAdapter
             ? new PartialLlamaServerSettings
             {
                 ContextWindowTokens = s.ContextWindowTokens,
-                BatchSizeTokens = s.BatchTokens,
-                UbatchSizeTokens = s.UBatchTokens,
+                BatchSizeTokens = s.BatchSizeTokens,
+                UbatchSizeTokens = s.UbatchSizeTokens,
                 ParallelSlotCount = s.ParallelSlotCount,
                 GpuLayerCount = s.GpuLayerCount,
                 EnableFlashAttention = s.EnableFlashAttention,
                 EnableCachePrompt = s.EnableCachePrompt,
                 EnableContextShift = s.EnableContextShift,
-                KvCacheTypeK = s.KvTypeK,
-                KvCacheTypeV = s.KvTypeV,
+                KvCacheTypeK = s.KvCacheTypeK,
+                KvCacheTypeV = s.KvCacheTypeV,
                 ThreadCount = s.ThreadCount,
                 SamplingTemperature = s.SamplingTemperature,
                 TopP = s.TopP,
@@ -136,10 +136,10 @@ public static class CliSettingsAdapter
         s.OutputDir != null || s.ShellDialect != null || s.NoParquet || s.NoRawResponse;
 
     private static bool HasAnyLlamaSettings(RunCommandSettings s) =>
-        s.ContextWindowTokens != null || s.BatchTokens != null || s.UBatchTokens != null
+        s.ContextWindowTokens != null || s.BatchSizeTokens != null || s.UbatchSizeTokens != null
         || s.ParallelSlotCount != null || s.GpuLayerCount != null || s.EnableFlashAttention != null
-        || s.EnableCachePrompt != null || s.EnableContextShift != null || s.KvTypeK != null
-        || s.KvTypeV != null || s.ThreadCount != null || s.SamplingTemperature != null
+        || s.EnableCachePrompt != null || s.EnableContextShift != null || s.KvCacheTypeK != null
+        || s.KvCacheTypeV != null || s.ThreadCount != null || s.SamplingTemperature != null
         || s.TopP != null || s.TopK != null || s.MinP != null || s.Seed != null
         || s.ChatTemplate != null || s.ReasoningFormat != null || s.LogVerbosity != null || s.ExtraArgs != null;
 

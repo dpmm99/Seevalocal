@@ -74,7 +74,7 @@ public sealed class TranslationPipelineFactory(ILoggerFactory loggerFactory) : I
         return new EvalPipeline(_loggerFactory.CreateLogger<EvalPipeline>())
         {
             PipelineName = PipelineName,
-            Stages = [promptStage, judgeStage],
+            Stages = [new ItemLoadStage(_loggerFactory.CreateLogger<ItemLoadStage>()), promptStage, judgeStage],
         };
     }
 

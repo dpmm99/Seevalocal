@@ -15,9 +15,9 @@ public sealed class TranslationPipelineTests
         var pipeline = _factory.Create(config);
 
         Assert.Equal("Translation", pipeline.PipelineName);
-        Assert.Equal(2, pipeline.Stages.Count);
-        Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
-        Assert.Equal("JudgeStage", pipeline.Stages[1].StageName);
+        Assert.Equal(3, pipeline.Stages.Count);
+        Assert.Equal("PromptStage", pipeline.Stages[1].StageName);
+        Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
     }
 
     [Fact]
@@ -26,8 +26,9 @@ public sealed class TranslationPipelineTests
         var config = TestHelpers.MakeConfigWithPipeline("Translation");
         var pipeline = _factory.Create(config);
 
-        Assert.Equal("PromptStage", pipeline.Stages[0].StageName);
-        Assert.Equal("JudgeStage", pipeline.Stages[1].StageName);
+        Assert.Equal("ItemLoadStage", pipeline.Stages[0].StageName);
+        Assert.Equal("PromptStage", pipeline.Stages[1].StageName);
+        Assert.Equal("JudgeStage", pipeline.Stages[2].StageName);
     }
 
     [Fact]

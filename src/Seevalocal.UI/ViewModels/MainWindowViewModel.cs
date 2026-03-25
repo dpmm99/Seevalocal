@@ -592,23 +592,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var judgeServerSettings = SettingsFieldMapping.BuildLlamaServerSettings(fields, "judge", f => f.MaterializedValue);
 
         // Build Judge config - always include, even if not enabled
-        var judge = new PartialJudgeConfig
+        // Use reflection-based helper, then override ServerSettings which is built separately
+        var judge = LlamaSettingsMetadata.BuildPartialJudgeConfig(F, "judge") with
         {
-            Enable = SettingsFieldMapping.ParseBool(F("judge.enable")),
-            ServerConfig = new PartialServerConfig
-            {
-                Manage = SettingsFieldMapping.ParseBool(F("judge.manage")),
-                ExecutablePath = F("judge.executablePath"),
-                ApiKey = F("judge.apiKey"),
-                BaseUrl = F("judge.baseUrl"),
-                Model = new ModelSource
-                {
-                    FilePath = F("judge.modelFile"),
-                    HfRepo = F("judge.hfRepo")
-                }
-            },
             ServerSettings = judgeServerSettings,
-            JudgePromptTemplate = F("judge.template"),
             ScoreMinValue = double.TryParse(F("judge.scoreMin"), out var sm) ? sm : 0,
             ScoreMaxValue = double.TryParse(F("judge.scoreMax"), out var sx) ? sx : 10,
         };
